@@ -350,16 +350,21 @@ export function deleteTodo(ctx: Ctx, id: number): void {
   if (result.changes === 0) throw notFound("Todo", id);
 }
 
+/**
+ * Correlated subqueries name the outer table explicitly ("todos"."id"): drizzle leaves the table off
+ * columns in some positions, and inside the subquery a bare "id" would mean the label's id.
+ */
+
 /** Importance for sorting: critical 4, high 3, medium 2, none 1, low 0. */
 const priorityKey = sql`coalesce((
   SELECT CASE lower(l.value) WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 0 END
   FROM ${todoLabels} tl JOIN ${labels} l ON l.id = tl.label_id
-  WHERE tl.todo_id = ${todos.id} AND lower(l.scope) = 'priority' AND lower(l.value) IN ('critical','high','medium','low')
+  WHERE tl.todo_id = "todos"."id" AND lower(l.scope) = 'priority' AND lower(l.value) IN ('critical','high','medium','low')
   LIMIT 1
 ), 1)`;
 
 const hasLabel = (name: string): SQL =>
-  sql`EXISTS (SELECT 1 FROM ${todoLabels} tl JOIN ${labels} l ON l.id = tl.label_id WHERE tl.todo_id = ${todos.id} AND l.name = ${name})`;
+  sql`EXISTS (SELECT 1 FROM ${todoLabels} tl JOIN ${labels} l ON l.id = tl.label_id WHERE tl.todo_id = "todos"."id" AND l.name = ${name})`;
 
 function projectCondition(projectId: number | "inbox" | undefined): SQL | undefined {
   if (projectId === undefined) return undefined;
@@ -375,7 +380,7 @@ function listConditions(query: TodoListQuery): SQL | undefined {
   for (const name of query.label ?? []) conditions.push(hasLabel(name));
   if (query.personId !== undefined) {
     conditions.push(
-      sql`EXISTS (SELECT 1 FROM ${todoPeople} tp WHERE tp.todo_id = ${todos.id} AND tp.person_id = ${query.personId})`,
+      sql`EXISTS (SELECT 1 FROM ${todoPeople} tp WHERE tp.todo_id = "todos"."id" AND tp.person_id = ${query.personId})`,
     );
   }
   if (query.q) conditions.push(sql`${todos.title} LIKE ${`%${escapeLike(query.q)}%`} ESCAPE '\\'`);

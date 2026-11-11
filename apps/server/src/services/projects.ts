@@ -12,7 +12,8 @@ import { recordEvents } from "./events.ts";
 
 type ProjectRow = typeof projects.$inferSelect;
 
-const openCountSql = sql<number>`(SELECT count(*) FROM ${todos} WHERE ${todos.projectId} = ${projects.id} AND ${todos.status} <> 'done')`;
+// Written out: drizzle renders select-list columns without their table, which a subquery would misread.
+const openCountSql = sql<number>`(SELECT count(*) FROM "todos" t WHERE t.project_id = "projects"."id" AND t.status <> 'done')`;
 
 const toProject = (row: ProjectRow & { openCount: number }): Project => ({
   id: row.id,
