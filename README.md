@@ -141,6 +141,7 @@ to that server. Use a port other than 4711 and a separate data dir so the instal
 | `pnpm format` | Formats the code (oxfmt) |
 | `pnpm --filter @organizer/<server\|web\|mcp\|shared> <script>` | One package |
 | `pnpm --filter @organizer/server db:generate` | New migration after editing `apps/server/src/db/schema.ts` |
+| `pnpm --filter @organizer/web test:e2e` | Browser test of the core flow on the built app, against a throwaway server on port 4804 (run `pnpm build` first; `npx playwright install chromium` once). `E2E_BASE_URL=http://organizer.localhost:4711` runs it against the installed service; it deletes what it creates |
 | `bash deploy/test-install.sh` | Tests `install.sh` in a temp HOME with stand-ins for pnpm and systemctl |
 
 Layout: `packages/shared` (API contract as zod schemas, Next up scoring), `apps/server` (Fastify, SQLite with
