@@ -1,0 +1,129 @@
+import type { Label, Person, Todo } from "@organizer/shared";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router";
+import { render } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { vi } from "vitest";
+import { ToastProvider } from "../components/toast/ToastProvider.tsx";
+import { KeyboardProvider } from "../keyboard/KeyboardProvider.tsx";
+
+/** Renders UI inside the app's providers and a memory router (todo links resolve to a stub page). */
+export function renderWithApp(ui: ReactNode) {
+  const rootRoute = createRootRoute({
+    component: () => (
+      <>
+        {ui}
+        <Outlet />
+      </>
+    ),
+  });
+  const routeTree = rootRoute.addChildren([
+    createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => null }),
+    createRoute({ getParentRoute: () => rootRoute, path: "/todos/$id", component: () => <p>todo page</p> }),
+  ]);
+  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: ["/"] }) });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return {
+    router,
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <KeyboardProvider>
+          <ToastProvider>
+            <RouterProvider router={router} />
+          </ToastProvider>
+        </KeyboardProvider>
+      </QueryClientProvider>,
+    ),
+  };
+}
+
+const T = "2026-11-01T09:00:00.000Z";
+
+export function makeLabel(name: string, overrides: Partial<Label> = {}): Label {
+  const index = name.lastIndexOf("::");
+  return {
+    id: Math.abs([...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)) + 1,
+    name,
+    scope: index === -1 ? null : name.slice(0, index),
+    value: index === -1 ? name : name.slice(index + 2),
+    color: "#FFB224",
+    description: "",
+    rank: null,
+    createdAt: T,
+    updatedAt: T,
+    ...overrides,
+  };
+}
+
+export function makePerson(firstName: string, lastName: string, id = 1): Person {
+  return {
+    id,
+    firstName,
+    lastName,
+    note: "",
+    displayName: `${firstName} ${lastName}`,
+    createdAt: T,
+    updatedAt: T,
+  };
+}
+
+export function makeTodo(overrides: Partial<Todo> = {}): Todo {
+  return {
+    id: 1,
+    projectId: null,
+    parentId: null,
+    title: "Renew SSL certs",
+    descriptionMd: "",
+    status: "open",
+    dueOn: null,
+    plannedOn: null,
+    position: 0,
+    createdAt: T,
+    updatedAt: T,
+    doneAt: null,
+    lastActivityAt: T,
+    durationMs: null,
+    labels: [],
+    requestedBy: [],
+    project: null,
+    ...overrides,
+  };
+}
+
+export interface RecordedCall {
+  method: string;
+  path: string;
+  body: unknown;
+}
+
+/** Replaces fetch with a handler; returns the calls made, in order. */
+export function mockApi(handler: (call: RecordedCall) => { status?: number; body?: unknown }) {
+  const calls: RecordedCall[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn<(input: string, init?: RequestInit) => Promise<Response>>(async (input, init) => {
+      const call = {
+        method: init?.method ?? "GET",
+        path: input,
+        body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
+      };
+      calls.push(call);
+      const { status = 200, body } = handler(call);
+      return new Response(body === undefined ? null : JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+      });
+    }),
+  );
+  return calls;
+}

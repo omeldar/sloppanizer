@@ -1,0 +1,64 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--overlay);
+  animation: fade var(--t-menu) ease-out;
+}
+
+.content {
+  position: fixed;
+  z-index: 50;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  background: var(--raised-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--menu-shadow);
+  animation: pop var(--t-menu) var(--ease);
+}
+
+.content[data-placement="top"] {
+  top: 14vh;
+  transform: translateX(-50%);
+  animation-name: drop;
+}
+
+.content:focus {
+  outline: none;
+}
+
+.title {
+  padding: 14px 16px 0;
+  font-size: var(--fs-h2);
+  font-weight: 600;
+}
+
+.description {
+  padding: 4px 16px 0;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%);
+  }
+}
+
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+}

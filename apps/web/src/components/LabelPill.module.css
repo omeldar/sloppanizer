@@ -1,0 +1,25 @@
+.pill {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  height: 18px;
+  border: 1px solid var(--label);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: var(--fs-pill);
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.scope {
+  padding: 0 5px;
+  background: var(--label);
+  color: var(--ink);
+}
+
+.value {
+  padding: 0 5px;
+  background: var(--raised);
+  color: var(--text);
+}

@@ -1,0 +1,96 @@
+/* Design tokens. Dark is the default; light is hand tuned (cool daylight grey). */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1116;
+  --raised: #141922;
+  --raised-2: #1a2030;
+  --sunken: #0a0d11;
+  --line: #232a35;
+  --line-strong: #2f3845;
+  --text: #e6e9ee;
+  --text-2: #9aa4b2;
+  /* Spec #77818F is 4.1:1 on the selected strip; a step lighter reaches 4.6:1 everywhere. */
+  --text-3: #7f8997;
+  --amber: #ffb224;
+  --amber-text: #ffb224;
+  --amber-fill: #ffb224;
+  --on-amber: #14100a;
+  --amber-tint: rgba(255, 178, 36, 0.12);
+  --red: #f2555a;
+  --red-tint: rgba(242, 85, 90, 0.12);
+  --band-critical: #f2555a;
+  --band-high: #ffb224;
+  --band-medium: #9aa4b2;
+  --band-low: #4a5361;
+  --strip: #0e1116;
+  --strip-hover: #11151c;
+  --strip-selected: #182030;
+  --overlay: rgba(4, 6, 9, 0.66);
+  --menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eceef1;
+  --raised: #f7f8fa;
+  --raised-2: #ffffff;
+  --sunken: #e2e5ea;
+  --line: #cdd2d9;
+  --line-strong: #b6bdc7;
+  --text: #12161c;
+  --text-2: #4a5361;
+  /* Spec #67707E is 4.3:1 on the page background; this keeps the hue at 4.8:1 or more. */
+  --text-3: #5a6371;
+  --amber: #ffb224;
+  /* Spec #9A5B00 is 4.3:1 on sunken panels. */
+  --amber-text: #8f5400;
+  --amber-fill: #ffb224;
+  --on-amber: #12161c;
+  --amber-tint: rgba(255, 178, 36, 0.2);
+  /* Spec #C9353B is 4.1:1 on sunken panels; text needs 4.5:1. */
+  --red: #bf2f35;
+  --red-tint: rgba(191, 47, 53, 0.1);
+  --band-critical: #c9353b;
+  --band-high: #e59a0c;
+  --band-medium: #9aa4b2;
+  --band-low: #c3c9d2;
+  --strip: #f7f8fa;
+  --strip-hover: #fbfbfc;
+  --strip-selected: #ffffff;
+  --overlay: rgba(18, 22, 28, 0.36);
+  --menu-shadow: 0 8px 24px rgba(18, 22, 28, 0.16);
+}
+
+:root {
+  --font-text: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --font-mono: "B612 Mono", ui-monospace, monospace;
+
+  --fs-pill: 11.5px;
+  --fs-mono: 12.5px;
+  --fs-small: 13px;
+  --fs-text: 14px;
+  --fs-h2: 15px;
+  --fs-h1: 19px;
+  --fs-title: 24px;
+
+  --radius-pill: 2px;
+  --radius-panel: 4px;
+  --radius-dialog: 6px;
+
+  --row-h: 36px;
+  --sidebar-w: 232px;
+  --topbar-h: 44px;
+  --statusbar-h: 26px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --t-menu: 120ms;
+  --t-collapse: 180ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-menu: 0ms;
+    --t-collapse: 0ms;
+  }
+}

@@ -1,0 +1,236 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  color: var(--text);
+  font-size: var(--fs-small);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--raised-2);
+  border-color: var(--text-3);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.button[data-size="sm"] {
+  height: 24px;
+  padding: 0 8px;
+  gap: 6px;
+}
+
+.button[data-variant="primary"] {
+  background: var(--amber-fill);
+  border-color: var(--amber-fill);
+  color: var(--on-amber);
+}
+
+.button[data-variant="primary"]:hover {
+  filter: brightness(1.06);
+}
+
+.button[data-variant="ghost"] {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-2);
+}
+
+.button[data-variant="ghost"]:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.button[data-variant="danger"] {
+  background: transparent;
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.button[data-variant="danger"]:hover {
+  background: var(--red-tint);
+}
+
+.kbdGroup {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+.kbdGroup[data-subtle] .kbd {
+  background: transparent;
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+  color: inherit;
+  opacity: 0.85;
+}
+
+.input {
+  height: 30px;
+  width: 100%;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  color: var(--text);
+}
+
+.input::placeholder {
+  color: var(--text-3);
+}
+
+.input:focus-visible {
+  outline-offset: 0;
+  border-color: var(--amber);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldLabel {
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.fieldHint {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.empty {
+  padding: 40px 24px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-panel);
+  color: var(--text-2);
+  text-align: center;
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--red);
+  border-left-width: 3px;
+  border-radius: var(--radius-panel);
+  background: var(--red-tint);
+  color: var(--text);
+}
+
+.loading {
+  height: 2px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.loadingBar {
+  display: block;
+  width: 30%;
+  height: 100%;
+  background: var(--amber);
+  animation: sweep 900ms linear infinite;
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loadingBar {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
+}
+
+.pageHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0 14px;
+}
+
+.pageTitleRow {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pageTitle {
+  font-size: var(--fs-h1);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.pageMeta {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-3);
+}
+
+.pageActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fieldButton {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  text-align: left;
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.fieldButton:hover,
+.fieldButton[data-state="open"] {
+  border-color: var(--line-strong);
+  background: var(--raised);
+}
+
+.fieldButton[data-empty] {
+  color: var(--text-3);
+}

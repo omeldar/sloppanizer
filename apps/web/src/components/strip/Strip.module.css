@@ -1,0 +1,312 @@
+/* Flight strips: a bay of stacked strips, each with a priority band and boxed mono fields on the right. */
+.bay {
+  --cols: 3px 34px 60px minmax(0, 1fr) 96px 96px 156px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.bay[data-ranked] {
+  --cols: 3px 34px 34px 60px minmax(0, 1fr) 96px 96px 156px;
+}
+
+.header {
+  display: grid;
+  grid-template-columns: var(--cols);
+  height: 26px;
+  align-items: center;
+  background: var(--sunken);
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.header > span:nth-last-child(-n + 3) {
+  padding: 0 10px;
+}
+
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: stretch;
+  min-height: var(--row-h);
+  background: var(--strip);
+  max-height: 120px;
+}
+
+.row:hover {
+  background: var(--strip-hover);
+}
+
+.row[data-selected] {
+  background: var(--strip-selected);
+}
+
+.band {
+  background: transparent;
+}
+
+.row[data-priority="critical"] .band {
+  background: var(--band-critical);
+}
+.row[data-priority="high"] .band {
+  background: var(--band-high);
+}
+.row[data-priority="medium"] .band {
+  background: var(--band-medium);
+}
+.row[data-priority="low"] .band {
+  background: var(--band-low);
+}
+.row[data-selected] .band {
+  background: var(--amber);
+  box-shadow: 1px 0 0 var(--amber);
+}
+
+.row[data-next] {
+  box-shadow: inset 0 0 0 1px var(--amber);
+  z-index: 1;
+}
+
+.rank {
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-3);
+}
+
+.row[data-next] .rank {
+  color: var(--amber-text);
+  font-weight: 700;
+}
+
+.check {
+  display: grid;
+  place-items: center;
+}
+
+.check input {
+  appearance: none;
+  margin: 0;
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  cursor: pointer;
+}
+
+.check input:hover {
+  border-color: var(--amber);
+}
+
+.check input:checked {
+  border-color: var(--amber-fill);
+  background: var(--amber-fill)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3 7.2l2.6 2.6L11 4.4' fill='none' stroke='%2312161C' stroke-width='1.8'/%3E%3C/svg%3E")
+    center / 13px no-repeat;
+}
+
+.id {
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 6px 12px 6px 0;
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.title {
+  flex: 0 1 auto;
+  min-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+  color: var(--text);
+  margin-right: 4px;
+}
+
+.title:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--text-3);
+  text-underline-offset: 3px;
+}
+
+.row[data-done] .title {
+  color: var(--text-2);
+}
+
+.titleInput {
+  flex: 1;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  outline: none;
+}
+
+/* Labels and names give way before the title does. */
+.tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.people {
+  flex-shrink: 0;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  white-space: nowrap;
+}
+
+.reasons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.reason {
+  font-family: var(--font-mono);
+  font-size: var(--fs-pill);
+  line-height: 16px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  color: var(--text-2);
+}
+
+.reason[data-kind="overdue"] {
+  color: var(--red);
+  background: var(--red-tint);
+}
+
+.reason[data-kind="due_today"],
+.reason[data-kind="in_progress"] {
+  color: var(--amber-text);
+  background: var(--amber-tint);
+}
+
+.due,
+.age,
+.project {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 0 10px;
+  border-left: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.due[data-state="overdue"] {
+  color: var(--red);
+}
+
+.due[data-state="today"] {
+  color: var(--amber-text);
+}
+
+.row[data-done] .age {
+  color: var(--text);
+}
+
+.swatch {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--swatch);
+}
+
+.projectName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-text);
+  font-size: var(--fs-small);
+}
+
+.inbox {
+  color: var(--text-3);
+  font-family: var(--font-text);
+  font-size: var(--fs-small);
+}
+
+.row[data-collapsing] {
+  animation: fold var(--t-collapse) ease-out forwards;
+  overflow: hidden;
+}
+
+@keyframes fold {
+  to {
+    max-height: 0;
+    min-height: 0;
+    opacity: 0;
+  }
+}
+
+.group {
+  margin-top: 28px;
+}
+
+.groupTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: var(--fs-h2);
+  font-weight: 600;
+}
+
+.groupCount {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+@media (max-width: 900px) {
+  .bay {
+    --cols: 3px 34px 52px minmax(0, 1fr) 92px;
+  }
+  .bay[data-ranked] {
+    --cols: 3px 28px 34px 52px minmax(0, 1fr) 92px;
+  }
+  .age,
+  .project,
+  .header > span:nth-last-child(-n + 2) {
+    display: none;
+  }
+}
