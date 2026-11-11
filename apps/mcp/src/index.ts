@@ -1,6 +1,7 @@
-// Placeholder entry; the MCP builder replaces it.
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { formatDuration } from "@organizer/shared";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { loadConfig } from "./config.ts";
+import { createServer } from "./server.ts";
 
-const server = new McpServer({ name: "organizer", version: "0.1.0" });
-console.error(`organizer MCP placeholder ${server ? "ready" : ""} (${formatDuration(0)})`);
+// stdout carries the protocol: log only to stderr.
+const server = createServer(loadConfig());
+await server.connect(new StdioServerTransport());
