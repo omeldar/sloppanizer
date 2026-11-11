@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "oxc", "unicorn", "promise", "import", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn"
+  },
+  "env": {
+    "es2024": true
+  },
+  "ignorePatterns": ["**/dist/**", "**/node_modules/**", "**/*.d.ts", "tmp/**", "**/coverage/**"],
+  "rules": {
+    "typescript/no-explicit-any": "error",
+    "no-console": "off"
+  },
+  "overrides": [
+    {
+      "files": ["apps/web/**"],
+      "plugins": ["typescript", "oxc", "unicorn", "promise", "import", "vitest", "react", "jsx-a11y"],
+      "env": { "browser": true }
+    },
+    {
+      "files": ["apps/server/**", "apps/mcp/**", "*.config.*", "deploy/**"],
+      "env": { "node": true }
+    }
+  ]
+}

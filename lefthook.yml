@@ -1,0 +1,13 @@
+# Installed by `pnpm install` (root `prepare` script).
+pre-commit:
+  jobs:
+    # --no-error-on-unmatched-pattern: a commit of only ignored files (Markdown) is fine.
+    - name: format
+      glob: "*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,yml,yaml,css}"
+      run: pnpm exec oxfmt --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: pnpm exec commitlint --edit {1}

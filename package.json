@@ -1,0 +1,30 @@
+{
+  "name": "organizer",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @organizer/server --filter @organizer/web run dev",
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "oxlint --deny-warnings",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "test": "pnpm -r run test",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "catalog:",
+    "@commitlint/config-conventional": "catalog:",
+    "lefthook": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "packageManager": "pnpm@12.11.2"
+}
