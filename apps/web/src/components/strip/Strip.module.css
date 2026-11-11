@@ -171,13 +171,16 @@
   outline: none;
 }
 
-/* Labels and names give way before the title does. */
+/* Labels and names give way before the title does; a pill that does not fit wraps out of sight whole. */
 .tags {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  align-content: flex-start;
+  gap: 0 6px;
   flex: 0 1000 auto;
   min-width: 0;
+  height: 18px;
   overflow: hidden;
 }
 

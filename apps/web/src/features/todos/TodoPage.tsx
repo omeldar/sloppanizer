@@ -323,19 +323,21 @@ function DateInput({
 }
 
 const SAVE_DELAY_MS = 700;
+const SAVE_STATE_TEXT = { idle: "", saved: "Saved", pending: "Not saved yet", saving: "Saving" } as const;
 
 function Description({ todo }: { todo: Todo }) {
   const { patch } = useTodoActions();
   const [editing, setEditing] = useState(todo.descriptionMd === "");
   const [draft, setDraft] = useState(todo.descriptionMd);
-  const [state, setState] = useState<"saved" | "pending" | "saving">("saved");
+  // "idle" until the first change, so an untouched description shows no save state.
+  const [state, setState] = useState<"idle" | "saved" | "pending" | "saving">("idle");
   const saved = useRef(todo.descriptionMd);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const save = async (text: string) => {
     clearTimeout(timer.current);
     if (text === saved.current) {
-      setState("saved");
+      setState((current) => (current === "idle" ? "idle" : "saved"));
       return;
     }
     setState("saving");
@@ -351,7 +353,7 @@ function Description({ todo }: { todo: Todo }) {
       <div className={styles.descHead}>
         <h2 className={styles.descTitle}>Description</h2>
         <span className={styles.saveState} aria-live="polite">
-          {editing && (state === "saving" ? "Saving" : state === "pending" ? "Not saved yet" : "Saved")}
+          {editing && SAVE_STATE_TEXT[state]}
         </span>
         <div className={styles.toggle} role="group" aria-label="Description view">
           <button type="button" aria-pressed={editing} onClick={() => setEditing(true)}>
