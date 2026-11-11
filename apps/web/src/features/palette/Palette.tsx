@@ -6,7 +6,7 @@ import { useCommands } from "../../app/commands.tsx";
 import { Dialog } from "../../components/Dialog.tsx";
 import { Kbd } from "../../components/ui.tsx";
 import { downloadExport } from "../../lib/export.ts";
-import { useProjects, useTodos } from "../../lib/queries.ts";
+import { useProjects, useTodo, useTodos } from "../../lib/queries.ts";
 import { toggleTheme } from "../../lib/theme.ts";
 import styles from "./Palette.module.css";
 
@@ -37,6 +37,10 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const deferred = useDeferredValue(search.trim());
   // From the live text, so Enter right after typing "#12" already opens it.
   const idMatch = ID_QUERY.exec(search.trim());
+  const typedId = idMatch ? Number(idMatch[1]) : 0;
+  // Shows which todo "#12" is before opening it; Enter does not wait for it.
+  const idTodo = useTodo(typedId);
+  const byId = idTodo.data?.id === typedId ? idTodo.data : undefined;
   const todos = useTodos(
     { q: deferred, status: "all", sort: "updated", limit: 8 },
     deferred.length >= 2 && !idMatch,
@@ -89,11 +93,20 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
         </Command.Empty>
         {idMatch && (
           <Command.Group heading="Todos" className={styles.group}>
-            <Item
-              value={`open #${idMatch[1]}`}
-              onSelect={go("/todos/$id", { id: String(Number(idMatch[1])) })}
-            >
-              <span className={styles.mono}>#{Number(idMatch[1])}</span> Open todo
+            <Item value={`open #${typedId}`} onSelect={go("/todos/$id", { id: String(typedId) })}>
+              <span className={styles.mono}>#{typedId}</span>
+              {byId ? (
+                <>
+                  <span className={styles.text} data-done={byId.status === "done" || undefined}>
+                    {byId.title}
+                  </span>
+                  <span className={styles.meta}>{byId.project?.name ?? "Inbox"}</span>
+                </>
+              ) : (
+                <span className={styles.text}>
+                  {idTodo.isError ? "No todo with this number" : "Open todo"}
+                </span>
+              )}
             </Item>
           </Command.Group>
         )}

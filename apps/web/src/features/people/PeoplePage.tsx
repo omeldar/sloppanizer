@@ -45,7 +45,12 @@ export function PeoplePage() {
 
   return (
     <div className={styles.page}>
-      <PageHeader title="People" meta={people.data ? `${people.data.length} people` : undefined} />
+      <PageHeader
+        title="People"
+        meta={
+          people.data ? `${people.data.length} ${people.data.length === 1 ? "person" : "people"}` : undefined
+        }
+      />
       <AddPerson />
       {people.isPending && <Loading />}
       {people.isError && <ErrorState error={people.error} onRetry={() => void people.refetch()} />}
