@@ -1,13 +1,14 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { ApiError, createApi, notReachableMessage, ToolError } from "./api.ts";
 
 const TOKEN = `org_${"a".repeat(40)}`;
 const dir = mkdtempSync(join(tmpdir(), "organizer-mcp-api-"));
 const tokenFile = join(dir, "mcp-token");
 writeFileSync(tokenFile, `${TOKEN}\n`);
+afterAll(() => rmSync(dir, { recursive: true, force: true }));
 const config = { url: "http://127.0.0.1:4999", tokenFile, timeZone: "UTC" };
 
 function fakeFetch(status: number, body: unknown, seen: { url?: string; init?: RequestInit } = {}) {
