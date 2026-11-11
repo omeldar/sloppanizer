@@ -1,0 +1,33 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 28px;
+  padding: 14px 16px 18px;
+}
+
+.group {
+  min-width: 0;
+}
+
+.heading {
+  margin-bottom: 6px;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.list {
+  margin: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: center;
+  min-height: 26px;
+  font-size: var(--fs-small);
+}
+
+.row dd {
+  margin: 0;
+}

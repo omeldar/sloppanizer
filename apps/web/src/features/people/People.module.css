@@ -1,0 +1,81 @@
+.page {
+  max-width: 980px;
+}
+
+.add {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.4fr auto;
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+}
+
+.duplicate,
+.error {
+  grid-column: 1 / -1;
+}
+
+.duplicate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--amber);
+  background: var(--amber-tint);
+  font-size: var(--fs-small);
+}
+
+.error {
+  color: var(--red);
+  font-size: var(--fs-small);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--line);
+}
+
+.table th {
+  height: 28px;
+  padding: 0 12px;
+  background: var(--sunken);
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 400;
+  text-align: left;
+}
+
+.table td {
+  height: var(--row-h);
+  padding: 0 12px;
+  border-top: 1px solid var(--line);
+  background: var(--strip);
+}
+
+.name {
+  font-weight: 500;
+}
+
+.note {
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.table .num {
+  width: 96px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  width: 90px;
+  text-align: right;
+}

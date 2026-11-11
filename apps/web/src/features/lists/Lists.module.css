@@ -1,0 +1,99 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  min-height: 28px;
+}
+
+.total {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-3);
+}
+
+.sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.select {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  font-size: var(--fs-small);
+}
+
+.doneHead {
+  margin-bottom: 8px;
+}
+
+.quiet {
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.modes {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.mode {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.mode:last-child {
+  border-right: 0;
+}
+
+.mode:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.mode[aria-pressed="true"] {
+  background: var(--amber-tint);
+  color: var(--amber-text);
+  font-weight: 600;
+}
+
+.projectHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.projectSwatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--swatch);
+}
+
+.description {
+  max-width: 72ch;
+  margin: -6px 0 14px;
+  color: var(--text-2);
+}

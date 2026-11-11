@@ -1,20 +1,50 @@
 import react from "@vitejs/plugin-react";
+import type { Plugin } from "vite";
 import { defineConfig } from "vitest/config";
 
 const serverPort = process.env.ORGANIZER_PORT ?? "4802";
+const serverUrl = `http://127.0.0.1:${serverPort}`;
+
+/**
+ * Dev only: the server hands out the session cookie with its HTML, but in dev Vite serves the HTML.
+ * On a page load without a session, fetch the server's page once and pass its Set-Cookie on.
+ * Cookies are per host, not per port, so the cookie then also goes through the /api proxy.
+ */
+function devSession(): Plugin {
+  return {
+    name: "organizer-dev-session",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const wantsHtml =
+          req.method === "GET" && !req.url?.startsWith("/api") && req.headers.accept?.includes("text/html");
+        if (!wantsHtml || req.headers.cookie?.includes("org_session=")) return next();
+        fetch(`${serverUrl}/`, { headers: { host: req.headers.host ?? "localhost" } })
+          .then((response) => res.setHeader("set-cookie", response.headers.getSetCookie()))
+          .catch(() =>
+            server.config.logger.warn(
+              `organizer server not reachable at ${serverUrl}; start it to get a session.`,
+            ),
+          )
+          .finally(() => next());
+      });
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), devSession()],
   server: {
     port: 5181,
     strictPort: true,
     proxy: {
-      "/api": `http://127.0.0.1:${serverPort}`,
+      "/api": serverUrl,
     },
   },
   test: {
     environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}"],
-    passWithNoTests: true,
+    setupFiles: ["./src/test/setup.ts"],
+    css: { modules: { classNameStrategy: "non-scoped" } },
   },
 });

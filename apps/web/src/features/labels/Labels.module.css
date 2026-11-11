@@ -1,0 +1,115 @@
+.page {
+  max-width: 980px;
+}
+
+.intro {
+  max-width: 72ch;
+  margin-bottom: 18px;
+  color: var(--text-2);
+}
+
+.intro code,
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.group {
+  margin-bottom: 22px;
+}
+
+.groupTitle {
+  margin-bottom: 8px;
+  font-size: var(--fs-h2);
+  font-weight: 600;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 90px 130px;
+  align-items: center;
+  min-height: var(--row-h);
+  padding: 0 8px 0 12px;
+  background: var(--strip);
+}
+
+.pill {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.description {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.none {
+  color: var(--text-3);
+}
+
+.color {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-3);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 16px 16px;
+}
+
+.formRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.colorInput {
+  width: 64px;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  cursor: pointer;
+}
+
+.previewPill {
+  padding-bottom: 6px;
+}
+
+.error {
+  color: var(--red);
+  font-size: var(--fs-small);
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
