@@ -8,7 +8,8 @@ import styles from "./Lists.module.css";
 const SORTS = {
   newest: { sort: "created", order: "desc", label: "Newest" },
   oldest: { sort: "created", order: "asc", label: "Oldest" },
-  priority: { sort: "priority", order: "asc", label: "Priority" },
+  // The server lists critical first with order desc.
+  priority: { sort: "priority", order: "desc", label: "Priority" },
   due: { sort: "due", order: "asc", label: "Due date" },
 } as const satisfies Record<
   string,
