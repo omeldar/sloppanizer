@@ -1,5 +1,5 @@
 import { NextMode } from "@organizer/shared";
-import { createRootRoute, createRoute, createRouter, Link } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, Link, lazyRouteComponent } from "@tanstack/react-router";
 import { z } from "zod";
 import { EmptyState, PageHeader } from "../components/ui.tsx";
 import { LabelsPage } from "../features/labels/LabelsPage.tsx";
@@ -8,7 +8,6 @@ import { NextUpPage } from "../features/next/NextUpPage.tsx";
 import { PeoplePage } from "../features/people/PeoplePage.tsx";
 import { ProjectPage } from "../features/projects/ProjectPage.tsx";
 import { SettingsPage } from "../features/settings/SettingsPage.tsx";
-import { TodoPage } from "../features/todos/TodoPage.tsx";
 import { Layout } from "./Layout.tsx";
 
 function NotFound() {
@@ -40,7 +39,12 @@ const routes = [
   }),
   createRoute({ getParentRoute: () => rootRoute, path: "/inbox", component: InboxPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/projects/$slug", component: ProjectPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/todos/$id", component: TodoPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/todos/$id",
+    // The editor and Markdown renderer are most of the bundle; load them with the first todo opened.
+    component: lazyRouteComponent(() => import("../features/todos/TodoPage.tsx"), "TodoPage"),
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: "/labels", component: LabelsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/people", component: PeoplePage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage }),

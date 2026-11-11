@@ -35,7 +35,8 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const projects = useProjects();
   const [search, setSearch] = useState("");
   const deferred = useDeferredValue(search.trim());
-  const idMatch = ID_QUERY.exec(deferred);
+  // From the live text, so Enter right after typing "#12" already opens it.
+  const idMatch = ID_QUERY.exec(search.trim());
   const todos = useTodos(
     { q: deferred, status: "all", sort: "updated", limit: 8 },
     deferred.length >= 2 && !idMatch,

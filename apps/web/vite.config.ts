@@ -34,6 +34,10 @@ function devSession(): Plugin {
 
 export default defineConfig({
   plugins: [react(), devSession()],
+  build: {
+    // A local, offline app: the editor chunk is large but loads from disk.
+    chunkSizeWarningLimit: 800,
+  },
   server: {
     port: 5181,
     strictPort: true,
