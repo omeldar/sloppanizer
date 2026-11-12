@@ -21,9 +21,9 @@ describe("periodRange", () => {
   });
 });
 
-describe("peopleStatsParams", () => {
-  const ids = (slug: string) => (slug === "home-lab" ? 3 : undefined);
+const ids = (slug: string) => (slug === "home-lab" ? 3 : undefined);
 
+describe("peopleStatsParams", () => {
   it("turns the URL filters into the API query", () => {
     expect(
       peopleStatsParams(
