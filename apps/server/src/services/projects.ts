@@ -2,13 +2,15 @@ import {
   type CreateProject,
   DEFAULT_PROJECT_COLOR,
   type Project,
+  type ProjectRef,
   type UpdateProject,
 } from "@organizer/shared";
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { projects, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
 import { recordEvents } from "./events.ts";
+import { chunks } from "./sql.ts";
 
 type ProjectRow = typeof projects.$inferSelect;
 
@@ -141,4 +143,32 @@ export function deleteProject(ctx: Ctx, actor: string, id: number): void {
     );
     tx.delete(projects).where(eq(projects.id, id)).run();
   });
+}
+
+/** A projectId in a write must name an existing project (422); null or undefined is fine. */
+export function assertProjectExists(db: Tx, projectId: number | null | undefined): void {
+  if (projectId === null || projectId === undefined) return;
+  const row = db.select({ id: projects.id }).from(projects).where(eq(projects.id, projectId)).get();
+  if (!row) {
+    throw new ApiError(
+      "validation_failed",
+      `Project ${projectId} does not exist. Use an id from GET /api/v1/projects, or null for no project.`,
+    );
+  }
+}
+
+/** Short project references by id, for the given ids (nulls skipped). */
+export function projectRefs(db: Tx, ids: readonly (number | null)[]): Map<number, ProjectRef> {
+  const out = new Map<number, ProjectRef>();
+  const unique = [...new Set(ids.filter((id) => id !== null))];
+  for (const part of chunks(unique)) {
+    for (const p of db
+      .select({ id: projects.id, slug: projects.slug, name: projects.name, color: projects.color })
+      .from(projects)
+      .where(inArray(projects.id, part))
+      .all()) {
+      out.set(p.id, p);
+    }
+  }
+  return out;
 }

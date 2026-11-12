@@ -8,7 +8,6 @@ import {
   type PersonBrief,
   type PersonRef,
   type PersonRole,
-  type ProjectRef,
   sortLabels,
   startOfLocalDay,
   type Todo,
@@ -18,11 +17,12 @@ import {
   type UpdateTodo,
 } from "@organizer/shared";
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
-import { comments, labels, people, projects, todoLabels, todoPeople, todos } from "../db/schema.ts";
+import { comments, events, labels, people, todoLabels, todoPeople, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
 import { type EventInput, recordEvents } from "./events.ts";
 import { resolveLabels, toLabel } from "./labels.ts";
+import { assertProjectExists, projectRefs } from "./projects.ts";
 import { resolvePeople, toPersonBrief } from "./people.ts";
 import { indexTodo, removeTodoFromIndex } from "./search-index.ts";
 import { chunks, diffIds, escapeLike, type SetChange } from "./sql.ts";
@@ -71,17 +71,10 @@ export function hydrate(db: Tx, rows: readonly TodoRow[]): Todo[] {
       commentCounts.set(todoId, n);
     }
   }
-  const projectIds = [...new Set(rows.map((r) => r.projectId).filter((id) => id !== null))];
-  const projectById = new Map<number, ProjectRef>();
-  for (const part of chunks(projectIds)) {
-    for (const p of db
-      .select({ id: projects.id, slug: projects.slug, name: projects.name, color: projects.color })
-      .from(projects)
-      .where(inArray(projects.id, part))
-      .all()) {
-      projectById.set(p.id, p);
-    }
-  }
+  const projectById = projectRefs(
+    db,
+    rows.map((r) => r.projectId),
+  );
   return rows.map((row) => ({
     id: row.id,
     projectId: row.projectId,
@@ -111,17 +104,6 @@ export function getTodo(db: Tx, id: number): Todo {
   return hydrate(db, [row])[0] as Todo;
 }
 
-function assertProject(db: Tx, projectId: number | null | undefined): void {
-  if (projectId === null || projectId === undefined) return;
-  const row = db.select({ id: projects.id }).from(projects).where(eq(projects.id, projectId)).get();
-  if (!row) {
-    throw new ApiError(
-      "validation_failed",
-      `Project ${projectId} does not exist. Use an id from GET /api/v1/projects, or null for the Inbox.`,
-    );
-  }
-}
-
 interface PersonSummary {
   id: number;
   name: string;
@@ -134,7 +116,7 @@ const personSummary = (p: { id: number; displayName: string }): PersonSummary =>
 export function createTodo(ctx: Ctx, actor: string, input: CreateTodo): Todo {
   return ctx.db.transaction((tx) => {
     const at = now(ctx);
-    assertProject(tx, input.projectId);
+    assertProjectExists(tx, input.projectId);
     const labelRows = resolveLabels(tx, input.labels ?? []);
     const labelIds = [...new Set(labelRows.map((l) => l.id))];
     const linked = [
@@ -197,6 +179,40 @@ const normNames = (list: readonly string[]): string =>
     .toSorted()
     .join("\n");
 const sameNames = (a: readonly string[], b: readonly string[]): boolean => normNames(a) === normNames(b);
+
+/** Description edits by one actor within this time merge into one history entry (autosave). */
+export const DESCRIPTION_MERGE_MS = 10 * 60_000;
+
+/**
+ * Merges a description edit into the todo's last event when that is a description_changed by the
+ * same actor less than 10 minutes ago: it keeps its `from`, takes the new `to` and time, and goes
+ * away when the text is back to where it started. Returns false when a new event is needed.
+ */
+function coalesceDescription(tx: Tx, at: string, actor: string, todoId: number, to: string): boolean {
+  const last = tx
+    .select()
+    .from(events)
+    .where(eq(events.todoId, todoId))
+    .orderBy(desc(events.id))
+    .limit(1)
+    .get();
+  if (
+    !last ||
+    last.kind !== "description_changed" ||
+    last.actor !== actor ||
+    Date.parse(at) - Date.parse(last.createdAt) > DESCRIPTION_MERGE_MS
+  ) {
+    return false;
+  }
+  const { from } = JSON.parse(last.data) as { from: string };
+  if (from === to) tx.delete(events).where(eq(events.id, last.id)).run();
+  else
+    tx.update(events)
+      .set({ data: JSON.stringify({ from, to }), createdAt: at })
+      .where(eq(events.id, last.id))
+      .run();
+  return true;
+}
 
 const ROLE_FIELD = { requester: "requestedBy", contact: "contacts" } as const;
 
@@ -268,7 +284,9 @@ function applyChange(tx: Tx, at: string, actor: string, current: Todo, change: U
   }
   if (change.descriptionMd !== undefined && change.descriptionMd !== current.descriptionMd) {
     set.descriptionMd = change.descriptionMd;
-    event("description_changed", { from: current.descriptionMd, to: change.descriptionMd });
+    if (!coalesceDescription(tx, at, actor, current.id, change.descriptionMd)) {
+      event("description_changed", { from: current.descriptionMd, to: change.descriptionMd });
+    }
   }
   if (change.status !== undefined && change.status !== current.status) {
     set.status = change.status;
@@ -277,7 +295,7 @@ function applyChange(tx: Tx, at: string, actor: string, current: Todo, change: U
     event("status_changed", { from: current.status, to: change.status });
   }
   if (change.projectId !== undefined && change.projectId !== current.projectId) {
-    assertProject(tx, change.projectId);
+    assertProjectExists(tx, change.projectId);
     set.projectId = change.projectId;
     event("project_changed", { from: current.projectId, to: change.projectId });
   }
@@ -329,7 +347,7 @@ function applyChange(tx: Tx, at: string, actor: string, current: Todo, change: U
 
   if (evts.length === 0 && Object.keys(set).length === 0) return;
   set.updatedAt = at;
-  if (evts.length > 0) set.lastActivityAt = at;
+  if (evts.length > 0 || set.descriptionMd !== undefined) set.lastActivityAt = at;
   tx.update(todos).set(set).where(eq(todos.id, current.id)).run();
   if (set.title !== undefined || set.descriptionMd !== undefined) indexTodo(tx, current.id);
   recordEvents(tx, actor, at, evts);
