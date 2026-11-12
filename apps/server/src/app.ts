@@ -27,6 +27,7 @@ import { peopleStatsRoutes } from "./routes/people-stats.ts";
 import { peopleRoutes } from "./routes/people.ts";
 import { personTagRoutes } from "./routes/person-tags.ts";
 import { projectRoutes } from "./routes/projects.ts";
+import { restoreRoutes } from "./routes/restore.ts";
 import { searchRoutes } from "./routes/search.ts";
 import { settingsRoutes } from "./routes/settings.ts";
 import { todoRelationRoutes } from "./routes/todo-relations.ts";
@@ -35,6 +36,7 @@ import { tokenRoutes } from "./routes/tokens.ts";
 import { topicRoutes } from "./routes/topics.ts";
 import type { Deps } from "./routes/types.ts";
 import { repairScopeConflicts } from "./services/labels.ts";
+import { RESTORE_LIMITS, type RestoreLimits, recoverRestore } from "./services/restore.ts";
 import { rebuildSearchIndex } from "./services/search-index.ts";
 
 export const VERSION = packageJson.version;
@@ -43,6 +45,8 @@ export interface BuildOptions {
   config: Config;
   clock?: Clock;
   logger?: FastifyServerOptions["logger"];
+  /** Smaller restore limits for tests. */
+  limits?: Partial<RestoreLimits>;
 }
 
 /** Builds the HTTP app: opens the data dir and database, registers security, API, docs and web app. */
@@ -51,15 +55,20 @@ export async function buildApp(options: BuildOptions) {
   ensureDataDir(config.dataDir);
   const secret = loadSecret(config.dataDir);
   const db = openDb(join(config.dataDir, DB_FILE));
+  const clock = options.clock ?? systemClock;
+  // Before anything touches the attachments folder: finish or clean up an interrupted restore.
+  const recovered = recoverRestore(config.dataDir, db, clock());
   // The index is derived data: rebuilding at every start heals it (and covers a restore).
   rebuildSearchIndex(db);
   const deps: Deps = {
     db,
-    clock: options.clock ?? systemClock,
+    clock,
     timeZone: config.timeZone,
     version: VERSION,
     dataDir: config.dataDir,
     attachmentsDir: ensureAttachmentsDir(config.dataDir),
+    limits: { ...RESTORE_LIMITS, ...options.limits },
+    restoreLock: { busy: false },
   };
 
   const app = Fastify({
@@ -70,6 +79,7 @@ export async function buildApp(options: BuildOptions) {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   app.addHook("onClose", async () => db.$client.close());
+  if (recovered === "finished") app.log.warn("finished the file swap of an interrupted restore");
   const repaired = repairScopeConflicts(deps);
   if (repaired > 0) app.log.warn(`removed duplicate scope labels from ${repaired} todos`);
 
@@ -110,6 +120,7 @@ export async function buildApp(options: BuildOptions) {
   tokenRoutes(app, deps);
   exportRoutes(app, deps);
   settingsRoutes(app, deps);
+  restoreRoutes(app, deps);
   await registerWeb(app, config.webDir);
 
   return { app, deps };

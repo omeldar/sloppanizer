@@ -8,6 +8,7 @@ import type {
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { ApiError } from "../http/errors.ts";
 import type { Auth, Ctx } from "../services/context.ts";
+import type { RestoreLimits } from "../services/restore.ts";
 
 export type App = FastifyInstance<
   RawServerDefault,
@@ -23,6 +24,10 @@ export interface Deps extends Ctx {
   dataDir: string;
   /** Absolute path of <data dir>/attachments (uploaded files, one per id). */
   attachmentsDir: string;
+  /** Size limits of restore uploads. */
+  limits: RestoreLimits;
+  /** One restore at a time. */
+  restoreLock: { busy: boolean };
 }
 
 /** The acting user of a request (set by the security hook). */

@@ -5,6 +5,7 @@ import type { InjectOptions, LightMyRequestResponse } from "fastify";
 import { afterEach } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
+import type { RestoreLimits } from "../src/services/restore.ts";
 import { createToken } from "../src/services/tokens.ts";
 
 export const TEST_INDEX_HTML = "<!doctype html><html><body><div id=root></div></body></html>";
@@ -20,6 +21,8 @@ export interface TestAppOptions {
   timeZone?: string;
   /** Leave out the web build (the placeholder page is served). */
   noWebBuild?: boolean;
+  /** Smaller restore limits. */
+  limits?: Partial<RestoreLimits>;
 }
 
 /** A server on a fresh temp data dir with a movable clock, plus helpers for authenticated calls. */
@@ -37,7 +40,11 @@ export async function makeApp(options: TestAppOptions = {}) {
     ...loadConfig({ ORGANIZER_DATA_DIR: dataDir, ORGANIZER_TZ: options.timeZone ?? "Europe/Zurich" }),
     webDir,
   };
-  const { app, deps } = await buildApp({ config, clock: () => new Date(current) });
+  const { app, deps } = await buildApp({
+    config,
+    clock: () => new Date(current),
+    ...(options.limits ? { limits: options.limits } : {}),
+  });
   cleanups.push(async () => {
     await app.close();
     rmSync(root, { recursive: true, force: true });
