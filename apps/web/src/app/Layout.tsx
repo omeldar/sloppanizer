@@ -1,4 +1,3 @@
-import type { Project } from "@organizer/shared";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { type CSSProperties, useState } from "react";
 import { Kbd } from "../components/ui.tsx";
@@ -17,7 +16,7 @@ import { StatusBar } from "./StatusBar.tsx";
 export function Layout() {
   const navigate = useNavigate();
   const commands = useCommands();
-  const projects = useProjects();
+  const page = usePageProject();
   const activeBindings = useActiveBindings();
   const [helpBindings, setHelpBindings] = useState<KeyBinding[]>([]);
 
@@ -32,13 +31,13 @@ export function Layout() {
     },
     {
       keys: "c",
-      run: () => commands.openQuickAdd(currentProjectDefaults()),
+      run: () => commands.openQuickAdd(page.quickAddDefaults()),
       label: "New todo",
       group: "Global",
     },
     {
       keys: "n",
-      run: () => commands.openNewNote(currentProjectId(projects.data)),
+      run: () => commands.openNewNote(page.projectId()),
       label: "New note",
       group: "Global",
     },
@@ -87,21 +86,25 @@ export function Layout() {
   );
 }
 
-function currentProjectSlug(): string | undefined {
-  const slug = /^\/projects\/([^/]+)/.exec(window.location.pathname)?.[1];
-  return slug ? decodeURIComponent(slug) : undefined;
+/** The project the current page is about: a project page, or the notes list filtered to one. */
+export function pageProjectSlug(pathname: string, search: Record<string, unknown>): string | undefined {
+  const slug = /^\/projects\/([^/]+)/.exec(pathname)?.[1];
+  if (slug) return decodeURIComponent(slug);
+  if (pathname.startsWith("/notes") && typeof search.project === "string" && search.project !== "none") {
+    return search.project;
+  }
+  return undefined;
 }
 
-/** New todos made on a project page start in that project. */
-function currentProjectDefaults() {
-  const slug = currentProjectSlug();
-  return slug ? { projectSlug: slug } : {};
-}
-
-/** New notes made on a project page start in that project too. */
-function currentProjectId(projects: readonly Project[] | undefined): number | null {
-  const slug = currentProjectSlug();
-  return projects?.find((p) => p.slug === slug)?.id ?? null;
+/** Quick add and new notes start in the page's project. */
+function usePageProject() {
+  const location = useRouterState({ select: (s) => s.location });
+  const projects = useProjects();
+  const slug = pageProjectSlug(location.pathname, location.search as Record<string, unknown>);
+  return {
+    quickAddDefaults: () => (slug && location.pathname.startsWith("/projects/") ? { projectSlug: slug } : {}),
+    projectId: () => projects.data?.find((p) => p.slug === slug)?.id ?? null,
+  };
 }
 
 function Sidebar() {
@@ -199,6 +202,7 @@ function NavItem({
 
 function TopBar() {
   const commands = useCommands();
+  const page = usePageProject();
   return (
     <header className={styles.topbar}>
       <Breadcrumb />
@@ -214,7 +218,7 @@ function TopBar() {
         <button
           type="button"
           className={styles.newTodo}
-          onClick={() => commands.openQuickAdd(currentProjectDefaults())}
+          onClick={() => commands.openQuickAdd(page.quickAddDefaults())}
         >
           New todo
           <Kbd keys="c" subtle />
