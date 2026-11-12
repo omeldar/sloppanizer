@@ -24,8 +24,39 @@ export const TODO_STATUSES = ["open", "in_progress", "blocked", "done"] as const
 export const TodoStatus = z.enum(TODO_STATUSES);
 export type TodoStatus = z.infer<typeof TodoStatus>;
 
+/** Status names for people, e.g. in the activity thread. */
+export const STATUS_LABELS: Record<TodoStatus, string> = {
+  open: "Open",
+  in_progress: "In progress",
+  blocked: "Blocked",
+  done: "Done",
+};
+
 /** Statuses a list shows when no status filter is given. */
 export const ACTIVE_STATUSES = ["open", "in_progress", "blocked"] as const satisfies readonly TodoStatus[];
+
+/** How a person is linked to a todo: asked for it, or someone to ask about it. */
+export const PERSON_ROLES = ["requester", "contact"] as const;
+export const PersonRole = z.enum(PERSON_ROLES);
+export type PersonRole = z.infer<typeof PersonRole>;
+
+/** Kinds of todo history events (comments are their own rows, not events). */
+export const EVENT_KINDS = [
+  "created",
+  "title_changed",
+  "description_changed",
+  "status_changed",
+  "labels_changed",
+  "people_changed",
+  "project_changed",
+  "dates_changed",
+] as const;
+export const EventKind = z.enum(EVENT_KINDS);
+export type EventKind = z.infer<typeof EventKind>;
+
+export const SEARCH_KINDS = ["todo", "note", "comment", "person"] as const;
+export const SearchKind = z.enum(SEARCH_KINDS);
+export type SearchKind = z.infer<typeof SearchKind>;
 
 export const TOKEN_SCOPES = ["read", "write"] as const;
 export const TokenScope = z.enum(TOKEN_SCOPES);
@@ -39,6 +70,12 @@ export const API_PREFIX = "/api/v1";
 
 export const DEFAULT_PROJECT_COLOR = "#8B95A5";
 export const DEFAULT_LABEL_COLOR = "#8B95A5";
+export const DEFAULT_PERSON_TAG_COLOR = "#8B95A5";
+
+/** Uploads can be up to 25 MiB. */
+export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+/** Image types shown inline; every other upload is served as a download. */
+export const INLINE_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
 
 /** Comma separated list in a query string, e.g. `?label=a,b`. Empty parts are dropped. */
 export const commaList = <T extends z.ZodType<string, string>>(item: T) =>
@@ -51,3 +88,6 @@ export const commaList = <T extends z.ZodType<string, string>>(item: T) =>
         .filter((part) => part.length > 0),
     )
     .pipe(z.array(item));
+
+/** "true" or "false" in a query string. */
+export const QueryBoolean = z.enum(["true", "false"]).transform((value) => value === "true");

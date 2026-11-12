@@ -95,6 +95,7 @@ describe("TodoListQuery", () => {
   it("fills the defaults", () => {
     expect(TodoListQuery.parse({})).toEqual({
       status: ["open", "in_progress", "blocked"],
+      personRole: "requester",
       sort: "created",
       order: "desc",
       limit: 100,
@@ -163,6 +164,8 @@ describe("Todo output", () => {
     durationMs: null,
     labels: [],
     requestedBy: [],
+    contacts: [],
+    commentCount: 0,
     project: null,
   };
 
@@ -187,6 +190,8 @@ describe("errors", () => {
       conflict: 409,
       unauthorized: 401,
       forbidden: 403,
+      too_large: 413,
+      unsupported_type: 415,
       unknown_host: 421,
       internal: 500,
     });

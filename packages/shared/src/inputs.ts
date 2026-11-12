@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { findScopeConflicts, LabelName } from "./labels.ts";
+import { normalizeTopic } from "./people.ts";
 import { CalendarDate, Color, Id, Slug, Timestamp, TodoStatus, TokenScope } from "./primitives.ts";
 
 const Title = z
@@ -65,6 +66,8 @@ export const CreateTodo = z
     plannedOn: CalendarDate.nullable().optional(),
     labels: LabelList.optional(),
     requestedBy: PersonRefList.optional(),
+    /** People to ask about the todo; same rules as requestedBy. */
+    contacts: PersonRefList.optional(),
   })
   .superRefine((value, ctx) => checkScopes(ctx, value.labels, "labels"));
 export type CreateTodo = z.infer<typeof CreateTodo>;
@@ -84,6 +87,9 @@ export const UpdateTodo = z
     requestedBy: PersonRefList.optional(),
     addRequestedBy: PersonRefList.optional(),
     removeRequestedBy: PersonRefList.optional(),
+    contacts: PersonRefList.optional(),
+    addContacts: PersonRefList.optional(),
+    removeContacts: PersonRefList.optional(),
   })
   .superRefine((value, ctx) => {
     checkNotEmpty(ctx, value);
@@ -91,6 +97,7 @@ export const UpdateTodo = z
     checkScopes(ctx, value.addLabels, "addLabels");
     checkNotBoth(ctx, value, "labels", ["addLabels", "removeLabels"]);
     checkNotBoth(ctx, value, "requestedBy", ["addRequestedBy", "removeRequestedBy"]);
+    checkNotBoth(ctx, value, "contacts", ["addContacts", "removeContacts"]);
   });
 export type UpdateTodo = z.infer<typeof UpdateTodo>;
 
@@ -161,12 +168,54 @@ export const UpdateLabel = z
   .superRefine((value, ctx) => checkNotEmpty(ctx, value));
 export type UpdateLabel = z.infer<typeof UpdateLabel>;
 
+const Team = z.string().trim().max(100, "Keep the team at 100 characters or fewer.");
+/** An email address, or "" for none. */
+const Email = z.union([
+  z.literal(""),
+  z.email("Use an email address like name@example.com, or an empty text for none.").max(254),
+]);
+const PersonNotes = z.string().max(200_000, "Keep the notes under 200000 characters.");
+
+/** Topic name: trimmed, inner whitespace collapsed, 1..60 characters, no commas. */
+export const TopicName = z
+  .string()
+  .transform(normalizeTopic)
+  .pipe(
+    z
+      .string()
+      .min(1, "Give the topic a name.")
+      .max(60, "Keep topic names at 60 characters or fewer.")
+      .refine(
+        (name) => !name.includes(","),
+        "Topic names cannot contain commas (filters use them as separators).",
+      ),
+  );
+const TopicList = z.array(TopicName).max(50, "A person can have at most 50 topics.");
+
+/** Person tag name: trimmed, 1..60 characters, no "::" (that is label syntax), no commas. */
+export const PersonTagName = z
+  .string()
+  .trim()
+  .min(1, "Give the tag a name.")
+  .max(60, "Keep tag names at 60 characters or fewer.")
+  .refine((name) => !name.includes("::"), 'Person tag names cannot contain "::".')
+  .refine((name) => !name.includes(","), "Tag names cannot contain commas (filters use them as separators).");
+const TagList = z.array(PersonTagName).max(30, "A person can have at most 30 tags.");
+
 export const CreatePerson = z.strictObject({
   firstName: PersonName,
   lastName: PersonName,
+  /** Short hint next to the name in pickers ("Platform team, Basel"). */
   note: Description.optional(),
   /** Create even when someone with the same first and last name exists. */
   allowDuplicate: z.boolean().optional(),
+  team: Team.optional(),
+  email: Email.optional(),
+  notesMd: PersonNotes.optional(),
+  /** Find-or-create by name. */
+  topics: TopicList.optional(),
+  /** Tags must exist (422 { unknownTags }). */
+  tags: TagList.optional(),
 });
 export type CreatePerson = z.infer<typeof CreatePerson>;
 
@@ -175,9 +224,83 @@ export const UpdatePerson = z
     firstName: PersonName.optional(),
     lastName: PersonName.optional(),
     note: Description.optional(),
+    team: Team.optional(),
+    email: Email.optional(),
+    notesMd: PersonNotes.optional(),
+    topics: TopicList.optional(),
+    addTopics: TopicList.optional(),
+    removeTopics: TopicList.optional(),
+    tags: TagList.optional(),
+    addTags: TagList.optional(),
+    removeTags: TagList.optional(),
+  })
+  .superRefine((value, ctx) => {
+    checkNotEmpty(ctx, value);
+    checkNotBoth(ctx, value, "topics", ["addTopics", "removeTopics"]);
+    checkNotBoth(ctx, value, "tags", ["addTags", "removeTags"]);
+  });
+export type UpdatePerson = z.infer<typeof UpdatePerson>;
+
+const TagDescription = z.string().max(2000);
+
+export const CreatePersonTag = z.strictObject({
+  name: PersonTagName,
+  color: Color.optional(),
+  description: TagDescription.optional(),
+});
+export type CreatePersonTag = z.infer<typeof CreatePersonTag>;
+
+export const UpdatePersonTag = z
+  .strictObject({
+    name: PersonTagName.optional(),
+    color: Color.optional(),
+    description: TagDescription.optional(),
   })
   .superRefine((value, ctx) => checkNotEmpty(ctx, value));
-export type UpdatePerson = z.infer<typeof UpdatePerson>;
+export type UpdatePersonTag = z.infer<typeof UpdatePersonTag>;
+
+/** Rename a topic; another topic with that name is a 409 (no silent merge). */
+export const UpdateTopic = z.strictObject({ name: TopicName });
+export type UpdateTopic = z.infer<typeof UpdateTopic>;
+
+/** Markdown that must say something: 1..50000 characters, not only whitespace. Stored as sent. */
+const CommentBody = z
+  .string()
+  .max(50_000, "Keep a comment under 50000 characters.")
+  .refine((body) => body.trim().length > 0, "Write something before sending the comment.");
+
+export const CreateComment = z.strictObject({ bodyMd: CommentBody });
+export type CreateComment = z.infer<typeof CreateComment>;
+
+export const UpdateComment = z.strictObject({ bodyMd: CommentBody });
+export type UpdateComment = z.infer<typeof UpdateComment>;
+
+const NoteTitle = z
+  .string()
+  .trim()
+  .min(1, "Give the note a title.")
+  .max(200, "Keep the title at 200 characters or fewer.");
+const NoteBody = z.string().max(200_000, "Keep the note under 200000 characters.");
+
+export const CreateNote = z.strictObject({
+  title: NoteTitle,
+  bodyMd: NoteBody.optional(),
+  /** null or left out = no project. */
+  projectId: Id.nullable().optional(),
+  pinned: z.boolean().optional(),
+});
+export type CreateNote = z.infer<typeof CreateNote>;
+
+export const UpdateNote = z
+  .strictObject({
+    title: NoteTitle.optional(),
+    bodyMd: NoteBody.optional(),
+    projectId: Id.nullable().optional(),
+    /** true pins (keeps an earlier pin time), false unpins. */
+    pinned: z.boolean().optional(),
+  })
+  .superRefine((value, ctx) => checkNotEmpty(ctx, value));
+export type UpdateNote = z.infer<typeof UpdateNote>;
 
 export const CreateToken = z.strictObject({
   name: z.string().trim().min(1, "Give the token a name.").max(100),

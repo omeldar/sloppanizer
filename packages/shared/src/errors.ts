@@ -6,6 +6,8 @@ export const ERROR_STATUS = {
   conflict: 409,
   unauthorized: 401,
   forbidden: 403,
+  too_large: 413,
+  unsupported_type: 415,
   unknown_host: 421,
   internal: 500,
 } as const;

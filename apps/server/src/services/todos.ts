@@ -5,6 +5,7 @@ import {
   type CreateTodo,
   type NextQuery,
   type NextUp,
+  type PersonBrief,
   type ProjectRef,
   sortLabels,
   type Todo,
@@ -13,31 +14,25 @@ import {
   todoDurationMs,
   type UpdateTodo,
 } from "@organizer/shared";
-import { and, asc, desc, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
-import { labels, people, projects, todoLabels, todoPeople, todos } from "../db/schema.ts";
+import { and, asc, count, desc, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
+import { comments, labels, people, projects, todoLabels, todoPeople, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
 import { type EventInput, recordEvents } from "./events.ts";
 import { resolveLabels, toLabel } from "./labels.ts";
-import { resolvePeople, toPerson } from "./people.ts";
+import { resolvePeople, toPersonBrief } from "./people.ts";
+import { chunks, escapeLike } from "./sql.ts";
 
 export type TodoRow = typeof todos.$inferSelect;
 
-/** SQLite allows many bound parameters, but chunks keep big Next up loads safe. */
-const CHUNK = 500;
-
-function chunks<T>(items: readonly T[]): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += CHUNK) out.push(items.slice(i, i + CHUNK));
-  return out;
-}
-
-/** Turns todo rows into API todos with labels, requesters and project. */
+/** Turns todo rows into API todos with labels, people of both roles, comment count and project. */
 export function hydrate(db: Tx, rows: readonly TodoRow[]): Todo[] {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const labelsByTodo = new Map<number, ReturnType<typeof toLabel>[]>();
-  const peopleByTodo = new Map<number, ReturnType<typeof toPerson>[]>();
+  const requestersByTodo = new Map<number, PersonBrief[]>();
+  const contactsByTodo = new Map<number, PersonBrief[]>();
+  const commentCounts = new Map<number, number>();
   for (const part of chunks(ids)) {
     const labelRows = db
       .select({ todoId: todoLabels.todoId, label: labels })
@@ -51,16 +46,25 @@ export function hydrate(db: Tx, rows: readonly TodoRow[]): Todo[] {
       labelsByTodo.set(todoId, list);
     }
     const personRows = db
-      .select({ todoId: todoPeople.todoId, person: people })
+      .select({ todoId: todoPeople.todoId, role: todoPeople.role, person: people })
       .from(todoPeople)
       .innerJoin(people, eq(people.id, todoPeople.personId))
-      .where(and(inArray(todoPeople.todoId, part), eq(todoPeople.role, "requester")))
+      .where(inArray(todoPeople.todoId, part))
       .orderBy(asc(todoPeople.createdAt), asc(people.id))
       .all();
-    for (const { todoId, person } of personRows) {
-      const list = peopleByTodo.get(todoId) ?? [];
-      list.push(toPerson(person));
-      peopleByTodo.set(todoId, list);
+    for (const { todoId, role, person } of personRows) {
+      const byTodo = role === "contact" ? contactsByTodo : requestersByTodo;
+      const list = byTodo.get(todoId) ?? [];
+      list.push(toPersonBrief(person));
+      byTodo.set(todoId, list);
+    }
+    for (const { todoId, n } of db
+      .select({ todoId: comments.todoId, n: count() })
+      .from(comments)
+      .where(inArray(comments.todoId, part))
+      .groupBy(comments.todoId)
+      .all()) {
+      commentCounts.set(todoId, n);
     }
   }
   const projectIds = [...new Set(rows.map((r) => r.projectId).filter((id) => id !== null))];
@@ -90,7 +94,9 @@ export function hydrate(db: Tx, rows: readonly TodoRow[]): Todo[] {
     lastActivityAt: row.lastActivityAt,
     durationMs: row.status === "done" ? todoDurationMs(row.createdAt, row.doneAt) : null,
     labels: sortLabels(labelsByTodo.get(row.id) ?? []),
-    requestedBy: peopleByTodo.get(row.id) ?? [],
+    requestedBy: requestersByTodo.get(row.id) ?? [],
+    contacts: contactsByTodo.get(row.id) ?? [],
+    commentCount: commentCounts.get(row.id) ?? 0,
     project: row.projectId === null ? null : (projectById.get(row.projectId) ?? null),
   }));
 }
@@ -284,7 +290,7 @@ function applyChange(tx: Tx, at: string, actor: string, current: Todo, change: U
         .from(people)
         .where(inArray(people.id, nextIds.length > 0 ? nextIds : [-1]))
         .all();
-      const byId = new Map(after.map((p) => [p.id, toPerson(p)]));
+      const byId = new Map(after.map((p) => [p.id, toPersonBrief(p)]));
       event("people_changed", {
         from: current.requestedBy.map(personSummary),
         to: nextIds
@@ -370,8 +376,6 @@ function projectCondition(projectId: number | "inbox" | undefined): SQL | undefi
   if (projectId === undefined) return undefined;
   return projectId === "inbox" ? isNull(todos.projectId) : eq(todos.projectId, projectId);
 }
-
-const escapeLike = (text: string): string => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 function listConditions(query: TodoListQuery): SQL | undefined {
   const conditions: (SQL | undefined)[] = [];

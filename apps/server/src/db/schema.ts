@@ -1,3 +1,4 @@
+import { PERSON_ROLES } from "@organizer/shared";
 import { sql } from "drizzle-orm";
 import {
   type AnySQLiteColumn,
@@ -13,7 +14,9 @@ import {
 /**
  * Database schema. Every change goes through a migration (`pnpm --filter @organizer/server db:generate`).
  * Timestamps are ISO 8601 UTC strings with milliseconds, calendar dates are `YYYY-MM-DD`.
- * labels.name is COLLATE NOCASE: drizzle-kit cannot express that, so the migration SQL adds it by hand.
+ * labels.name, topics.name and person_tags.name are COLLATE NOCASE: drizzle-kit cannot express that,
+ * so the migration SQL adds it by hand. The search index (search_fts, FTS5) lives only in a custom
+ * migration; services/search-index.ts keeps it up to date.
  */
 
 export const projects = sqliteTable("projects", {
@@ -48,8 +51,59 @@ export const people = sqliteTable(
     note: text("note").notNull().default(""),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
+    team: text("team").notNull().default(""),
+    email: text("email").notNull().default(""),
+    notesMd: text("notes_md").notNull().default(""),
   },
-  (t) => [index("people_name_idx").on(sql`lower(${t.lastName})`, sql`lower(${t.firstName})`)],
+  (t) => [
+    index("people_name_idx").on(sql`lower(${t.lastName})`, sql`lower(${t.firstName})`),
+    index("people_team_idx").on(sql`lower(${t.team})`),
+  ],
+);
+
+/** What people help with. A topic left with no people is deleted. */
+export const topics = sqliteTable("topics", {
+  id: integer("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const personTopics = sqliteTable(
+  "person_topics",
+  {
+    personId: integer("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    topicId: integer("topic_id")
+      .notNull()
+      .references(() => topics.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.personId, t.topicId] }), index("person_topics_topic_idx").on(t.topicId)],
+);
+
+/** The user's own judgments about people. Separate from todo labels (other lifecycle, private later). */
+export const personTags = sqliteTable("person_tags", {
+  id: integer("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  color: text("color").notNull().default("#8B95A5"),
+  description: text("description").notNull().default(""),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const personTagLinks = sqliteTable(
+  "person_tag_links",
+  {
+    personId: integer("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    tagId: integer("tag_id")
+      .notNull()
+      .references(() => personTags.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.personId, t.tagId] }), index("person_tag_links_tag_idx").on(t.tagId)],
 );
 
 export const todos = sqliteTable(
@@ -102,29 +156,15 @@ export const todoPeople = sqliteTable(
     personId: integer("person_id")
       .notNull()
       .references(() => people.id, { onDelete: "restrict" }),
-    role: text("role", { enum: ["requester"] })
-      .notNull()
-      .default("requester"),
+    role: text("role", { enum: PERSON_ROLES }).notNull().default("requester"),
     createdAt: text("created_at").notNull(),
   },
   (t) => [
     primaryKey({ columns: [t.todoId, t.personId, t.role] }),
-    check("todo_people_role_check", sql`${t.role} IN ('requester')`),
+    check("todo_people_role_check", sql`${t.role} IN ('requester','contact')`),
     index("todo_people_person_idx").on(t.personId),
   ],
 );
-
-export const EVENT_KINDS = [
-  "created",
-  "title_changed",
-  "description_changed",
-  "status_changed",
-  "labels_changed",
-  "people_changed",
-  "project_changed",
-  "dates_changed",
-] as const;
-export type EventKind = (typeof EVENT_KINDS)[number];
 
 export const events = sqliteTable(
   "events",
@@ -138,6 +178,62 @@ export const events = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (t) => [index("events_todo_idx").on(t.todoId)],
+);
+
+/** Comments in a todo's thread. Delete is permanent. */
+export const comments = sqliteTable(
+  "comments",
+  {
+    id: integer("id").primaryKey(),
+    todoId: integer("todo_id")
+      .notNull()
+      .references(() => todos.id, { onDelete: "cascade" }),
+    actor: text("actor").notNull(),
+    bodyMd: text("body_md").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    editedAt: text("edited_at"),
+  },
+  (t) => [
+    check("comments_body_check", sql`length(${t.bodyMd}) BETWEEN 1 AND 50000`),
+    index("comments_todo_idx").on(t.todoId, t.createdAt),
+  ],
+);
+
+export const notes = sqliteTable(
+  "notes",
+  {
+    id: integer("id").primaryKey(),
+    projectId: integer("project_id").references(() => projects.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    bodyMd: text("body_md").notNull().default(""),
+    pinnedAt: text("pinned_at"),
+    createdBy: text("created_by").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    check("notes_title_check", sql`length(${t.title}) BETWEEN 1 AND 200`),
+    index("notes_project_idx").on(t.projectId),
+  ],
+);
+
+/**
+ * Uploaded files, stored at <data dir>/attachments/<id>. Ids are never reused (they are in Markdown
+ * links). No owner columns: what uses an attachment is the Markdown that links it.
+ */
+export const attachments = sqliteTable(
+  "attachments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    size: integer("size").notNull(),
+    sha256: text("sha256").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("attachments_sha256_idx").on(t.sha256)],
 );
 
 export const apiTokens = sqliteTable(

@@ -1,0 +1,112 @@
+import type { ActivityEvent } from "./entities.ts";
+import { STATUS_LABELS, TODO_STATUSES, type TodoStatus } from "./primitives.ts";
+
+interface PersonSummary {
+  id: number;
+  name: string;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const strings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+
+const personList = (value: unknown): PersonSummary[] =>
+  Array.isArray(value)
+    ? value.filter(
+        (v): v is PersonSummary => isRecord(v) && typeof v.id === "number" && typeof v.name === "string",
+      )
+    : [];
+
+const lowerSet = (names: readonly string[]): Set<string> => new Set(names.map((n) => n.toLowerCase()));
+
+/** "A", "A and B", "A, B and C". */
+function joinWords(items: readonly string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+function statusName(value: unknown): string {
+  return typeof value === "string" && (TODO_STATUSES as readonly string[]).includes(value)
+    ? STATUS_LABELS[value as TodoStatus]
+    : String(value);
+}
+
+/** "added label a and removed labels b and c". */
+function addedRemoved(noun: string, added: readonly string[], removed: readonly string[]): string {
+  const part = (verb: string, names: readonly string[]) =>
+    `${verb} ${noun}${names.length > 1 ? "s" : ""} ${joinWords(names)}`;
+  const parts: string[] = [];
+  if (added.length > 0) parts.push(part("added", added));
+  if (removed.length > 0) parts.push(part("removed", removed));
+  return parts.length > 0 ? parts.join(" and ") : `changed the ${noun}s`;
+}
+
+function describeProject(to: unknown): string {
+  if (to === null || to === undefined) return "moved to the Inbox";
+  if (isRecord(to)) {
+    return typeof to.name === "string"
+      ? `moved to project ${to.name}`
+      : "moved to a project that was deleted";
+  }
+  return `moved to project ${String(to)}`;
+}
+
+function describeDates(from: Record<string, unknown>, to: Record<string, unknown>): string {
+  const parts: string[] = [];
+  if (from.plannedOn !== to.plannedOn) {
+    parts.push(typeof to.plannedOn === "string" ? `planned for ${to.plannedOn}` : "removed the plan date");
+  }
+  if (from.dueOn !== to.dueOn) {
+    parts.push(typeof to.dueOn === "string" ? `set the due date to ${to.dueOn}` : "removed the due date");
+  }
+  return parts.length > 0 ? parts.join(" and ") : "changed the dates";
+}
+
+/**
+ * One plain sentence for a history event, without the actor: "changed status from Open to Done",
+ * "added contact Max Muster", "edited the description". `people` maps person ids to their current
+ * names; without it the names stored in the event are used.
+ */
+export function describeEvent(event: ActivityEvent, people?: ReadonlyMap<number, string>): string {
+  const data = event.data;
+  const name = (p: PersonSummary) => people?.get(p.id) ?? p.name;
+  switch (event.kind) {
+    case "created":
+      return "created the todo";
+    case "title_changed":
+      return `renamed from "${String(data.from)}" to "${String(data.to)}"`;
+    case "description_changed":
+      return "edited the description";
+    case "status_changed":
+      return `changed status from ${statusName(data.from)} to ${statusName(data.to)}`;
+    case "labels_changed": {
+      const from = strings(data.from);
+      const to = strings(data.to);
+      const before = lowerSet(from);
+      const after = lowerSet(to);
+      return addedRemoved(
+        "label",
+        to.filter((n) => !before.has(n.toLowerCase())),
+        from.filter((n) => !after.has(n.toLowerCase())),
+      );
+    }
+    case "people_changed": {
+      const role = data.role === "contact" ? "contact" : "requester";
+      const from = personList(data.from);
+      const to = personList(data.to);
+      const fromIds = new Set(from.map((p) => p.id));
+      const toIds = new Set(to.map((p) => p.id));
+      return addedRemoved(
+        role,
+        to.filter((p) => !fromIds.has(p.id)).map(name),
+        from.filter((p) => !toIds.has(p.id)).map(name),
+      );
+    }
+    case "project_changed":
+      return describeProject(data.to);
+    case "dates_changed":
+      return describeDates(isRecord(data.from) ? data.from : {}, isRecord(data.to) ? data.to : {});
+  }
+}

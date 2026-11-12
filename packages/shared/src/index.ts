@@ -7,3 +7,5 @@ export * from "./labels.ts";
 export * from "./scoring.ts";
 export * from "./duration.ts";
 export * from "./dates.ts";
+export * from "./people.ts";
+export * from "./activity.ts";

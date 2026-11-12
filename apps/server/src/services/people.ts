@@ -1,20 +1,106 @@
-import type { CreatePerson, Person, PersonRef, UpdatePerson } from "@organizer/shared";
-import { asc, eq, sql } from "drizzle-orm";
-import { people, todoPeople } from "../db/schema.ts";
+import {
+  ACTIVE_STATUSES,
+  type CreatePerson,
+  type Person,
+  type PersonBrief,
+  type PersonCounts,
+  type PersonRef,
+  type UpdatePerson,
+} from "@organizer/shared";
+import { asc, eq, inArray, sql } from "drizzle-orm";
+import { people, personTopics, todoPeople, todos, topics } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
+import { compareNames, tagsByPerson } from "./person-tags.ts";
+import { chunks } from "./sql.ts";
 
 export type PersonRow = typeof people.$inferSelect;
 
-export const toPerson = (row: PersonRow): Person => ({
+/** The person as todos carry it: no tags, topics or notes. */
+export const toPersonBrief = (row: PersonRow): PersonBrief => ({
   id: row.id,
   firstName: row.firstName,
   lastName: row.lastName,
-  note: row.note,
   displayName: `${row.firstName} ${row.lastName}`,
-  createdAt: row.createdAt,
-  updatedAt: row.updatedAt,
+  note: row.note,
+  team: row.team,
+  email: row.email,
 });
+
+const NO_COUNTS: PersonCounts = {
+  requested: 0,
+  requestedOpen: 0,
+  requestedDone: 0,
+  contact: 0,
+  contactOpen: 0,
+};
+
+const activeList = sql.raw(ACTIVE_STATUSES.map((s) => `'${s}'`).join(","));
+
+/** Todo counts per person id, both roles, in one grouped query per chunk. */
+function countsByPerson(db: Tx, ids: readonly number[]): Map<number, PersonCounts> {
+  const out = new Map<number, PersonCounts>();
+  for (const part of chunks(ids)) {
+    const rows = db.all<{ personId: number } & PersonCounts>(sql`
+      SELECT tp.person_id AS personId,
+        sum(tp.role = 'requester') AS requested,
+        sum(tp.role = 'requester' AND t.status IN (${activeList})) AS requestedOpen,
+        sum(tp.role = 'requester' AND t.status = 'done') AS requestedDone,
+        sum(tp.role = 'contact') AS contact,
+        sum(tp.role = 'contact' AND t.status IN (${activeList})) AS contactOpen
+      FROM ${todoPeople} tp JOIN ${todos} t ON t.id = tp.todo_id
+      WHERE tp.person_id IN (${sql.join(
+        part.map((id) => sql`${id}`),
+        sql`, `,
+      )})
+      GROUP BY tp.person_id`);
+    for (const { personId, ...counts } of rows) out.set(personId, counts);
+  }
+  return out;
+}
+
+/** Topic names per person id, by name. */
+function topicsByPerson(db: Tx, ids: readonly number[]): Map<number, string[]> {
+  const out = new Map<number, string[]>();
+  for (const part of chunks(ids)) {
+    for (const { personId, name } of db
+      .select({ personId: personTopics.personId, name: topics.name })
+      .from(personTopics)
+      .innerJoin(topics, eq(topics.id, personTopics.topicId))
+      .where(inArray(personTopics.personId, part))
+      .all()) {
+      const list = out.get(personId) ?? [];
+      list.push(name);
+      out.set(personId, list);
+    }
+  }
+  for (const list of out.values()) list.sort(compareNames);
+  return out;
+}
+
+/** Full people (topics, tags, counts) for the given rows, in the same order. */
+export function loadPeople(db: Tx, rows: readonly PersonRow[]): Person[] {
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.id);
+  const topicMap = topicsByPerson(db, ids);
+  const tagMap = tagsByPerson(db, ids);
+  const countMap = countsByPerson(db, ids);
+  return rows.map((row) => ({
+    ...toPersonBrief(row),
+    notesMd: row.notesMd,
+    topics: topicMap.get(row.id) ?? [],
+    tags: tagMap.get(row.id) ?? [],
+    counts: countMap.get(row.id) ?? NO_COUNTS,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }));
+}
+
+export const toPerson = (db: Tx, row: PersonRow): Person => loadPeople(db, [row])[0] as Person;
+
+export function getPerson(db: Tx, id: number): Person {
+  return toPerson(db, getPersonRow(db, id));
+}
 
 const fold = (text: string): string => text.trim().toLocaleLowerCase("en");
 
@@ -37,14 +123,15 @@ export function listPeople(db: Tx, q?: string): Person[] {
     .orderBy(sql`lower(${people.lastName})`, sql`lower(${people.firstName})`, asc(people.id))
     .all();
   const needle = q ? fold(q) : "";
-  return rows
-    .filter(
+  return loadPeople(
+    db,
+    rows.filter(
       (row) =>
         needle === "" ||
         fold(`${row.firstName} ${row.lastName} ${row.note}`).includes(needle) ||
         fold(`${row.lastName} ${row.firstName}`).includes(needle),
-    )
-    .map(toPerson);
+    ),
+  );
 }
 
 export function getPersonRow(db: Tx, id: number): PersonRow {
@@ -68,11 +155,11 @@ export function createPerson(ctx: Ctx, input: CreatePerson): Person {
       throw new ApiError(
         "conflict",
         `${existing.firstName} ${existing.lastName} already exists. Use that person, or send allowDuplicate: true with a note that tells them apart.`,
-        { existing: toPerson(existing) },
+        { existing: toPerson(ctx.db, existing) },
       );
     }
   }
-  return toPerson(insertPerson(ctx.db, now(ctx), input.firstName, input.lastName, input.note ?? ""));
+  return toPerson(ctx.db, insertPerson(ctx.db, now(ctx), input.firstName, input.lastName, input.note ?? ""));
 }
 
 export function updatePerson(ctx: Ctx, id: number, input: UpdatePerson): Person {
@@ -81,7 +168,10 @@ export function updatePerson(ctx: Ctx, id: number, input: UpdatePerson): Person 
   if (input.firstName !== undefined) patch.firstName = input.firstName;
   if (input.lastName !== undefined) patch.lastName = input.lastName;
   if (input.note !== undefined) patch.note = input.note;
-  return toPerson(ctx.db.update(people).set(patch).where(eq(people.id, id)).returning().get() as PersonRow);
+  return toPerson(
+    ctx.db,
+    ctx.db.update(people).set(patch).where(eq(people.id, id)).returning().get() as PersonRow,
+  );
 }
 
 /** Deletes a person; 409 with the number of todos while they are still linked. */
@@ -100,12 +190,12 @@ export function deletePerson(ctx: Ctx, id: number): void {
   ctx.db.delete(people).where(eq(people.id, id)).run();
 }
 
-function ambiguous(rows: PersonRow[]): ApiError {
+function ambiguous(db: Tx, rows: PersonRow[]): ApiError {
   const first = rows[0] as PersonRow;
   return new ApiError(
     "conflict",
     `ambiguous person, use personId: ${rows.length} people are named ${first.firstName} ${first.lastName}.`,
-    { candidates: rows.map(toPerson) },
+    { candidates: loadPeople(db, rows) },
   );
 }
 
@@ -131,7 +221,7 @@ export function resolvePeople(db: Tx, at: string, refs: readonly PersonRef[], cr
       continue;
     }
     const matches = findNamesakes(db, ref.firstName, ref.lastName);
-    if (matches.length > 1) throw ambiguous(matches);
+    if (matches.length > 1) throw ambiguous(db, matches);
     const match = matches[0];
     if (match) out.push(match);
     else if (create) out.push(insertPerson(db, at, ref.firstName, ref.lastName));

@@ -1,4 +1,5 @@
-import { events, type EventKind } from "../db/schema.ts";
+import type { EventKind } from "@organizer/shared";
+import { events } from "../db/schema.ts";
 import type { Tx } from "./context.ts";
 
 export interface EventInput {

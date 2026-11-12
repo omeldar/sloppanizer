@@ -1,5 +1,15 @@
 import { z } from "zod";
-import { CalendarDate, Color, Id, Slug, Timestamp, TodoStatus, TokenScope } from "./primitives.ts";
+import {
+  CalendarDate,
+  Color,
+  EventKind,
+  Id,
+  SearchKind,
+  Slug,
+  Timestamp,
+  TodoStatus,
+  TokenScope,
+} from "./primitives.ts";
 
 export const Health = z.strictObject({ ok: z.literal(true), version: z.string() });
 export type Health = z.infer<typeof Health>;
@@ -38,17 +48,76 @@ export const Label = z.strictObject({
 });
 export type Label = z.infer<typeof Label>;
 
+/** A person tag: the user's own judgment about a colleague ("fast reply"). Separate from todo labels. */
+export const PersonTag = z.strictObject({
+  id: Id,
+  name: z.string(),
+  color: Color,
+  description: z.string(),
+  peopleCount: z.number().int().nonnegative(),
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+});
+export type PersonTag = z.infer<typeof PersonTag>;
+
+/** What a person helps with ("firewall rules"). Created by typing, gone when no one has it. */
+export const Topic = z.strictObject({
+  id: Id,
+  name: z.string(),
+  peopleCount: z.number().int().nonnegative(),
+});
+export type Topic = z.infer<typeof Topic>;
+
+/** A distinct team value (case-insensitive, first stored spelling). */
+export const Team = z.strictObject({ name: z.string(), peopleCount: z.number().int().nonnegative() });
+export type Team = z.infer<typeof Team>;
+
+/** Todo counts of a person. "Open" means the active statuses (open, in progress, blocked). */
+export const PersonCounts = z.strictObject({
+  requested: z.number().int().nonnegative(),
+  requestedOpen: z.number().int().nonnegative(),
+  requestedDone: z.number().int().nonnegative(),
+  contact: z.number().int().nonnegative(),
+  contactOpen: z.number().int().nonnegative(),
+});
+export type PersonCounts = z.infer<typeof PersonCounts>;
+
+/** The full person, from the /people endpoints. */
 export const Person = z.strictObject({
   id: Id,
   firstName: z.string(),
   lastName: z.string(),
+  /** Short one-line hint shown next to the name in pickers. */
   note: z.string(),
   /** "First Last". */
   displayName: z.string(),
+  /** Team or department, free text ("" = none). */
+  team: z.string(),
+  /** "" = none. */
+  email: z.string(),
+  /** Long notes in Markdown. */
+  notesMd: z.string(),
+  /** Topic names (stored spelling), by name. */
+  topics: z.array(z.string()),
+  /** By name. */
+  tags: z.array(PersonTag),
+  counts: PersonCounts,
   createdAt: Timestamp,
   updatedAt: Timestamp,
 });
 export type Person = z.infer<typeof Person>;
+
+/** A person inside a todo: no tags, topics or notes. */
+export const PersonBrief = z.strictObject({
+  id: Id,
+  firstName: z.string(),
+  lastName: z.string(),
+  displayName: z.string(),
+  note: z.string(),
+  team: z.string(),
+  email: z.string(),
+});
+export type PersonBrief = z.infer<typeof PersonBrief>;
 
 export const ProjectRef = z.strictObject({ id: Id, slug: Slug, name: z.string(), color: Color });
 export type ProjectRef = z.infer<typeof ProjectRef>;
@@ -71,7 +140,11 @@ export const Todo = z.strictObject({
   durationMs: z.number().int().nonnegative().nullable(),
   /** Scoped labels first (by scope, then rank), then plain labels by name. */
   labels: z.array(Label),
-  requestedBy: z.array(Person),
+  /** By link time, then id. */
+  requestedBy: z.array(PersonBrief),
+  /** People to ask about this todo; by link time, then id. */
+  contacts: z.array(PersonBrief),
+  commentCount: z.number().int().nonnegative(),
   project: ProjectRef.nullable(),
 });
 export type Todo = z.infer<typeof Todo>;
@@ -153,3 +226,116 @@ export type CreatedToken = z.infer<typeof CreatedToken>;
 /** Body of a 409 when a person with the same name exists. */
 export const DuplicatePersonDetails = z.strictObject({ existing: Person });
 export type DuplicatePersonDetails = z.infer<typeof DuplicatePersonDetails>;
+
+export const Comment = z.strictObject({
+  id: Id,
+  todoId: Id,
+  actor: z.string(),
+  bodyMd: z.string(),
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+  editedAt: Timestamp.nullable(),
+});
+export type Comment = z.infer<typeof Comment>;
+
+/**
+ * One history entry of a todo, normalized by the server: description_changed carries
+ * { fromChars, toChars }, project_changed { from, to } as { id, name|null }|null (name null =
+ * project deleted), people_changed { role, from, to } with people as { id, name }.
+ */
+export const ActivityEvent = z.strictObject({
+  id: Id,
+  todoId: Id,
+  actor: z.string(),
+  kind: EventKind,
+  data: z.record(z.string(), z.unknown()),
+  createdAt: Timestamp,
+});
+export type ActivityEvent = z.infer<typeof ActivityEvent>;
+
+export const ActivityItem = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("comment"), comment: Comment }),
+  z.strictObject({ type: z.literal("event"), event: ActivityEvent }),
+]);
+export type ActivityItem = z.infer<typeof ActivityItem>;
+
+/** The thread of a todo, oldest first; same time: events before comments, then by id. */
+export const Activity = z.strictObject({ todoId: Id, items: z.array(ActivityItem) });
+export type Activity = z.infer<typeof Activity>;
+
+export const Note = z.strictObject({
+  id: Id,
+  projectId: Id.nullable(),
+  project: ProjectRef.nullable(),
+  title: z.string(),
+  bodyMd: z.string(),
+  pinnedAt: Timestamp.nullable(),
+  createdBy: z.string(),
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+});
+export type Note = z.infer<typeof Note>;
+
+/** A note in lists: no body, but the first 200 characters of it as plain text. */
+export const NoteSummary = Note.omit({ bodyMd: true }).extend({ excerpt: z.string() });
+export type NoteSummary = z.infer<typeof NoteSummary>;
+
+export const NotePage = z.strictObject({
+  items: z.array(NoteSummary),
+  total: z.number().int().nonnegative(),
+  limit: z.number().int().positive(),
+  offset: z.number().int().nonnegative(),
+});
+export type NotePage = z.infer<typeof NotePage>;
+
+export const Attachment = z.strictObject({
+  id: Id,
+  name: z.string(),
+  mimeType: z.string(),
+  size: z.number().int().nonnegative(),
+  sha256: z.string(),
+  /** "/api/v1/attachments/<id>/<name>". */
+  url: z.string(),
+  /** true for png, jpeg, gif and webp (shown inline); everything else is a download. */
+  inline: z.boolean(),
+  createdBy: z.string(),
+  createdAt: Timestamp,
+});
+export type Attachment = z.infer<typeof Attachment>;
+
+export const SearchHit = z.strictObject({
+  kind: SearchKind,
+  id: Id,
+  title: z.string(),
+  snippet: z.string(),
+  /** [start, end) character ranges in snippet that matched. Never HTML. */
+  highlights: z.array(z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()])),
+  /** Comments: their todo; todos: their own id; else null. */
+  todoId: Id.nullable(),
+  /** Todos only. */
+  status: TodoStatus.nullable(),
+  /** Person: team and topics; comment: actor and date; note: project name. */
+  subtitle: z.string().nullable(),
+});
+export type SearchHit = z.infer<typeof SearchHit>;
+
+export const SearchResult = z.strictObject({
+  q: z.string(),
+  items: z.array(SearchHit),
+  /** Matches per kind, ignoring the limit. */
+  counts: z.strictObject({
+    todo: z.number().int().nonnegative(),
+    note: z.number().int().nonnegative(),
+    comment: z.number().int().nonnegative(),
+    person: z.number().int().nonnegative(),
+  }),
+});
+export type SearchResult = z.infer<typeof SearchResult>;
+
+/** Body of a 409 when a topic rename hits another topic. */
+export const TopicConflictDetails = z.strictObject({ existing: Topic });
+export type TopicConflictDetails = z.infer<typeof TopicConflictDetails>;
+
+/** Body of a 409 when a person tag name is taken. */
+export const PersonTagConflictDetails = z.strictObject({ existing: PersonTag });
+export type PersonTagConflictDetails = z.infer<typeof PersonTagConflictDetails>;

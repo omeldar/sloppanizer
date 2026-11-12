@@ -1,13 +1,6 @@
 import { API_PREFIX, CreatePerson, IdParams, PeopleQuery, Person, UpdatePerson } from "@organizer/shared";
 import { z } from "zod";
-import {
-  createPerson,
-  deletePerson,
-  getPersonRow,
-  listPeople,
-  toPerson,
-  updatePerson,
-} from "../services/people.ts";
+import { createPerson, deletePerson, getPerson, listPeople, updatePerson } from "../services/people.ts";
 import type { App, Deps } from "./types.ts";
 
 export function peopleRoutes(app: App, deps: Deps): void {
@@ -39,7 +32,7 @@ export function peopleRoutes(app: App, deps: Deps): void {
   app.get(
     `${API_PREFIX}/people/:id`,
     { schema: { tags, params: IdParams, response: { 200: Person } } },
-    async (request) => toPerson(getPersonRow(deps.db, request.params.id)),
+    async (request) => getPerson(deps.db, request.params.id),
   );
   app.patch(
     `${API_PREFIX}/people/:id`,

@@ -7,6 +7,8 @@ import {
   isValidTimeZone,
   startOfLocalDay,
   toLocalDate,
+  toLocalDateTime,
+  weekDays,
 } from "./dates.ts";
 
 const PARIS = "Europe/Paris";
@@ -99,5 +101,69 @@ describe("isValidTimeZone", () => {
   it("knows real zones only", () => {
     expect(isValidTimeZone(PARIS)).toBe(true);
     expect(isValidTimeZone("Mars/Olympus")).toBe(false);
+  });
+});
+
+describe("weekDays", () => {
+  it("returns Monday to Sunday of the week of a calendar date", () => {
+    expect(weekDays("2026-11-12", PARIS)).toEqual([
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15",
+    ]);
+    expect(weekDays("2026-11-09", PARIS)[0]).toBe("2026-11-09");
+    expect(weekDays("2026-11-15", PARIS)[0]).toBe("2026-11-09");
+  });
+
+  it("keeps seven distinct days across the Paris DST weeks", () => {
+    expect(weekDays("2026-03-29", PARIS)).toEqual([
+      "2026-03-23",
+      "2026-03-24",
+      "2026-03-25",
+      "2026-03-26",
+      "2026-03-27",
+      "2026-03-28",
+      "2026-03-29",
+    ]);
+    expect(weekDays("2026-10-25", PARIS)).toEqual([
+      "2026-10-19",
+      "2026-10-20",
+      "2026-10-21",
+      "2026-10-22",
+      "2026-10-23",
+      "2026-10-24",
+      "2026-10-25",
+    ]);
+  });
+
+  it("spans the year end", () => {
+    expect(weekDays("2026-12-31", PARIS)).toEqual([
+      "2026-12-28",
+      "2026-12-29",
+      "2026-12-30",
+      "2026-12-31",
+      "2027-01-01",
+      "2027-01-02",
+      "2027-01-03",
+    ]);
+  });
+
+  it("turns an instant into its local date first", () => {
+    // Sunday 23:30 in Paris (summer time) is still the old week; 00:30 Monday is the next one.
+    expect(weekDays("2026-03-29T21:30:00.000Z", PARIS)[0]).toBe("2026-03-23");
+    expect(weekDays("2026-03-29T22:30:00.000Z", PARIS)[0]).toBe("2026-03-30");
+    expect(weekDays(new Date("2026-03-29T22:30:00.000Z"), "UTC")[0]).toBe("2026-03-23");
+  });
+});
+
+describe("toLocalDateTime", () => {
+  it("formats the wall clock in the zone with minutes", () => {
+    expect(toLocalDateTime("2026-11-12T13:03:59.000Z", PARIS)).toBe("2026-11-12 14:03");
+    expect(toLocalDateTime("2026-07-01T22:15:00.000Z", PARIS)).toBe("2026-07-02 00:15");
+    expect(toLocalDateTime("2026-12-31T23:00:00.000Z", "UTC")).toBe("2026-12-31 23:00");
   });
 });

@@ -128,3 +128,26 @@ export function startOfLocalDay(date: string, timeZone: string): Date {
   if (toLocalDate(guess, timeZone) !== date) guess += 3_600_000;
   return new Date(guess);
 }
+
+/** Local wall-clock time of an instant, "YYYY-MM-DD HH:mm" (for thread lines and exports). */
+export function toLocalDateTime(instant: Date | string | number, timeZone: string): string {
+  const w = wallClock(toInstant(instant), timeZone);
+  return `${pad(w.year, 4)}-${pad(w.month)}-${pad(w.day)} ${pad(w.hour)}:${pad(w.minute)}`;
+}
+
+/** 1 = Monday ... 7 = Sunday, for a calendar date. */
+function isoWeekday(date: string): number {
+  const day = new Date(dateToUtcMs(date)).getUTCDay();
+  return day === 0 ? 7 : day;
+}
+
+/**
+ * The seven calendar dates (Monday to Sunday) of the week that contains `date`. A calendar date is
+ * used as is; an instant is first turned into its local date in the zone. Works on calendar dates
+ * only, so DST changes cannot shift a day.
+ */
+export function weekDays(date: Date | string | number, timeZone: string): string[] {
+  const local = typeof date === "string" && DATE_PATTERN.test(date) ? date : toLocalDate(date, timeZone);
+  const monday = addDays(local, 1 - isoWeekday(local));
+  return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+}
