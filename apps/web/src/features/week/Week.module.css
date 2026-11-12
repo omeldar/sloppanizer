@@ -143,8 +143,13 @@
   }
   .side {
     flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
   }
   .side > * {
-    flex: 1;
+    flex: 1 1 300px;
+  }
+  .side > .keysHint {
+    flex: 0 0 100%;
   }
 }

@@ -85,6 +85,12 @@ export function StripList({ items, label, ranked = false, collapseOnDone = true,
       label: "Requested by",
       group: "List",
     },
+    {
+      keys: "o",
+      run: onSelected((todo) => setPicker({ todo, kind: "contacts" })),
+      label: "Contacts",
+      group: "List",
+    },
     ...PRIORITIES.map((priority, i) => ({
       keys: String(i + 1),
       run: onSelected((todo) => void setPriority(todo, priority)),
