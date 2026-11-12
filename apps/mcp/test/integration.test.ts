@@ -118,7 +118,13 @@ describe("MCP server against the real API", () => {
     expect(tools.map((t) => t.name).toSorted()).toEqual(
       [
         "add_comment",
+        "add_subtasks",
         "bulk_update",
+        "check_item",
+        "export_to_folder",
+        "link_todos",
+        "people_stats",
+        "unlink_todos",
         "create_label",
         "create_note",
         "create_person",
@@ -145,6 +151,8 @@ describe("MCP server against the real API", () => {
       ].toSorted(),
     );
     for (const tool of tools) expect(tool.description?.length).toBeGreaterThan(40);
+    // Restore, settings and tokens stay in the web app (the API answers 403 to tokens anyway).
+    expect(tools.map((t) => t.name).filter((name) => /restore|setting|token/.test(name))).toEqual([]);
     // The token is never a tool argument.
     expect(JSON.stringify(tools)).not.toMatch(/token/i);
   });
@@ -499,5 +507,136 @@ describe("step 2 tools against the real API", () => {
     );
     // FTS syntax in the query is just text.
     expect((await call("search", { q: '"firewall" OR NOT *' })).isError).toBe(false);
+  });
+});
+
+describe("step 3 tools against the real API", () => {
+  it("adds subtasks, ticks checklist items and marks a parent done with its subtasks", async () => {
+    const parent = idOf(
+      await ok("create_todo", {
+        title: "Set up the rack",
+        project: "homelab",
+        description: "Shopping:\n- [ ] Order cables\n- [ ] Order rails\n",
+      }),
+    );
+    const added = await ok("add_subtasks", { todo: parent, titles: ["Mount rails", "Patch cables"] });
+    expect(added.split("\n")[0]).toBe(`Added 2 subtasks to #${parent}:`);
+    expect(added).toContain("| project homelab |");
+    const [first] = added.split("\n").slice(1).map(idOf);
+    const grandchild = idOf(await ok("create_todo", { title: "Find screws", parent: first }));
+
+    const children = await ok("list_todos", { parent });
+    expect(children.split("\n")[0]).toBe("2 of 2 todos:");
+    expect(await ok("list_todos", { parent: "none", q: "Mount rails" })).toBe("No todos match.");
+
+    const detail = await ok("get_todo", { id: parent });
+    expect(detail.split("\n")[0]).toContain("| 0/2 subtasks | checklist 0/2");
+    expect(detail).toContain("[ ] 1 Order rails");
+    expect(await ok("get_todo", { id: grandchild })).toContain(`Subtask of #${first} Mount rails`);
+
+    expect(await ok("check_item", { todo: parent, item: "order rails" })).toMatch(
+      new RegExp(`^Checked "Order rails" on #${parent} .*\\| checklist 1/2`),
+    );
+    expect(await ok("check_item", { todo: parent, item: 1, checked: false })).toContain("checklist 0/2");
+
+    const done = await ok("mark_done", { ids: [parent], withSubtasks: true });
+    expect(done.split("\n").filter((line) => line.startsWith("#"))).toHaveLength(4);
+    expect(await ok("get_todo", { id: parent })).toContain("| 2/2 subtasks");
+  });
+
+  it("moves a todo waiting on a blocker out of Next up until the blocker is done", async () => {
+    const waiting = idOf(
+      await ok("create_todo", { title: "Install the server", labels: ["priority::high"] }),
+    );
+    const blocker = idOf(await ok("create_todo", { title: "Buy the rack" }));
+    expect(await ok("link_todos", { todo: blocker, kind: "blocks", other: waiting })).toMatch(
+      new RegExp(`^Linked: #${blocker} blocks #${waiting}\\.`),
+    );
+    const loop = await call("link_todos", { todo: waiting, kind: "blocks", other: blocker });
+    expect(loop.isError).toBe(true);
+    expect(loop.text).toContain(`Chain: #`);
+
+    let next = await ok("next_up", { limit: 200 });
+    const [ranked, blocked = ""] = next.split("\nBlocked");
+    expect(ranked).toMatch(new RegExp(`#${blocker} open \\| Buy the rack .*why: .*blocks 1`));
+    expect(ranked).not.toContain(`#${waiting} `);
+    expect(blocked).toContain(`#${waiting} open | Install the server`);
+    expect(blocked).toContain(`waiting on #${blocker}`);
+    expect(await ok("get_todo", { id: waiting })).toContain(`blocked by: #${blocker} Buy the rack (open)`);
+
+    await ok("mark_done", { ids: [blocker] });
+    next = await ok("next_up", { limit: 200 });
+    expect(next.split("\nBlocked")[0]).toContain(`#${waiting} open | Install the server`);
+
+    expect(await ok("unlink_todos", { todo: waiting, kind: "blocked_by", other: blocker })).toBe(
+      `Removed the link: #${waiting} is blocked by #${blocker}.`,
+    );
+    expect(await ok("get_todo", { id: waiting })).not.toContain("blocked by:");
+    const relates = await ok("link_todos", {
+      todo: waiting,
+      kind: "relates",
+      other: blocker,
+      format: "json",
+    });
+    expect((JSON.parse(relates) as Todo).links.relatesTo.map((t) => t.id)).toEqual([blocker]);
+  });
+
+  it("creates the next occurrence of a repeating todo when it is marked done", async () => {
+    const created = await ok("create_todo", {
+      title: "Water the plants",
+      dueOn: today,
+      description: "- [x] Kitchen\n- [x] Balcony\n",
+      repeat: { every: "week" },
+    });
+    expect(created).toContain("| repeats every week");
+    const first = idOf(created);
+    const noDate = await call("create_todo", { title: "No date", repeat: { every: "day" } });
+    expect(noDate.isError).toBe(true);
+
+    const done = await ok("mark_done", { ids: [first] });
+    const [, nextPart = ""] = done.split("Next occurrence:\n");
+    expect(nextPart).toMatch(
+      new RegExp(`^#\\d+ open \\| Water the plants \\| inbox \\| due ${addDays(today, 7)} \\(in 7d\\)`),
+    );
+    expect(nextPart).toContain("checklist 0/2");
+    const second = idOf(nextPart);
+    // The server stores the rule normalized: the weekday comes from the due date.
+    expect(await ok("get_todo", { id: first })).toMatch(
+      new RegExp(`\\nRepeats every week on (Mon|Tue|Wed|Thu|Fri|Sat|Sun) \\(next: #${second}\\)\\n`),
+    );
+    expect(await ok("get_todo", { id: second })).toContain(`previous occurrence: #${first}`);
+
+    const stopped = await ok("update_todo", { id: second, repeat: null });
+    expect(stopped).not.toContain("repeats");
+  });
+
+  it("shows people statistics as one line per person", async () => {
+    const todo = idOf(
+      await ok("create_todo", {
+        title: "Open port 8443",
+        requestedBy: ["Petra Stat"],
+        contacts: ["Max Muster"],
+      }),
+    );
+    await ok("update_person", { person: "Petra Stat", team: "Stats team", addTopics: ["statistics"] });
+    await ok("mark_done", { ids: [todo] });
+    const stats = await ok("people_stats", { topic: ["statistics"] });
+    expect(stats.split("\n")).toEqual([
+      expect.stringMatching(/^People as requesters, todos: 1 \(0 open, 1 done, median took .+\):$/),
+      expect.stringMatching(
+        /^Petra Stat \| Stats team \| requested 1, open 0, done 1, median took .+ \| contact 0$/,
+      ),
+    ]);
+    const contacts = await ok("people_stats", { role: "contact", team: "Network team" });
+    expect(contacts).toMatch(/^People as contacts, todos: /);
+    expect(contacts).toContain("Max Muster | Network team |");
+  });
+
+  it("writes an export zip into the export folder", async () => {
+    const text = await ok("export_to_folder");
+    const path = /to (\/\S+\.zip)$/m.exec(text)?.[1] ?? "";
+    expect(path.startsWith(join(dataDir, "exports") + "/")).toBe(true);
+    expect(statSync(path).size).toBeGreaterThan(100);
+    expect(readFileSync(path).subarray(0, 2).toString()).toBe("PK");
   });
 });
