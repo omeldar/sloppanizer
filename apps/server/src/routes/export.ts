@@ -13,7 +13,10 @@ export function exportRoutes(app: App, deps: Deps): void {
       },
     },
     async (_request, reply) => {
-      const { fileName, zip } = buildExport(deps, deps.version);
+      const { fileName, zip } = buildExport(deps, {
+        attachmentsDir: deps.attachmentsDir,
+        appVersion: deps.version,
+      });
       return reply
         .header("Content-Type", "application/zip")
         .header("Content-Disposition", `attachment; filename="${fileName}"`)
