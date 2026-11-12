@@ -45,6 +45,7 @@ import { AddLinkDialog } from "./relations/AddLinkDialog.tsx";
 import { Links, linkedIds, WaitingLine } from "./relations/Links.tsx";
 import { Subtasks } from "./relations/Subtasks.tsx";
 import { TodoSearchPicker } from "./relations/TodoSearchPicker.tsx";
+import { RepeatField } from "./repeat/RepeatField.tsx";
 import { PersonChip } from "../people/PersonChip.tsx";
 import { Activity } from "./Activity.tsx";
 import { chosen, type PickerKind, togglePersonPatch } from "./TodoPickerDialog.tsx";
@@ -77,7 +78,7 @@ export function TodoPage() {
   return <TodoDetail key={todo.data.id} todo={todo.data} focusComment={search.comment} />;
 }
 
-type SidePicker = PickerKind | "parent";
+type SidePicker = PickerKind | "parent" | "repeat";
 
 function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number }) {
   const { setPriority, patch } = useTodoActions();
@@ -90,8 +91,10 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
   const composer = useRef<MarkdownEditorHandle>(null);
   const subtaskInput = useRef<HTMLInputElement>(null);
   const done = useDoneWithSubtasks(todo);
+  const anchor = todo.dueOn ?? todo.plannedOn;
 
   const newSubtask = () => subtaskInput.current?.focus();
+  const openRepeat = () => anchor && setPicker("repeat");
   const goToParent = () =>
     todo.parent && void navigate({ to: "/todos/$id", params: { id: String(todo.parent.id) } });
 
@@ -101,17 +104,20 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
       todoId: todo.id,
       newSubtask,
       addLink: () => setAddingLink(true),
+      // After the palette closed, so the popover keeps its focus.
+      repeat: anchor ? () => setTimeout(() => setPicker("repeat"), 0) : undefined,
       goToParent: todo.parent ? goToParent : undefined,
     });
     return () => setTodoCommands(null);
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- the actions only change with these values
-  }, [todo.id, todo.parent?.id, setTodoCommands]);
+  }, [todo.id, todo.parent?.id, anchor, setTodoCommands]);
 
   const bindings: KeyBinding[] = [
     { keys: "e", run: () => setEditingTitle(true), label: "Edit title", group: "Todo" },
     { keys: "x", run: done.toggle, label: "Mark done or reopen", group: "Todo" },
     { keys: "s", run: newSubtask, label: "Add subtask", group: "Todo" },
     { keys: "b", run: () => setAddingLink(true), label: "Add link", group: "Todo" },
+    { keys: "shift+r", run: openRepeat, label: "Repeat", group: "Todo" },
     { keys: "u", run: goToParent, label: "Go to the parent todo", group: "Todo" },
     { keys: "l", run: () => setPicker("labels"), label: "Labels", group: "Todo" },
     { keys: "p", run: () => setPicker("project"), label: "Project", group: "Todo" },
@@ -280,6 +286,25 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
                 onChange={(plannedOn) => void patch(todo.id, { plannedOn })}
               />
             </dd>
+
+            <dt>Repeat</dt>
+            <dd>
+              <RepeatField
+                value={todo.recurrence}
+                anchor={anchor}
+                open={picker === "repeat"}
+                onOpenChange={pick("repeat")}
+                onChange={(recurrence) => void patch(todo.id, { recurrence })}
+              />
+              {todo.nextOccurrence && (
+                <span className={styles.dateNote}>
+                  Next one:{" "}
+                  <Link to="/todos/$id" params={{ id: String(todo.nextOccurrence.id) }}>
+                    #{todo.nextOccurrence.id}
+                  </Link>
+                </span>
+              )}
+            </dd>
           </dl>
 
           <dl className={styles.meta}>
@@ -306,7 +331,7 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
           <p className={styles.keysHint}>
             <Kbd keys="l" /> labels <Kbd keys="p" /> project <Kbd keys="r" /> requested by <Kbd keys="o" />
             contacts <Kbd keys="m" /> comment <Kbd keys="1" /> to <Kbd keys="4" /> priority <Kbd keys="s" />{" "}
-            subtask <Kbd keys="b" /> link
+            subtask <Kbd keys="b" /> link <Kbd keys="shift+r" /> repeat
             {todo.parent && (
               <>
                 {" "}

@@ -164,6 +164,29 @@ describe("subtasks and links on the todo page", () => {
   });
 });
 
+describe("repeat on the todo page", () => {
+  it("opens with shift+r and saves a preset", async () => {
+    const user = userEvent.setup();
+    const calls = renderParent({ dueOn: "2026-11-12" });
+    await screen.findByRole("list", { name: "Subtasks in order" }, LAZY_PAGE);
+    fireEvent.keyDown(window, { key: "R", shiftKey: true });
+    const panel = await screen.findByRole("group", { name: "Repeat" });
+    await user.click(within(panel).getByRole("button", { name: /Every week on Thu/ }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
+    expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({
+      recurrence: { every: "week", interval: 1, basis: "schedule", weekdays: ["thu"] },
+    });
+  });
+
+  it("stays closed without a date and says why", async () => {
+    renderParent();
+    await screen.findByRole("list", { name: "Subtasks in order" }, LAZY_PAGE);
+    fireEvent.keyDown(window, { key: "R", shiftKey: true });
+    expect(screen.queryByRole("group", { name: "Repeat" })).toBeNull();
+    expect(screen.getByText("Set a due date or planned day first.")).toBeTruthy();
+  });
+});
+
 describe("subtask helpers", () => {
   it("turns pasted lines into titles without list markers", () => {
     expect(pastedTitles("- [x] One\r\n* Two\n\n  1) Three  \n")).toEqual(["One", "Two", "Three"]);
