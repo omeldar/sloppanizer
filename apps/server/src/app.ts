@@ -28,6 +28,7 @@ import { peopleRoutes } from "./routes/people.ts";
 import { personTagRoutes } from "./routes/person-tags.ts";
 import { projectRoutes } from "./routes/projects.ts";
 import { searchRoutes } from "./routes/search.ts";
+import { settingsRoutes } from "./routes/settings.ts";
 import { todoRelationRoutes } from "./routes/todo-relations.ts";
 import { todoRoutes } from "./routes/todos.ts";
 import { tokenRoutes } from "./routes/tokens.ts";
@@ -57,6 +58,7 @@ export async function buildApp(options: BuildOptions) {
     clock: options.clock ?? systemClock,
     timeZone: config.timeZone,
     version: VERSION,
+    dataDir: config.dataDir,
     attachmentsDir: ensureAttachmentsDir(config.dataDir),
   };
 
@@ -107,6 +109,7 @@ export async function buildApp(options: BuildOptions) {
   searchRoutes(app, deps);
   tokenRoutes(app, deps);
   exportRoutes(app, deps);
+  settingsRoutes(app, deps);
   await registerWeb(app, config.webDir);
 
   return { app, deps };

@@ -19,6 +19,8 @@ export type App = FastifyInstance<
 
 export interface Deps extends Ctx {
   version: string;
+  /** Absolute path of the data dir. */
+  dataDir: string;
   /** Absolute path of <data dir>/attachments (uploaded files, one per id). */
   attachmentsDir: string;
 }
