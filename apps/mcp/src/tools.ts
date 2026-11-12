@@ -2,30 +2,43 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import {
   type Activity,
+  BulkUpdate,
   type BulkUpdateResult,
   CalendarDate,
-  Color,
   type Comment,
+  CreateComment,
+  CreateLabel,
+  CreateNote,
+  CreatePerson,
+  CreateProject,
+  CreateTodo,
   type Label,
-  NEXT_MODES,
+  NextQuery,
   type NextUp,
   type Note,
+  NoteListQuery,
   type NotePage,
   type Person,
-  PersonRole,
-  type PersonRef,
+  PersonRef,
+  PersonTagName,
   type PersonTag,
+  PeopleQuery,
   priorityOf,
   type Project,
-  SEARCH_KINDS,
+  SearchKind,
+  SearchQuery,
   type SearchResult,
-  Slug,
   type Stats,
-  TODO_SORTS,
   type Todo,
+  TodoListQuery,
   type TodoPage,
   TodoStatus,
   type Topic,
+  TopicName,
+  TopicQuery,
+  UpdateNote,
+  UpdatePerson,
+  UpdateTodo,
 } from "@organizer/shared";
 import { z } from "zod";
 import { type Api, ApiError, ToolError } from "./api.ts";
@@ -63,20 +76,15 @@ const format = z
   .describe("text (default): compact, one line per todo. json: the full API objects.");
 
 const TodoId = z.number().int().positive().describe("Todo id, the number after # (e.g. 142 for #142).");
-const TodoIds = z
-  .array(z.number().int().positive())
-  .min(1)
-  .max(200)
-  .describe("Todo ids (1 to 200), the numbers after #.");
+const TodoIds = BulkUpdate.shape.ids.describe("Todo ids (1 to 200), the numbers after #.");
 
 const ProjectInput = z
   .union([z.number().int().positive(), z.string().trim().min(1)])
   .describe('Project id, project slug (e.g. "homelab"), or "inbox" for todos without a project.');
 
 const Labels = (what: string) =>
-  z
-    .array(z.string().trim().min(1))
-    .max(50)
+  CreateTodo.shape.labels
+    .unwrap()
     .describe(
       `${what} Names must exist (list_labels). Scoped labels like "priority::high" replace the other label of the same scope.`,
     );
@@ -88,7 +96,7 @@ const PersonInput = z.union([
     .trim()
     .min(3)
     .describe('"First Last". The last word is the last name; use the object form for multi-word last names.'),
-  z.strictObject({ firstName: z.string().trim().min(1), lastName: z.string().trim().min(1) }),
+  PersonRef.options[1],
 ]);
 const People = (what: string) =>
   z
@@ -99,15 +107,13 @@ const People = (what: string) =>
     );
 
 const TopicNames = (what: string) =>
-  z
-    .array(z.string().trim().min(1).max(60))
-    .max(50)
+  CreatePerson.shape.topics
+    .unwrap()
     .describe(`${what} Topics are what a person can help with ("firewall rules"); new names are created.`);
 
 const TagNames = (what: string) =>
-  z
-    .array(z.string().trim().min(1).max(60))
-    .max(30)
+  CreatePerson.shape.tags
+    .unwrap()
     .describe(`${what} Person tags must exist (list_person_tags); they are the user's own judgments.`);
 
 const NoteId = z.number().int().positive().describe("Note id from list_notes.");
@@ -267,10 +273,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "Start here when the user asks what to do now or wants help prioritizing. Blocked todos are listed apart. " +
         "Modes: smart (default, weighs everything), oldest, priority, due.",
       inputSchema: {
-        mode: z.enum(NEXT_MODES).default("smart").describe("Ranking mode."),
+        mode: NextQuery.shape.mode.describe("Ranking mode."),
         project: ProjectInput.optional(),
         labels: Labels("Only todos with all of these labels.").optional(),
-        limit: z.number().int().min(1).max(200).default(20).describe("How many ranked todos (default 20)."),
+        limit: NextQuery.shape.limit.unwrap().default(20).describe("How many ranked todos (default 20)."),
         format,
       },
       annotations: READ,
@@ -348,11 +354,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           .positive()
           .optional()
           .describe("Only todos linked to this person (as requester unless personRole says otherwise)."),
-        personRole: z
-          .enum([...PersonRole.options, "any"])
+        personRole: TodoListQuery.shape.personRole
+          .unwrap()
           .optional()
           .describe("With personId: requester (default), contact, or any."),
-        q: z.string().trim().max(200).optional().describe("Text in the title (case-insensitive)."),
+        q: TodoListQuery.shape.q.describe("Text in the title (case-insensitive)."),
         dueBefore: CalendarDate.optional().describe("Due before this date (YYYY-MM-DD)."),
         plannedOn: CalendarDate.optional().describe("Planned for exactly this date (YYYY-MM-DD)."),
         plannedFrom: CalendarDate.optional().describe("Planned on or after this date (YYYY-MM-DD)."),
@@ -361,13 +367,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           .boolean()
           .optional()
           .describe("true: only todos without a planned day (not together with plannedFrom/plannedTo)."),
-        sort: z.enum(TODO_SORTS).default("created").describe("Sort field."),
-        order: z
-          .enum(["asc", "desc"])
-          .default("desc")
-          .describe("Sort order; priority desc lists critical first."),
-        limit: z.number().int().min(1).max(500).default(50).describe("Page size (default 50)."),
-        offset: z.number().int().min(0).default(0).describe("Skip this many (paging)."),
+        sort: TodoListQuery.shape.sort.describe("Sort field."),
+        order: TodoListQuery.shape.order.describe("Sort order; priority desc lists critical first."),
+        limit: TodoListQuery.shape.limit.unwrap().default(50).describe("Page size (default 50)."),
+        offset: TodoListQuery.shape.offset.describe("Skip this many (paging)."),
         format,
       },
       annotations: READ,
@@ -425,8 +428,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "(critical, high, medium, low). requestedBy records who asked for it, contacts who to ask about it; " +
         "names are found or created.",
       inputSchema: {
-        title: z.string().trim().min(1).max(300).describe("Short title, what needs doing."),
-        description: z.string().max(200_000).optional().describe("Details in Markdown."),
+        title: CreateTodo.shape.title.describe("Short title, what needs doing."),
+        description: CreateTodo.shape.descriptionMd.describe("Details in Markdown."),
         status: TodoStatus.optional().describe("Default open."),
         project: ProjectInput.optional(),
         dueOn: DateInput("Deadline.").optional(),
@@ -467,8 +470,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "change only those (e.g. addContacts adds a colleague to ask). Send only what changes.",
       inputSchema: {
         id: TodoId,
-        title: z.string().trim().min(1).max(300).optional(),
-        description: z.string().max(200_000).optional().describe("New Markdown description (replaces it)."),
+        title: UpdateTodo.shape.title,
+        description: UpdateTodo.shape.descriptionMd.describe("New Markdown description (replaces it)."),
         status: TodoStatus.optional(),
         project: ProjectInput.nullable()
           .optional()
@@ -599,10 +602,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       title: "Create project",
       description: "Add a project to group todos. The slug is derived from the name when left out.",
       inputSchema: {
-        name: z.string().trim().min(1).max(100),
-        slug: Slug.optional().describe("Lowercase letters, digits and dashes, e.g. home-lab."),
-        description: z.string().max(2000).optional(),
-        color: Color.optional().describe("Hex color like #8B95A5."),
+        name: CreateProject.shape.name,
+        slug: CreateProject.shape.slug.describe("Lowercase letters, digits and dashes, e.g. home-lab."),
+        description: CreateProject.shape.description,
+        color: CreateProject.shape.color.describe("Hex color like #8B95A5."),
         format,
       },
       annotations: WRITE,
@@ -640,10 +643,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         'Add a label. Plain ("homelab") or scoped ("area::network"; everything before the last "::" is the scope). ' +
         "Ask the user before adding labels they did not mention.",
       inputSchema: {
-        name: z.string().trim().min(1).max(100),
-        color: Color.optional().describe("Hex color like #8B95A5."),
-        description: z.string().max(2000).optional(),
-        rank: z.number().int().min(0).nullable().optional().describe("Order inside its scope (0 first)."),
+        name: CreateLabel.shape.name,
+        color: CreateLabel.shape.color.describe("Hex color like #8B95A5."),
+        description: CreateLabel.shape.description,
+        rank: CreateLabel.shape.rank.describe("Order inside its scope (0 first)."),
         format,
       },
       annotations: WRITE,
@@ -664,28 +667,16 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "they help with), team or person tag, or search q over names, team, email, notes and topics. One line " +
         "per person: id, name, team, topics, tags, how many todos they requested or are a contact for.",
       inputSchema: {
-        q: z.string().trim().max(200).optional().describe("Text in name, team, email, short note or topics."),
-        topic: z
-          .array(z.string().trim().min(1))
-          .max(10)
-          .optional()
-          .describe("Only people with all these topics."),
-        team: z.string().trim().min(1).max(100).optional().describe("Exact team name (case-insensitive)."),
-        tag: z
-          .array(z.string().trim().min(1))
-          .max(10)
-          .optional()
-          .describe("Only people with all these person tags."),
-        kind: z
-          .enum(["requester", "contact"])
-          .optional()
-          .describe(
-            "requester: asked for a todo at least once. contact: a contact on a todo or has a topic.",
-          ),
-        sort: z
-          .enum(["name", "requested", "contact", "recent"])
-          .default("name")
-          .describe("name (default), requested or contact (most first), recent (newest todo link first)."),
+        q: PeopleQuery.shape.q.describe("Text in name, team, email, short note or topics."),
+        topic: z.array(TopicName).max(10).optional().describe("Only people with all these topics."),
+        team: PeopleQuery.shape.team.describe("Exact team name (case-insensitive)."),
+        tag: z.array(PersonTagName).max(10).optional().describe("Only people with all these person tags."),
+        kind: PeopleQuery.shape.kind.describe(
+          "requester: asked for a todo at least once. contact: a contact on a todo or has a topic.",
+        ),
+        sort: PeopleQuery.shape.sort.describe(
+          "name (default), requested or contact (most first), recent (newest todo link first).",
+        ),
         format,
       },
       annotations: READ,
@@ -733,17 +724,14 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   );
 
   const personFields = {
-    note: z
-      .string()
-      .max(2000)
-      .optional()
-      .describe('Short hint shown next to the name, e.g. "Platform team, Basel" (tells namesakes apart).'),
-    team: z.string().trim().max(100).optional().describe('Team or department, e.g. "Network team".'),
-    email: z
-      .union([z.literal(""), z.email()])
-      .optional()
-      .describe("Email address (enables mail and chat links); empty text removes it."),
-    notes: z.string().max(200_000).optional().describe("Longer notes about the person in Markdown."),
+    note: CreatePerson.shape.note.describe(
+      'Short hint shown next to the name, e.g. "Platform team, Basel" (tells namesakes apart).',
+    ),
+    team: CreatePerson.shape.team.describe('Team or department, e.g. "Network team".'),
+    email: CreatePerson.shape.email.describe(
+      "Email address (enables mail and chat links); empty text removes it.",
+    ),
+    notes: CreatePerson.shape.notesMd.describe("Longer notes about the person in Markdown."),
   };
 
   tool(
@@ -755,12 +743,12 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "and update_todo also create people by name. Fails if the name exists, unless allowDuplicate is true " +
         "(then give a note that tells them apart).",
       inputSchema: {
-        firstName: z.string().trim().min(1).max(100),
-        lastName: z.string().trim().min(1).max(100),
+        firstName: CreatePerson.shape.firstName,
+        lastName: CreatePerson.shape.lastName,
         ...personFields,
         topics: TopicNames("What they can help with.").optional(),
         tags: TagNames("Person tags to set.").optional(),
-        allowDuplicate: z.boolean().optional(),
+        allowDuplicate: CreatePerson.shape.allowDuplicate,
         format,
       },
       annotations: WRITE,
@@ -781,8 +769,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "set; addTopics/removeTopics and addTags/removeTags change only those. Does not touch their todos.",
       inputSchema: {
         person: PersonInput.describe('Person id, or "First Last" (exact name).'),
-        firstName: z.string().trim().min(1).max(100).optional(),
-        lastName: z.string().trim().min(1).max(100).optional(),
+        firstName: UpdatePerson.shape.firstName,
+        lastName: UpdatePerson.shape.lastName,
         ...personFields,
         topics: TopicNames("Full topic set (replaces all).").optional(),
         addTopics: TopicNames("Topics to add.").optional(),
@@ -809,8 +797,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       description:
         "Topics people help with, with how many people have each. Use the names as the topic filter of list_people.",
       inputSchema: {
-        q: z.string().trim().max(60).optional().describe("Part of the topic name (case-insensitive)."),
-        limit: z.number().int().min(1).max(500).default(100).describe("How many (default 100)."),
+        q: TopicQuery.shape.q.describe("Part of the topic name (case-insensitive)."),
+        limit: TopicQuery.shape.limit.unwrap().default(100).describe("How many (default 100)."),
         format,
       },
       annotations: READ,
@@ -878,7 +866,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "with this connection's name. #123 in the text links to todo 123.",
       inputSchema: {
         todo: TodoId,
-        text: z.string().min(1).max(50_000).describe("The comment in Markdown."),
+        text: CreateComment.shape.bodyMd.describe("The comment in Markdown."),
         format,
       },
       annotations: WRITE,
@@ -901,9 +889,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "Full-text search over todos (title and description), notes, comments and people (name, team, email, " +
         "topics). Ignores case and accents. #123 finds todo 123 first. Results are grouped by kind with snippets.",
       inputSchema: {
-        q: z.string().trim().min(1).max(200).describe("Words to find; all of them must match."),
-        kinds: z.array(z.enum(SEARCH_KINDS)).min(1).optional().describe("Only these kinds (default all)."),
-        limit: z.number().int().min(1).max(100).default(10).describe("Hits per kind (default 10)."),
+        q: SearchQuery.shape.q.describe("Words to find; all of them must match."),
+        kinds: z.array(SearchKind).min(1).optional().describe("Only these kinds (default all)."),
+        limit: SearchQuery.shape.limit.unwrap().default(10).describe("Hits per kind (default 10)."),
         format,
       },
       annotations: READ,
@@ -930,9 +918,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           'Project id or slug; "inbox" or "none" for notes without one.',
         ),
         pinned: z.boolean().optional().describe("true: only pinned, false: only unpinned."),
-        q: z.string().trim().max(200).optional().describe("Text in the title (case-insensitive)."),
-        limit: z.number().int().min(1).max(500).default(50).describe("Page size (default 50)."),
-        offset: z.number().int().min(0).default(0).describe("Skip this many (paging)."),
+        q: NoteListQuery.shape.q.describe("Text in the title (case-insensitive)."),
+        limit: NoteListQuery.shape.limit.unwrap().default(50).describe("Page size (default 50)."),
+        offset: NoteListQuery.shape.offset.describe("Skip this many (paging)."),
         format,
       },
       annotations: READ,
@@ -980,10 +968,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "Write a new note (Markdown), e.g. meeting notes, a how-to or a list that is not a todo. Optionally in a " +
         "project and pinned to the top.",
       inputSchema: {
-        title: z.string().trim().min(1).max(200),
-        body: z.string().max(200_000).optional().describe("The note in Markdown."),
+        title: CreateNote.shape.title,
+        body: CreateNote.shape.bodyMd.describe("The note in Markdown."),
         project: ProjectInput.optional(),
-        pinned: z.boolean().optional(),
+        pinned: CreateNote.shape.pinned,
         format,
       },
       annotations: WRITE,
@@ -1011,8 +999,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "e.g. a new entry in a log note, without resending the whole body.",
       inputSchema: {
         id: NoteId,
-        title: z.string().trim().min(1).max(200).optional(),
-        body: z.string().max(200_000).optional().describe("New Markdown body (replaces it)."),
+        title: UpdateNote.shape.title,
+        body: UpdateNote.shape.bodyMd.describe("New Markdown body (replaces it)."),
         appendText: z
           .string()
           .min(1)

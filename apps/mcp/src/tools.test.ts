@@ -363,3 +363,45 @@ describe("note tools", () => {
     expect(calls.at(-1)?.body).toEqual({ bodyMd: "first" });
   });
 });
+
+describe("inputs follow the shared rules", () => {
+  it("refuses a topic filter with a comma instead of splitting it into two topics", async () => {
+    const { call, calls } = await connect(() => [person()]);
+    const result = await call("list_people", { topic: ["VPN,firewall"] });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("Topic names cannot contain commas");
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses person tags with a comma or label syntax before calling the API", async () => {
+    const { call, calls } = await connect(() => person());
+    const comma = await call("create_person", { firstName: "Max", lastName: "Muster", tags: ["a,b"] });
+    expect(comma.isError).toBe(true);
+    expect(comma.text).toContain("Tag names cannot contain commas");
+    const scoped = await call("list_people", { tag: ["team::net"] });
+    expect(scoped.isError).toBe(true);
+    expect(scoped.text).toContain('Person tag names cannot contain "::"');
+    expect(calls).toEqual([]);
+  });
+
+  it("uses the server's limits, so a request the API would refuse is caught here", async () => {
+    const { call, calls } = await connect(() => []);
+    const topics = await call("list_topics", { limit: 300 });
+    expect(topics.isError).toBe(true);
+    const title = await call("create_todo", { title: "x".repeat(301) });
+    expect(title.isError).toBe(true);
+    expect(title.text).toContain("Keep the title at 300 characters or fewer.");
+    const ids = await call("bulk_update", { ids: [1, 1], status: "done" });
+    expect(ids.isError).toBe(true);
+    expect(ids.text).toContain("Each id may appear only once.");
+    expect(calls).toEqual([]);
+    await call("list_topics", { limit: 200 });
+    expect(calls).toEqual([{ method: "GET", path: "/topics", query: { q: undefined, limit: 200 } }]);
+  });
+
+  it("normalizes topic names like the server (inner spaces collapsed)", async () => {
+    const { call, calls } = await connect(() => [person()]);
+    await call("list_people", { topic: ["  firewall   rules "] });
+    expect(calls[0]?.query?.topic).toEqual(["firewall rules"]);
+  });
+});
