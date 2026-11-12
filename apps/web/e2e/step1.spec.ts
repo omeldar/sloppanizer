@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { type APIRequestContext, type BrowserContext, expect, type Page, test } from "@playwright/test";
 import { strFromU8, unzipSync } from "fflate";
+import { API, focusPage as focusIn, localDate, toast as toastIn, watchProblems } from "./support.ts";
 
 // The step 1 core flow in one browser session: quick add, Next up, detail edit, done with undo, theme,
 // palette, export. Everything it creates is deleted again in afterAll, so it can also run against a
@@ -11,7 +12,6 @@ import { strFromU8, unzipSync } from "fflate";
 
 test.describe.configure({ mode: "serial" });
 
-const API = "/api/v1";
 const stamp = Date.now().toString(36);
 const title = `Review the release notes ${stamp}`;
 const projectName = `E2E project ${stamp}`;
@@ -26,15 +26,6 @@ let projectId = 0;
 // A real instance may already know Anna Meier; then the test links to her and never deletes her.
 let personExisted = false;
 
-/** Today plus `days` as YYYY-MM-DD in the local time zone (server and browser run on this machine). */
-const pad = (n: number) => String(n).padStart(2, "0");
-
-function localDate(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 async function findPeople(): Promise<Array<{ id: number; firstName: string; lastName: string }>> {
   const res = await api.get(`${API}/people`, { params: { q: "Anna Meier" } });
   expect(res.status()).toBe(200);
@@ -42,23 +33,17 @@ async function findPeople(): Promise<Array<{ id: number; firstName: string; last
   return people.filter((p) => p.firstName.toLowerCase() === "anna" && p.lastName.toLowerCase() === "meier");
 }
 
-/** Clicks into the page body so global shortcuts are not swallowed by a focused field. */
-async function focusPage(): Promise<void> {
-  await page.locator("main").click({ position: { x: 700, y: 820 } });
-}
+const focusPage = () => focusIn(page);
 
 const statusBar = () => page.locator("footer[aria-label=Status]");
-const toast = (text: string) => page.getByRole("status").filter({ hasText: text });
+const toast = (text: string) => toastIn(page, text);
 const ranked = () => page.getByRole("list", { name: "Ranked todos" });
 
 test.beforeAll(async ({ browser }) => {
   context = await browser.newContext();
   page = await context.newPage();
   api = context.request;
-  page.on("console", (m) => {
-    if (m.type() === "error") problems.push(m.text());
-  });
-  page.on("pageerror", (e) => problems.push(String(e)));
+  watchProblems(page, problems);
   // Loading the app sets the session cookie that the API calls below share.
   await page.goto("/");
   personExisted = (await findPeople()).length > 0;
