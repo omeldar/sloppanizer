@@ -5,9 +5,12 @@ import { Command } from "cmdk";
 import { type ReactNode, useEffect, useState } from "react";
 import { useCommands } from "../../app/commands.tsx";
 import { Dialog } from "../../components/Dialog.tsx";
+import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { Kbd } from "../../components/ui.tsx";
+import { errorMessage } from "../../lib/api.ts";
 import { downloadExport } from "../../lib/export.ts";
-import { useProjects, useSearch, useTodo } from "../../lib/queries.ts";
+import { formatBytes } from "../../lib/format.ts";
+import { useProjects, useSearch, useTodo, writeFolderExport } from "../../lib/queries.ts";
 import { useIsSession } from "../settings/SessionOnly.tsx";
 import { toggleTheme } from "../../lib/theme.ts";
 import { useDebounced } from "../../lib/useDebounced.ts";
@@ -38,6 +41,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const { openQuickAdd, openNewNote, openNewPerson } = useCommands();
   const projects = useProjects();
   const session = useIsSession();
+  const toast = useToast();
   const [search, setSearch] = useState("");
   // Searches the server 150 ms after the last key, from two characters on.
   const query = useDebounced(search.trim(), 150);
@@ -177,6 +181,35 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
               <Item value="download export zip backup" onSelect={run(() => downloadExport(client))}>
                 Download export
               </Item>
+              {session && (
+                <Item
+                  value="write export to folder zip backup"
+                  onSelect={run(
+                    () =>
+                      void writeFolderExport(client).then(
+                        (written) =>
+                          toast.show({
+                            message: `Wrote ${written.fileName} (${formatBytes(written.bytes)})`,
+                          }),
+                        (error: unknown) =>
+                          toast.show({
+                            tone: "error",
+                            message: `Could not write the export. ${errorMessage(error)}`,
+                          }),
+                      ),
+                  )}
+                >
+                  Write export to folder
+                </Item>
+              )}
+              {session && (
+                <Item
+                  value="restore from export zip"
+                  onSelect={run(() => void navigate({ to: "/settings", hash: "restore" }))}
+                >
+                  Restore from export
+                </Item>
+              )}
             </Command.Group>
             <Command.Group heading="Pages" className={styles.group}>
               {pages.map((page) => (

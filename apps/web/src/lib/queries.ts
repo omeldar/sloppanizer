@@ -1,6 +1,7 @@
 import {
   Activity,
   ApiToken,
+  BackupFile,
   Comment,
   CreatedToken,
   type CreateLabel,
@@ -10,6 +11,9 @@ import {
   type CreateProject,
   type CreateTodo,
   type CreateToken,
+  FolderExport,
+  RestorePreview,
+  RestoreResult,
   Label,
   Me,
   NextUp,
@@ -22,6 +26,7 @@ import {
   PersonTag,
   Project,
   SearchResult,
+  Settings,
   Stats,
   Team,
   Todo,
@@ -57,6 +62,9 @@ export const keys = {
   note: (id: number) => ["note", id] as const,
   search: (query: SearchParams) => ["search", query] as const,
   tokens: ["tokens"] as const,
+  settings: ["settings"] as const,
+  folderExports: ["folderExports"] as const,
+  backups: ["backups"] as const,
   // Under "stats", so todo changes (invalidateTodoViews) refresh them too.
   peopleStats: (query: PeopleStatsParams) => ["stats", "people", query] as const,
   personStats: (id: number, query: PersonStatsParams) => ["stats", "person", id, query] as const,
@@ -448,3 +456,46 @@ export function useRevokeToken() {
     onSuccess: () => client.invalidateQueries({ queryKey: keys.tokens }),
   });
 }
+
+/** Session only: export folder, data dir, last exports. */
+export const useSettings = (enabled = true) =>
+  useQuery({ queryKey: keys.settings, queryFn: () => api(Settings, "/settings"), enabled });
+
+/** The zips in the export folder, newest first. */
+export const useFolderExports = (enabled = true) =>
+  useQuery({
+    queryKey: keys.folderExports,
+    queryFn: () => api(z.array(FolderExport), "/export/folder"),
+    enabled,
+  });
+
+/** Safety copies written before restores, newest first. */
+export const useBackups = (enabled = true) =>
+  useQuery({
+    queryKey: keys.backups,
+    queryFn: () => api(z.array(BackupFile), "/restore/backups"),
+    enabled,
+  });
+
+/** Writes an export zip into the export folder (a plain function so the palette can call it and close). */
+export async function writeFolderExport(client: QueryClient): Promise<FolderExport> {
+  const written = await api(FolderExport, "/export/folder", { method: "POST" });
+  void client.invalidateQueries({
+    predicate: (query) => ["settings", "folderExports", "stats"].includes(String(query.queryKey[0])),
+  });
+  return written;
+}
+
+export function useWriteFolderExport() {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: () => writeFolderExport(client) });
+}
+
+/** Uploads an export zip to check it; the server keeps it staged for an hour. */
+export const uploadRestore = (file: Blob, name: string) =>
+  api(RestorePreview, "/restore", { method: "POST", raw: file, query: { name } });
+
+export const cancelRestore = (uploadId: string) => apiVoid(`/restore/${uploadId}`, { method: "DELETE" });
+
+export const applyRestore = (uploadId: string) =>
+  api(RestoreResult, `/restore/${uploadId}/apply`, { method: "POST", body: { confirm: "replace" } });

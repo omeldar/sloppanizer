@@ -6,6 +6,8 @@ import { downloadExport } from "../../lib/export.ts";
 import { absoluteTime, relativeTime } from "../../lib/format.ts";
 import { useMe, useStats } from "../../lib/queries.ts";
 import { setTheme, type Theme, useTheme } from "../../lib/theme.ts";
+import { FolderExportBlock } from "./FolderExport.tsx";
+import { RestoreSection } from "./Restore.tsx";
 import styles from "./Settings.module.css";
 
 const THEMES: { value: Theme; name: string; note: string }[] = [
@@ -19,6 +21,7 @@ export function SettingsPage() {
   const me = useMe();
   const client = useQueryClient();
   const lastExport = stats.data?.lastExportAt ?? null;
+  const session = me.data?.via === "session";
 
   return (
     <div className={styles.page}>
@@ -66,9 +69,12 @@ export function SettingsPage() {
               : "Not exported yet"}
           </span>
         </div>
+        {session && <FolderExportBlock />}
       </section>
 
-      {me.data?.via === "session" && (
+      {session && <RestoreSection />}
+
+      {session && (
         <section className={styles.section}>
           <h2 className={styles.heading}>API tokens</h2>
           <p className={styles.text}>

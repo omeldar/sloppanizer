@@ -59,3 +59,16 @@ export function relativeTime(instant: string, now: Date = new Date()): string {
   if (ms < 60_000) return "just now";
   return `${formatDuration(ms).split(" ")[0]} ago`;
 }
+
+/** "812 B", "4.2 KB", "13.0 MB", "1.2 GB" (powers of 1024, one decimal from KB on). */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value.toFixed(1)} ${units[unit]}`;
+}
