@@ -1,5 +1,7 @@
 import type { Activity, ActivityEvent, NextUp, Person, Project, Todo, TodoPage } from "@organizer/shared";
 import { describe, expect, it } from "vitest";
+import { strFromU8, unzipSync } from "fflate";
+import { parse } from "yaml";
 import { json, makeApp, type TestApp } from "./helpers.ts";
 
 const events = async (t: TestApp, id: number, kind: string): Promise<ActivityEvent[]> =>
@@ -253,5 +255,41 @@ describe("Next up with links", () => {
     const after = json<NextUp>(await t.call("GET", "/api/v1/next"));
     expect(after.items.map((i) => i.todo.id)).toEqual([a.id]);
     expect(after.blocked).toEqual([]);
+  });
+});
+
+describe("export front matter for step 3", () => {
+  it("lists parent, subtasks, links, repeat and occurrences", async () => {
+    const t = await makeApp({ now: "2026-11-12T08:00:00.000Z" });
+    const parent = await t.create<Todo>("/api/v1/todos", {
+      title: "Parent",
+      dueOn: "2026-11-12",
+      recurrence: weekly,
+    });
+    const child = await t.create<Todo>("/api/v1/todos", { title: "Child", parentId: parent.id });
+    await t.call("POST", `/api/v1/todos/${parent.id}/links`, {
+      links: [
+        { kind: "blocked_by", todoId: child.id },
+        { kind: "relates", todoId: child.id },
+      ],
+    });
+    const nextId = json<Todo>(await patch(t, parent.id, { status: "done" })).nextOccurrence?.id;
+    const files = unzipSync((await t.call("GET", "/api/v1/export.zip")).rawPayload);
+    const meta = (name: string) => {
+      const file = Object.keys(files).find((f) => f.startsWith(name)) as string;
+      return parse(/^---\n([\s\S]*?)\n---/.exec(strFromU8(files[file] as Uint8Array))?.[1] ?? "");
+    };
+    expect(meta("todos/0001-")).toMatchObject({
+      parent: null,
+      subtasks: [child.id],
+      blocks: [],
+      blocked_by: [child.id],
+      relates_to: [child.id],
+      repeat: "every week on Thu",
+      previous: null,
+      next: nextId,
+    });
+    expect(meta("todos/0002-")).toMatchObject({ parent: parent.id, blocks: [parent.id], repeat: null });
+    expect(meta(`todos/000${nextId}-`)).toMatchObject({ previous: parent.id, next: null });
   });
 });

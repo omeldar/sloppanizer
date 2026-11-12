@@ -96,6 +96,14 @@ describe("GET /export.zip", () => {
       created: "2026-11-11T13:04:05.000Z",
       done: "2026-11-14T13:04:05.000Z",
       took: "3d",
+      parent: null,
+      subtasks: [],
+      blocks: [],
+      blocked_by: [],
+      relates_to: [],
+      repeat: null,
+      previous: null,
+      next: null,
     });
     expect(match?.[2]).toBe("---\nnot front matter\n");
     const plainMd = strFromU8(files["todos/0003-todo.md"] as Uint8Array);

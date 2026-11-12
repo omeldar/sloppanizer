@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { once } from "node:events";
 import { PassThrough, type Readable } from "node:stream";
 import {
+  describeRecurrence,
   formatDuration,
   INLINE_IMAGE_TYPES,
   toLocalDate,
@@ -54,8 +55,9 @@ this device are left out). Export format 3.
 - data.json: every row of every table with its original id (column names as in the database).
   This is the file a restore reads. Text is kept exactly as stored, links included.
 - attachments/: every uploaded file as <id>-<name>.
-- todos/: one Markdown file per todo (NNNN-title.md): YAML front matter with the main fields,
-  then the description and the comments.
+- todos/: one Markdown file per todo (NNNN-title.md): YAML front matter with the main fields
+  (also parent, subtasks, links, repeat, previous and next occurrence), then the description and
+  the comments.
 - notes/: one Markdown file per note (NNNN-title.md): front matter, then the note.
 - people/: one Markdown file per person (NNNN-first-last.md): team, email, topics, tags, the todos
   they requested or are a contact for, then the notes about them.
@@ -287,6 +289,10 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
     rows<CommentRow>("comments").toSorted((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id),
     (c) => c.todo_id,
   );
+  const childrenOf = groupBy(
+    allTodos.filter((t) => t.parentId !== null),
+    (t) => t.parentId as number,
+  );
   for (const todo of allTodos) {
     const duration = todoDurationMs(todo.createdAt, todo.doneAt);
     const comments = commentsSection(
@@ -314,6 +320,14 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
           created: todo.createdAt,
           done: todo.doneAt,
           took: todo.status === "done" && duration !== null ? formatDuration(duration) : null,
+          parent: todo.parent?.id ?? null,
+          subtasks: (childrenOf.get(todo.id) ?? []).map((c) => c.id),
+          blocks: todo.links.blocks.map((t) => t.id),
+          blocked_by: todo.links.blockedBy.map((t) => t.id),
+          relates_to: todo.links.relatesTo.map((t) => t.id),
+          repeat: todo.recurrence === null ? null : describeRecurrence(todo.recurrence),
+          previous: todo.previousOccurrenceId,
+          next: todo.nextOccurrence?.id ?? null,
         },
         body,
       ),
