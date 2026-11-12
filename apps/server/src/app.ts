@@ -36,6 +36,7 @@ import { tokenRoutes } from "./routes/tokens.ts";
 import { topicRoutes } from "./routes/topics.ts";
 import type { Deps } from "./routes/types.ts";
 import { repairScopeConflicts } from "./services/labels.ts";
+import { repairNameKeys } from "./services/name-keys.ts";
 import { RESTORE_LIMITS, type RestoreLimits, recoverRestore } from "./services/restore.ts";
 import { rebuildSearchIndex } from "./services/search-index.ts";
 
@@ -58,6 +59,8 @@ export async function buildApp(options: BuildOptions) {
   const clock = options.clock ?? systemClock;
   // Before anything touches the attachments folder: finish or clean up an interrupted restore.
   const recovered = recoverRestore(config.dataDir, db, clock());
+  // Fills the case-free name keys (empty after migration 0006) and merges names that differ only in case.
+  const mergedNames = repairNameKeys(db.$client);
   // The index is derived data: rebuilding at every start heals it (and covers a restore).
   rebuildSearchIndex(db);
   const deps: Deps = {
@@ -80,6 +83,8 @@ export async function buildApp(options: BuildOptions) {
   app.setSerializerCompiler(serializerCompiler);
   app.addHook("onClose", async () => db.$client.close());
   if (recovered === "finished") app.log.warn("finished the file swap of an interrupted restore");
+  if (mergedNames > 0)
+    app.log.warn(`merged ${mergedNames} labels, topics or person tags that differed only in case`);
   const repaired = repairScopeConflicts(deps);
   if (repaired > 0) app.log.warn(`removed duplicate scope labels from ${repaired} todos`);
 

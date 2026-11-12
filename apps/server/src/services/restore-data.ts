@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { EXPORT_TABLES } from "./export.ts";
+import { EXPORT_TABLES, withoutLocalColumns } from "./export.ts";
 import { LOCAL_SETTING_KEYS } from "./settings.ts";
 
 /** Tables with AUTOINCREMENT ids that appear in Markdown (#123, attachment links). */
@@ -34,7 +34,8 @@ export class RowError extends Error {
  * id (local settings in the file are skipped), and sets the todo and attachment sequences to the
  * higher of the exported sequence and the largest id, so ids are never handed out again. Foreign
  * keys are checked at commit (defer_foreign_keys), because a todo may point at a parent with a
- * higher id. Columns missing in old formats get their defaults.
+ * higher id. Columns missing in old formats get their defaults; local columns (LOCAL_COLUMNS) in the
+ * file are skipped, the caller refills them.
  */
 export function replaceAllData(sqlite: Database.Database, data: ExportData, sequences: Sequences = {}): void {
   if (!sqlite.inTransaction) throw new Error("replaceAllData needs a transaction");
@@ -50,9 +51,10 @@ export function replaceAllData(sqlite: Database.Database, data: ExportData, sequ
     const statements = new Map<string, Database.Statement>();
     for (const row of data[table] ?? []) {
       if (table === "settings" && (LOCAL_SETTING_KEYS as readonly unknown[]).includes(row.key)) continue;
-      const names = Object.keys(row);
-      const unknown = names.filter((name) => !columns.has(name));
+      const unknown = Object.keys(row).filter((name) => !columns.has(name));
       if (unknown.length > 0) throw new RowError(table, row.id, `unknown column ${unknown.join(", ")}`);
+      const values = withoutLocalColumns(table, row);
+      const names = Object.keys(values);
       const key = names.join("\u0000");
       let statement = statements.get(key);
       if (!statement) {
@@ -62,7 +64,7 @@ export function replaceAllData(sqlite: Database.Database, data: ExportData, sequ
         statements.set(key, statement);
       }
       try {
-        statement.run(...names.map((name) => row[name]));
+        statement.run(...names.map((name) => values[name]));
       } catch (error) {
         throw new RowError(table, row.id ?? row.key, (error as Error).message);
       }

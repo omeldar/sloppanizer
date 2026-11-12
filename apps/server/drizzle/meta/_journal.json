@@ -43,6 +43,13 @@
       "when": 1794489115655,
       "tag": "0005_step3_subtasks_links_repeats",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794494115908,
+      "tag": "0006_name_keys",
+      "breakpoints": true
     }
   ]
 }

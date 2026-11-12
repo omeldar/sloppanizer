@@ -38,6 +38,7 @@ import { assertProjectExists, projectRefs } from "./projects.ts";
 import { resolvePeople, toPersonBrief } from "./people.ts";
 import { indexTodo, removeTodoFromIndex } from "./search-index.ts";
 import { chunks, diffIds, escapeLike, type SetChange } from "./sql.ts";
+import { foldCase } from "./text.ts";
 
 export type TodoRow = typeof todos.$inferSelect;
 
@@ -382,11 +383,7 @@ function removeUntouchedNext(tx: Tx, id: number): void {
   removeTodoFromIndex(tx, next.id);
 }
 
-const normNames = (list: readonly string[]): string =>
-  list
-    .map((n) => n.toLowerCase())
-    .toSorted()
-    .join("\n");
+const normNames = (list: readonly string[]): string => list.map(foldCase).toSorted().join("\n");
 const sameNames = (a: readonly string[], b: readonly string[]): boolean => normNames(a) === normNames(b);
 
 /** Description edits by one actor within this time merge into one history entry (autosave). */

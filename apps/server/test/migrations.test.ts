@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { MIGRATIONS_DIR, openDb, schemaVersion } from "../src/db/index.ts";
+import { repairNameKeys } from "../src/services/name-keys.ts";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -62,7 +63,7 @@ describe("migrations from a step 1 database", () => {
 
     const db = openDb(file);
     const raw = db.$client;
-    expect(schemaVersion(db)).toBe(6);
+    expect(schemaVersion(db)).toBe(7);
     expect(
       raw.prepare("SELECT todo_id, person_id, role FROM todo_people ORDER BY todo_id, person_id").all(),
     ).toEqual([
@@ -177,7 +178,7 @@ describe("migration 0005 on a step 2 database", () => {
 
     const db = openDb(file);
     const raw = db.$client;
-    expect(schemaVersion(db)).toBe(6);
+    expect(schemaVersion(db)).toBe(7);
     expect(
       raw.prepare("SELECT id, parent_id, recurrence, recurrence_prev_id FROM todos ORDER BY id").all(),
     ).toEqual([
@@ -217,6 +218,93 @@ describe("migration 0005 on a step 2 database", () => {
       )
       .all();
     expect(indexes).toHaveLength(3);
+    db.$client.close();
+  });
+});
+
+describe("migration 0006 and the name key repair on a step 3 database", () => {
+  it("fills the name keys and merges names that differ only in non-ASCII case, keeping every link", () => {
+    const { file, sqlite } = olderDatabase([
+      "0000_init",
+      "0001_seed_priority_labels",
+      "0002_step2_contacts_threads_notes",
+      "0003_backfill_people_event_roles",
+      "0004_search_index",
+      "0005_step3_subtasks_links_repeats",
+    ]);
+    // COLLATE NOCASE let these in: Ä and ä are different to it.
+    sqlite.exec(`
+      INSERT INTO people (id, first_name, last_name, created_at, updated_at) VALUES
+        (1, 'Anna', 'Meier', '${T}', '${T}'), (2, 'Bo', 'Li', '${T}', '${T}');
+      INSERT INTO topics (id, name, created_at) VALUES (1, 'Ärzte', '${T}'), (2, 'ärzte', '${T}'), (3, 'VPN', '${T}');
+      INSERT INTO person_topics (person_id, topic_id, created_at) VALUES
+        (1, 1, '${T}'), (1, 2, '${T}'), (2, 2, '${T}'), (2, 3, '${T}');
+      INSERT INTO person_tags (id, name, color, created_at, updated_at) VALUES
+        (1, 'Öffnet schnell', '#111111', '${T}', '${T}'), (2, 'öffnet schnell', '#222222', '${T}', '${T}');
+      INSERT INTO person_tag_links (person_id, tag_id, created_at) VALUES (2, 2, '${T}');
+      INSERT INTO todos (id, title, created_at, updated_at, last_activity_at) VALUES
+        (1, 'One', '${T}', '${T}', '${T}'), (2, 'Two', '${T}', '${T}', '${T}');
+      INSERT INTO labels (id, name, value, color, created_at, updated_at) VALUES
+        (10, 'Übung', 'Übung', '#333333', '${T}', '${T}'), (11, 'übung', 'übung', '#444444', '${T}', '${T}');
+      INSERT INTO todo_labels (todo_id, label_id) VALUES (1, 10), (1, 11), (2, 11);
+    `);
+    sqlite.close();
+
+    const db = openDb(file);
+    const raw = db.$client;
+    expect(schemaVersion(db)).toBe(7);
+    expect(raw.prepare("SELECT count(*) AS n FROM topics WHERE name_key IS NULL").get()).toEqual({ n: 3 });
+    expect(repairNameKeys(raw)).toBe(3);
+
+    expect(raw.prepare("SELECT id, name, name_key FROM topics ORDER BY id").all()).toEqual([
+      { id: 1, name: "Ärzte", name_key: "ärzte" },
+      { id: 3, name: "VPN", name_key: "vpn" },
+    ]);
+    expect(raw.prepare("SELECT person_id, topic_id FROM person_topics ORDER BY 1, 2").all()).toEqual([
+      { person_id: 1, topic_id: 1 },
+      { person_id: 2, topic_id: 1 },
+      { person_id: 2, topic_id: 3 },
+    ]);
+    // The oldest tag keeps its name and color and takes over the people of the other.
+    expect(raw.prepare("SELECT id, name, color, name_key FROM person_tags").all()).toEqual([
+      { id: 1, name: "Öffnet schnell", color: "#111111", name_key: "öffnet schnell" },
+    ]);
+    expect(raw.prepare("SELECT person_id, tag_id FROM person_tag_links").all()).toEqual([
+      { person_id: 2, tag_id: 1 },
+    ]);
+    expect(raw.prepare("SELECT id FROM labels WHERE name_key = 'übung'").all()).toEqual([{ id: 10 }]);
+    expect(raw.prepare("SELECT todo_id, label_id FROM todo_labels ORDER BY 1, 2").all()).toEqual([
+      { todo_id: 1, label_id: 10 },
+      { todo_id: 2, label_id: 10 },
+    ]);
+    // Every row has its key now, the seeded labels too, and the key is unique.
+    for (const table of ["labels", "topics", "person_tags"]) {
+      expect(raw.prepare(`SELECT count(*) AS n FROM ${table} WHERE name_key IS NULL`).get()).toEqual({
+        n: 0,
+      });
+    }
+    expect(() =>
+      raw.prepare("INSERT INTO topics (name, name_key, created_at) VALUES ('ÄRZTE', 'ärzte', ?)").run(T),
+    ).toThrow(/UNIQUE/);
+    expect(raw.pragma("foreign_key_check")).toEqual([]);
+    // A second run finds nothing to do.
+    expect(repairNameKeys(raw)).toBe(0);
+    db.$client.close();
+  });
+
+  it("fixes a wrong key, also when it is the key another row needs", () => {
+    const root = mkdtempSync(join(tmpdir(), "organizer-migrate-"));
+    roots.push(root);
+    const db = openDb(join(root, "organizer.db"));
+    const raw = db.$client;
+    raw.exec(`
+      INSERT INTO topics (id, name, name_key, created_at) VALUES (1, 'DNS', 'vpn', '${T}'), (2, 'VPN', 'dns', '${T}');
+    `);
+    expect(repairNameKeys(raw)).toBe(0);
+    expect(raw.prepare("SELECT id, name_key FROM topics ORDER BY id").all()).toEqual([
+      { id: 1, name_key: "dns" },
+      { id: 2, name_key: "vpn" },
+    ]);
     db.$client.close();
   });
 });

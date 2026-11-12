@@ -22,6 +22,7 @@ import { now } from "./context.ts";
 import { attachmentFileName, buildExport, EXPORT_TABLES, fileStamp } from "./export.ts";
 import { type FolderDeps, freeName, writeFileAtomically } from "./folder-export.ts";
 import { repairScopeConflicts } from "./labels.ts";
+import { repairNameKeys } from "./name-keys.ts";
 import { type ExportData, replaceAllData, RowError, type Sequences, tableColumns } from "./restore-data.ts";
 import { rebuildSearchIndex } from "./search-index.ts";
 import { getSetting, setSetting } from "./settings.ts";
@@ -543,8 +544,8 @@ function folderSink(dir: string): FileSink {
 
 /**
  * Replaces all data with the staged export: (1) a safety copy of the current data, (2) the files
- * into a staging folder (checked again), (3) one transaction for the rows, sequences, scope repair,
- * search index and the restoreInProgress marker, (4) the folder swap, (5) the staged upload goes.
+ * into a staging folder (checked again), (3) one transaction for the rows, sequences, name keys,
+ * scope repair, search index and the restoreInProgress marker, (4) the folder swap, (5) the staged upload goes.
  * Tokens, the secret and device settings are not touched.
  */
 export async function applyRestore(deps: RestoreDeps, uploadId: string): Promise<RestoreResult> {
@@ -574,6 +575,7 @@ export async function applyRestore(deps: RestoreDeps, uploadId: string): Promise
     const progress: InProgress = { uploadId, stagingDir: staging };
     sqlite.transaction(() => {
       replaceAllData(sqlite, archive.data, archive.manifest.sequences);
+      repairNameKeys(sqlite);
       repairScopeConflicts(deps);
       rebuildSearchIndex(deps.db);
       const broken = sqlite.pragma("foreign_key_check") as unknown[];

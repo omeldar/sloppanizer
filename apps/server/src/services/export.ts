@@ -44,6 +44,23 @@ export const EXPORT_TABLES = [
   "settings",
 ] as const;
 
+/**
+ * Columns left out of data.json: derived from other columns (refilled after a restore) or only valid on
+ * this device. A restore ignores them when a file has them.
+ */
+export const LOCAL_COLUMNS: Partial<Record<(typeof EXPORT_TABLES)[number], readonly string[]>> = {
+  labels: ["name_key"],
+  topics: ["name_key"],
+  person_tags: ["name_key"],
+};
+
+/** The row without the local columns of its table. */
+export function withoutLocalColumns(table: string, row: Record<string, unknown>): Record<string, unknown> {
+  const local = LOCAL_COLUMNS[table as keyof typeof LOCAL_COLUMNS];
+  if (!local) return row;
+  return Object.fromEntries(Object.entries(row).filter(([name]) => !local.includes(name)));
+}
+
 const README = `# organizer export
 
 This archive is a complete copy of your organizer data (API tokens, the secret and settings of
@@ -52,8 +69,9 @@ this device are left out). Export format 3.
 - manifest.json: app, export format, time of export, app and schema version, row counts per table,
   the attachments (count, bytes, ids of files that were missing on disk) and the id sequences of
   todos and attachments (so a restore never gives out an old id again).
-- data.json: every row of every table with its original id (column names as in the database).
-  This is the file a restore reads. Text is kept exactly as stored, links included.
+- data.json: every row of every table with its original id (column names as in the database,
+  without the name_key columns, which a restore computes again). This is the file a restore reads.
+  Text is kept exactly as stored, links included.
 - attachments/: every uploaded file as <id>-<name>.
 - todos/: one Markdown file per todo (NNNN-title.md): YAML front matter with the main fields
   (also parent, subtasks, links, repeat, previous and next occurrence), then the description and
@@ -249,7 +267,9 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
                 `SELECT * FROM settings WHERE key NOT IN (${LOCAL_SETTING_KEYS.map(() => "?").join(", ")}) ORDER BY rowid`,
               )
               .all(...LOCAL_SETTING_KEYS)
-          : sqlite.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();
+          : (
+              sqlite.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all() as Record<string, unknown>[]
+            ).map((row) => withoutLocalColumns(table, row));
       data[table] = rows;
       counts[table] = rows.length;
     }

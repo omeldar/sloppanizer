@@ -18,8 +18,12 @@ export function compareNames(a: string, b: string): number {
   return lower !== 0 ? lower : a.localeCompare(b, "en");
 }
 
-/** Trimmed and lowercase, for exact name matches ("anna" equals " Anna "). */
-export const foldCase = (text: string): string => text.trim().toLocaleLowerCase("en");
+/**
+ * Trimmed, NFC and lowercase in every script, for exact name matches ("anna" equals " Anna ", "ärzte"
+ * equals "Ärzte"). Also the stored name_key of labels, topics and person tags (refilled at every start
+ * by repairNameKeys, so a change here heals itself).
+ */
+export const foldCase = (text: string): string => text.trim().normalize("NFC").toLocaleLowerCase("en");
 
 /** Lowercase without diacritics, so "muller" finds "Müller". */
 export const foldDiacritics = (text: string): string =>

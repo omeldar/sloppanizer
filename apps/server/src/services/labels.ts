@@ -13,6 +13,7 @@ import { labels, todoLabels, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
 import { recordEvents } from "./events.ts";
+import { foldCase } from "./text.ts";
 
 export type LabelRow = typeof labels.$inferSelect;
 
@@ -39,8 +40,8 @@ export function listLabels(db: Tx): Label[] {
 export function resolveLabels(db: Tx, names: readonly string[]): LabelRow[] {
   if (names.length === 0) return [];
   const byName = new Map<string, LabelRow>();
-  for (const row of db.select().from(labels).all()) byName.set(row.name.toLowerCase(), row);
-  const unknown = names.filter((name) => !byName.has(name.toLowerCase()));
+  for (const row of db.select().from(labels).all()) byName.set(row.nameKey, row);
+  const unknown = names.filter((name) => !byName.has(foldCase(name)));
   if (unknown.length > 0) {
     throw new ApiError(
       "validation_failed",
@@ -48,11 +49,15 @@ export function resolveLabels(db: Tx, names: readonly string[]): LabelRow[] {
       { unknownLabels: unknown },
     );
   }
-  return names.map((name) => byName.get(name.toLowerCase()) as LabelRow);
+  return names.map((name) => byName.get(foldCase(name)) as LabelRow);
 }
 
 function assertNameFree(db: Tx, name: string, exceptId?: number): void {
-  const existing = db.select().from(labels).where(eq(labels.name, name)).get();
+  const existing = db
+    .select()
+    .from(labels)
+    .where(eq(labels.nameKey, foldCase(name)))
+    .get();
   if (existing && existing.id !== exceptId) {
     throw new ApiError("conflict", `A label named "${existing.name}" already exists. Pick another name.`, {
       existing: toLabel(existing),
@@ -68,6 +73,7 @@ export function createLabel(ctx: Ctx, input: CreateLabel): Label {
     .insert(labels)
     .values({
       name: input.name,
+      nameKey: foldCase(input.name),
       scope,
       value,
       color: input.color ?? DEFAULT_LABEL_COLOR,
@@ -183,7 +189,7 @@ export function updateLabel(ctx: Ctx, actor: string, id: number, input: UpdateLa
     if (input.name !== undefined) {
       assertNameFree(tx, input.name, id);
       const { scope, value } = parseLabelName(input.name);
-      Object.assign(patch, { name: input.name, scope, value });
+      Object.assign(patch, { name: input.name, nameKey: foldCase(input.name), scope, value });
       const sameScope =
         scope === null || (current.scope !== null && scopeKey(current.scope) === scopeKey(scope));
       if (!sameScope) conflicts = scopeConflicts(tx, id, scope);

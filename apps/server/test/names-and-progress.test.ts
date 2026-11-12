@@ -38,9 +38,7 @@ describe("topic and tag names", () => {
     expect((await t.call("GET", `/api/v1/people/${p.id}`)).statusCode).toBe(200);
   });
 
-  // BUG: topics.name, person_tags.name and teams use COLLATE NOCASE / lower(), which only folds ASCII
-  // (schema.ts:19, topics.ts:111, person-tags.ts:93). "Ärzte" and "ärzte" become two topics.
-  it.fails("treats topics that differ only in non-ASCII case as one topic", async () => {
+  it("treats topics that differ only in non-ASCII case as one topic", async () => {
     const t = await makeApp();
     await t.create<Person>("/api/v1/people", { firstName: "A", lastName: "B", topics: ["Ärzte"] });
     const second = await t.create<Person>("/api/v1/people", {
@@ -50,6 +48,65 @@ describe("topic and tag names", () => {
     });
     expect(second.topics).toEqual(["Ärzte"]);
     expect(await topics(t)).toMatchObject([{ name: "Ärzte", peopleCount: 2 }]);
+  });
+
+  it("finds and renames topics without non-ASCII case, and refuses a rename onto one", async () => {
+    const t = await makeApp();
+    await t.create<Person>("/api/v1/people", { firstName: "A", lastName: "B", topics: ["Ärzte", "Öl"] });
+    const found = json<Topic[]>(await t.call("GET", `/api/v1/topics?q=${encodeURIComponent("ÄRZ")}`));
+    expect(found.map((x) => x.name)).toEqual(["Ärzte"]);
+    // A decomposed "a + combining umlaut" is the same letter.
+    const decomposed = json<Topic[]>(
+      await t.call("GET", `/api/v1/topics?q=${encodeURIComponent("a\u0308rz")}`),
+    );
+    expect(decomposed.map((x) => x.name)).toEqual(["Ärzte"]);
+    const oil = (await topics(t)).find((x) => x.name === "Öl") as Topic;
+    const clash = await t.call("PATCH", `/api/v1/topics/${oil.id}`, { name: "ÄRZTE" });
+    expect(clash.statusCode).toBe(409);
+    expect((await t.call("PATCH", `/api/v1/topics/${oil.id}`, { name: "öL" })).statusCode).toBe(200);
+    expect((await topics(t)).map((x) => x.name)).toEqual(["Ärzte", "öL"]);
+    const byTopic = json<Person[]>(
+      await t.call("GET", `/api/v1/people?topic=${encodeURIComponent("ärzte")}`),
+    );
+    expect(byTopic).toHaveLength(1);
+  });
+
+  it("keeps person tag and label names unique without non-ASCII case", async () => {
+    const t = await makeApp();
+    await t.create<PersonTag>("/api/v1/person-tags", { name: "Überlegt" });
+    const dupTag = await t.call("POST", "/api/v1/person-tags", { name: "überlegt" });
+    expect(dupTag.statusCode).toBe(409);
+    const p = await t.create<Person>("/api/v1/people", { firstName: "A", lastName: "B", tags: ["ÜBERLEGT"] });
+    expect(p.tags.map((x) => x.name)).toEqual(["Überlegt"]);
+    expect(
+      json<Person[]>(await t.call("GET", `/api/v1/people?tag=${encodeURIComponent("überlegt")}`)),
+    ).toHaveLength(1);
+
+    await t.create("/api/v1/labels", { name: "Ärger" });
+    expect((await t.call("POST", "/api/v1/labels", { name: "ärger" })).statusCode).toBe(409);
+    const todo = await t.create<Todo>("/api/v1/todos", { title: "T", labels: ["ÄRGER"] });
+    expect(todo.labels.map((l) => l.name)).toEqual(["Ärger"]);
+  });
+
+  it("counts teams that differ only in non-ASCII case as one team", async () => {
+    const t = await makeApp();
+    for (const [lastName, team] of [
+      ["A", "Ärzteteam"],
+      ["B", "ärzteteam"],
+      ["C", "ÄRZTETEAM"],
+      ["D", "Pflege"],
+    ]) {
+      // oxlint-disable-next-line no-await-in-loop -- the first stored spelling names the team
+      await t.create<Person>("/api/v1/people", { firstName: "X", lastName, team });
+    }
+    expect(json(await t.call("GET", "/api/v1/teams"))).toEqual([
+      { name: "Ärzteteam", peopleCount: 3 },
+      { name: "Pflege", peopleCount: 1 },
+    ]);
+    const team = json<Person[]>(
+      await t.call("GET", `/api/v1/people?team=${encodeURIComponent("ärzteTEAM")}`),
+    );
+    expect(team.map((x) => x.lastName).toSorted()).toEqual(["A", "B", "C"]);
   });
 
   it("lets a topic change only the case of its own name", async () => {

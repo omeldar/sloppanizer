@@ -15,6 +15,11 @@ import {
 } from "../src/services/export.ts";
 import { makeApp } from "./helpers.ts";
 
+/** Rows as data.json holds them: the derived name keys are left out (a restore refills them). */
+const KEYED = new Set(["labels", "topics", "person_tags"]);
+const asExported = (table: string, rows: unknown[]) =>
+  KEYED.has(table) ? rows.map((row) => ({ ...(row as object), name_key: undefined })) : rows;
+
 describe("GET /export.zip", () => {
   it("contains every row with its original id, valid front matter and no secrets", async () => {
     const t = await makeApp({ now: "2026-11-11T13:04:05.000Z", timeZone: "Europe/Zurich" });
@@ -58,7 +63,7 @@ describe("GET /export.zip", () => {
       format: 3,
       exportedAt: "2026-11-14T13:04:05.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 6,
+      schemaVersion: 7,
       attachments: { count: 0, bytes: 0, missing: [] },
     });
 
@@ -67,7 +72,7 @@ describe("GET /export.zip", () => {
     const sqlite = t.deps.db.$client;
     for (const table of EXPORT_TABLES) {
       const rows = sqlite.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();
-      expect(data[table]).toEqual(rows);
+      expect(data[table]).toEqual(asExported(table, rows));
       expect(manifest.counts[table]).toBe(rows.length);
     }
     expect(data.todos.map((r: { id: number }) => r.id)).toEqual([todo.id, plain.id]);
@@ -245,9 +250,10 @@ describe("export format 3", () => {
     const data = JSON.parse(text("data.json"));
     expect(Object.keys(data)).toEqual([...EXPORT_TABLES]);
     expect(data.search_fts).toBeUndefined();
+    expect(text("data.json")).not.toContain('"name_key"');
     for (const table of EXPORT_TABLES) {
       const rows = sqlite.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();
-      expect(data[table]).toEqual(rows);
+      expect(data[table]).toEqual(asExported(table, rows));
       expect(manifest.counts[table]).toBe(rows.length);
     }
     for (const table of ["topics", "person_tags", "person_topics", "person_tag_links", "notes", "comments"]) {

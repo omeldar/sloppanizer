@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDb } from "../src/db/index.ts";
 import { EXPORT_TABLES } from "../src/services/export.ts";
+import { repairNameKeys } from "../src/services/name-keys.ts";
 import { replaceAllData } from "../src/services/restore-data.ts";
 import { fillEveryTable } from "./fixtures.ts";
 import { makeApp } from "./helpers.ts";
@@ -40,7 +41,11 @@ describe("export data.json", () => {
     roots.push(root);
     const target = openDb(join(root, "fresh.db"));
     const sqlite = target.$client;
-    sqlite.transaction(() => replaceAllData(sqlite, data, manifest.sequences))();
+    // data.json leaves out the derived name keys; a restore refills them right after (as applyRestore does).
+    sqlite.transaction(() => {
+      replaceAllData(sqlite, data, manifest.sequences);
+      expect(repairNameKeys(sqlite)).toBe(0);
+    })();
     expect(sqlite.pragma("foreign_key_check")).toEqual([]);
     const everything = (db: typeof source) =>
       Object.fromEntries(EXPORT_TABLES.map((table) => [table, tableRows(db, table)]));

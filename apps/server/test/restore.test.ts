@@ -55,7 +55,7 @@ describe("restore upload and preview", () => {
       format: 3,
       exportedAt: "2026-11-11T10:00:00.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 6,
+      schemaVersion: 7,
       attachments: { count: 1, bytes: 11, missing: [] },
       warnings: [],
       expiresAt: "2026-11-11T11:00:00.000Z",
@@ -334,6 +334,46 @@ describe("restore apply", () => {
       (await t.call("GET", "/api/v1/restore/backups/organizer-before-restore-20990101-000000.zip"))
         .statusCode,
     ).toBe(404);
+  });
+
+  it("merges names that differ only in non-ASCII case from an older export and ignores name keys in the file", async () => {
+    const t = await makeApp();
+    await fillEveryTable(t);
+    const at = "2026-11-01T10:00:00.000Z";
+    const zip = rework(await exportZip(t), (_m, d) => {
+      const anna = d.people.find((p: { first_name: string }) => p.first_name === "Anna");
+      const bo = d.people.find((p: { first_name: string }) => p.first_name === "Bo");
+      // An export from before the fix could hold both spellings.
+      d.topics.push({ id: 90, name: "Ärzte", created_at: at }, { id: 91, name: "ärzte", created_at: at });
+      d.person_topics.push(
+        { person_id: anna.id, topic_id: 90, created_at: at },
+        { person_id: anna.id, topic_id: 91, created_at: at },
+        { person_id: bo.id, topic_id: 91, created_at: at },
+      );
+      // A key in the file is never trusted: it is computed again.
+      d.labels[0].name_key = "something else";
+    });
+    const preview = json<RestorePreview>(await upload(t, zip));
+    expect(preview.inFile.topics).toBe(3);
+    expect(
+      (await t.call("POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" })).statusCode,
+    ).toBe(200);
+    const topics = json<{ name: string; peopleCount: number }[]>(await t.call("GET", "/api/v1/topics"));
+    expect(topics).toEqual([
+      expect.objectContaining({ name: "Ärzte", peopleCount: 2 }),
+      expect.objectContaining({ name: "dns" }),
+    ]);
+    const labels = t.deps.db.$client.prepare("SELECT name, name_key FROM labels").all() as {
+      name: string;
+      name_key: string;
+    }[];
+    expect(labels.every((l) => l.name_key === l.name.toLowerCase())).toBe(true);
+    // The merged topic is in the search index under the remaining spelling.
+    expect(
+      json<{ counts: { person: number } }>(
+        await t.call("GET", `/api/v1/search?q=${encodeURIComponent("ärzte")}`),
+      ).counts.person,
+    ).toBe(2);
   });
 
   it("keeps the newest 5 safety copies", async () => {

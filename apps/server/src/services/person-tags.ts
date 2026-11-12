@@ -9,7 +9,7 @@ import { personTagLinks, personTags } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
 import { chunks } from "./sql.ts";
-import { compareNames } from "./text.ts";
+import { compareNames, foldCase } from "./text.ts";
 
 export type PersonTagRow = typeof personTags.$inferSelect;
 
@@ -90,9 +90,9 @@ export function resolvePersonTags(db: Tx, names: readonly string[]): PersonTagRo
       .select()
       .from(personTags)
       .all()
-      .map((row) => [row.name.toLowerCase(), row]),
+      .map((row) => [row.nameKey, row]),
   );
-  const unknown = names.filter((name) => !byName.has(name.toLowerCase()));
+  const unknown = names.filter((name) => !byName.has(foldCase(name)));
   if (unknown.length > 0) {
     throw new ApiError(
       "validation_failed",
@@ -100,11 +100,15 @@ export function resolvePersonTags(db: Tx, names: readonly string[]): PersonTagRo
       { unknownTags: unknown },
     );
   }
-  return names.map((name) => byName.get(name.toLowerCase()) as PersonTagRow);
+  return names.map((name) => byName.get(foldCase(name)) as PersonTagRow);
 }
 
 function assertNameFree(db: Tx, name: string, exceptId?: number): void {
-  const existing = db.select().from(personTags).where(eq(personTags.name, name)).get();
+  const existing = db
+    .select()
+    .from(personTags)
+    .where(eq(personTags.nameKey, foldCase(name)))
+    .get();
   if (existing && existing.id !== exceptId) {
     throw new ApiError(
       "conflict",
@@ -123,6 +127,7 @@ export function createPersonTag(ctx: Ctx, input: CreatePersonTag): PersonTag {
     .insert(personTags)
     .values({
       name: input.name,
+      nameKey: foldCase(input.name),
       color: input.color ?? DEFAULT_PERSON_TAG_COLOR,
       description: input.description ?? "",
       createdAt: at,
@@ -138,7 +143,10 @@ export function updatePersonTag(ctx: Ctx, id: number, input: UpdatePersonTag): P
   if (!current) throw notFound("Person tag", id);
   if (input.name !== undefined) assertNameFree(ctx.db, input.name, id);
   const patch: Partial<PersonTagRow> = { updatedAt: now(ctx) };
-  if (input.name !== undefined) patch.name = input.name;
+  if (input.name !== undefined) {
+    patch.name = input.name;
+    patch.nameKey = foldCase(input.name);
+  }
   if (input.color !== undefined) patch.color = input.color;
   if (input.description !== undefined) patch.description = input.description;
   const row = ctx.db.update(personTags).set(patch).where(eq(personTags.id, id)).returning().get();

@@ -118,7 +118,7 @@ export function findNamesakes(db: Tx, firstName: string, lastName: string): Pers
     .filter((row) => foldCase(row.firstName) === first && foldCase(row.lastName) === last);
 }
 
-const lowerAll = (names: readonly string[]): string[] => names.map((n) => n.toLowerCase());
+const foldAll = (names: readonly string[]): string[] => names.map(foldCase);
 
 export const byName = (
   a: Pick<Person, "id" | "firstName" | "lastName">,
@@ -147,16 +147,16 @@ export interface PersonFilters {
 export function filterPeople(list: readonly Person[], filters: PersonFilters): Person[] {
   let out = [...list];
   if (filters.topic) {
-    const wanted = lowerAll(filters.topic);
-    out = out.filter((p) => wanted.every((t) => lowerAll(p.topics).includes(t)));
+    const wanted = foldAll(filters.topic);
+    out = out.filter((p) => wanted.every((t) => foldAll(p.topics).includes(t)));
   }
   if (filters.tag) {
-    const wanted = lowerAll(filters.tag);
-    out = out.filter((p) => wanted.every((t) => lowerAll(p.tags.map((tag) => tag.name)).includes(t)));
+    const wanted = foldAll(filters.tag);
+    out = out.filter((p) => wanted.every((t) => foldAll(p.tags.map((tag) => tag.name)).includes(t)));
   }
   if (filters.team) {
-    const team = filters.team.toLowerCase();
-    out = out.filter((p) => p.team.toLowerCase() === team);
+    const team = foldCase(filters.team);
+    out = out.filter((p) => foldCase(p.team) === team);
   }
   return out;
 }

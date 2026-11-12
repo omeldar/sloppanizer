@@ -17,7 +17,11 @@ import {
  * Database schema. Every change goes through a migration (`pnpm --filter @organizer/server db:generate`).
  * Timestamps are ISO 8601 UTC strings with milliseconds, calendar dates are `YYYY-MM-DD`.
  * labels.name, topics.name and person_tags.name are COLLATE NOCASE: drizzle-kit cannot express that,
- * so the migration SQL adds it by hand. The search index (search_fts, FTS5) lives only in a custom
+ * so the migration SQL adds it by hand. NOCASE folds ASCII only, so these tables also have name_key
+ * (services/text.ts foldCase: NFC and lowercase for every script), unique, set by the services on every
+ * write. In the database name_key may be NULL (migration 0006 adds it to filled tables, a restore leaves
+ * it out); services/name-keys.ts repairNameKeys fills it and merges duplicates at every start and after
+ * a restore. The schema says notNull so that every insert has to set it. The search index (search_fts, FTS5) lives only in a custom
  * migration; services/search-index.ts keeps it up to date.
  */
 
@@ -35,6 +39,7 @@ export const projects = sqliteTable("projects", {
 export const labels = sqliteTable("labels", {
   id: integer("id").primaryKey(),
   name: text("name").notNull().unique(),
+  nameKey: text("name_key").notNull().unique(),
   scope: text("scope"),
   value: text("value").notNull(),
   color: text("color").notNull(),
@@ -67,6 +72,7 @@ export const people = sqliteTable(
 export const topics = sqliteTable("topics", {
   id: integer("id").primaryKey(),
   name: text("name").notNull().unique(),
+  nameKey: text("name_key").notNull().unique(),
   createdAt: text("created_at").notNull(),
 });
 
@@ -88,6 +94,7 @@ export const personTopics = sqliteTable(
 export const personTags = sqliteTable("person_tags", {
   id: integer("id").primaryKey(),
   name: text("name").notNull().unique(),
+  nameKey: text("name_key").notNull().unique(),
   color: text("color").notNull().default("#8B95A5"),
   description: text("description").notNull().default(""),
   createdAt: text("created_at").notNull(),
