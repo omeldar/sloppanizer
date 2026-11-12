@@ -63,7 +63,7 @@ describe("migrations from a step 1 database", () => {
 
     const db = openDb(file);
     const raw = db.$client;
-    expect(schemaVersion(db)).toBe(7);
+    expect(schemaVersion(db)).toBe(8);
     expect(
       raw.prepare("SELECT todo_id, person_id, role FROM todo_people ORDER BY todo_id, person_id").all(),
     ).toEqual([
@@ -178,7 +178,7 @@ describe("migration 0005 on a step 2 database", () => {
 
     const db = openDb(file);
     const raw = db.$client;
-    expect(schemaVersion(db)).toBe(7);
+    expect(schemaVersion(db)).toBe(8);
     expect(
       raw.prepare("SELECT id, parent_id, recurrence, recurrence_prev_id FROM todos ORDER BY id").all(),
     ).toEqual([
@@ -252,7 +252,7 @@ describe("migration 0006 and the name key repair on a step 3 database", () => {
 
     const db = openDb(file);
     const raw = db.$client;
-    expect(schemaVersion(db)).toBe(7);
+    expect(schemaVersion(db)).toBe(8);
     expect(raw.prepare("SELECT count(*) AS n FROM topics WHERE name_key IS NULL").get()).toEqual({ n: 3 });
     expect(repairNameKeys(raw)).toBe(3);
 
@@ -305,6 +305,58 @@ describe("migration 0006 and the name key repair on a step 3 database", () => {
       { id: 1, name_key: "dns" },
       { id: 2, name_key: "vpn" },
     ]);
+    db.$client.close();
+  });
+});
+
+const at = (minute: number) => `2026-11-01T10:${String(minute).padStart(2, "0")}:00.000Z`;
+
+describe("migration 0007 on a database with comments", () => {
+  it("marks session comments and links token comments to the token that was active when they were written", () => {
+    const { file, sqlite } = olderDatabase([
+      "0000_init",
+      "0001_seed_priority_labels",
+      "0002_step2_contacts_threads_notes",
+      "0003_backfill_people_event_roles",
+      "0004_search_index",
+      "0005_step3_subtasks_links_repeats",
+      "0006_name_keys",
+    ]);
+    // "bot" 1 was revoked at minute 5, when "bot" 2 was made with the same name.
+    sqlite.exec(`
+      INSERT INTO api_tokens (id, name, prefix, token_hash, scope, created_at, revoked_at) VALUES
+        (1, 'bot', 'org_a', 'h1', 'write', '${at(0)}', '${at(5)}'),
+        (2, 'bot', 'org_b', 'h2', 'write', '${at(5)}', NULL),
+        (3, 'reader', 'org_c', 'h3', 'read', '${at(0)}', NULL);
+      INSERT INTO todos (id, title, created_at, updated_at, last_activity_at) VALUES (1, 'T', '${T}', '${T}', '${T}');
+      INSERT INTO comments (id, todo_id, actor, body_md, created_at, updated_at) VALUES
+        (1, 1, 'you', 'session', '${at(1)}', '${at(1)}'),
+        (2, 1, 'bot', 'old bot', '${at(3)}', '${at(3)}'),
+        (3, 1, 'bot', 'new bot', '${at(7)}', '${at(7)}'),
+        (4, 1, 'ghost', 'no such token', '${at(2)}', '${at(2)}'),
+        (5, 1, 'bot', 'before any bot', '2026-11-01T09:00:00.000Z', '2026-11-01T09:00:00.000Z');
+    `);
+    sqlite.close();
+
+    const db = openDb(file);
+    const raw = db.$client;
+    expect(schemaVersion(db)).toBe(8);
+    expect(
+      raw.prepare("SELECT id, actor, author_kind, author_token_id FROM comments ORDER BY id").all(),
+    ).toEqual([
+      { id: 1, actor: "you", author_kind: "session", author_token_id: null },
+      { id: 2, actor: "bot", author_kind: "token", author_token_id: 1 },
+      { id: 3, actor: "bot", author_kind: "token", author_token_id: 2 },
+      { id: 4, actor: "ghost", author_kind: "token", author_token_id: null },
+      { id: 5, actor: "bot", author_kind: "token", author_token_id: null },
+    ]);
+    expect(() => raw.prepare("UPDATE comments SET author_kind = 'robot' WHERE id = 1").run()).toThrow(
+      /CHECK/,
+    );
+    expect(() => raw.prepare("UPDATE comments SET author_token_id = 99 WHERE id = 2").run()).toThrow(
+      /FOREIGN KEY/,
+    );
+    expect(raw.pragma("foreign_key_check")).toEqual([]);
     db.$client.close();
   });
 });

@@ -140,7 +140,7 @@ export function registerSecurity(app: FastifyInstance, options: SecurityOptions)
           "The API token is not valid, revoked or expired. Create a new one in the settings.",
         );
       }
-      request.auth = { actor: token.name, via: "token", scope: token.scope };
+      request.auth = { actor: token.name, via: "token", tokenId: token.id, scope: token.scope };
     } else if (hasValidSession(request)) {
       request.auth = { actor: "you", via: "session", scope: "write" };
     } else {

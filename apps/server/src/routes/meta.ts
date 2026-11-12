@@ -16,7 +16,7 @@ export function metaRoutes(app: App, deps: Deps): void {
     async (request) => {
       const auth = request.auth;
       if (!auth) throw new Error("auth missing after the security hook");
-      return auth;
+      return { actor: auth.actor, via: auth.via, scope: auth.scope };
     },
   );
 }

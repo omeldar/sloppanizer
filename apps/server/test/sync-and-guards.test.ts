@@ -132,10 +132,10 @@ describe("folder export retention", () => {
   });
 });
 
-describe("comment ownership by token name", () => {
-  it("passes the comments of a revoked token to a new token with the same name, and to no other", async () => {
-    // Ownership is the actor name. A revoked token's name can be reused, and then the new token owns the
-    // old comments. This pins down that known trade-off so a change to it is a decision, not an accident.
+describe("comment ownership by token id", () => {
+  it("keeps the comments of a revoked token from a new token with the same name", async () => {
+    // Ownership is the token id, not its name: a revoked token's name can be reused, and the new token
+    // must not take over the old comments. Only the session may change them now.
     const t = await makeApp();
     const todo = await t.create<Todo>("/api/v1/todos", { title: "T" });
     const first = await t.create<{ raw: string; token: { id: number } }>("/api/v1/tokens", {
@@ -145,6 +145,10 @@ describe("comment ownership by token name", () => {
     const mine = json<Comment>(
       await t.withToken(first.raw, "POST", `/api/v1/todos/${todo.id}/comments`, { bodyMd: "old" }),
     );
+    expect(mine.actor).toBe("bot");
+    expect(
+      (await t.withToken(first.raw, "PATCH", `/api/v1/comments/${mine.id}`, { bodyMd: "edited" })).statusCode,
+    ).toBe(200);
     await t.call("DELETE", `/api/v1/tokens/${first.token.id}`);
     const second = await t.create<{ raw: string }>("/api/v1/tokens", { name: "bot", scope: "write" });
     const other = t.token("other", "write");
@@ -154,9 +158,69 @@ describe("comment ownership by token name", () => {
     expect(
       (await t.withToken(first.raw, "PATCH", `/api/v1/comments/${mine.id}`, { bodyMd: "x" })).statusCode,
     ).toBe(401);
+    const takeover = await t.withToken(second.raw, "PATCH", `/api/v1/comments/${mine.id}`, { bodyMd: "x" });
+    expect(takeover.statusCode).toBe(403);
+    expect((await t.withToken(second.raw, "DELETE", `/api/v1/comments/${mine.id}`)).statusCode).toBe(403);
+    // The new token owns what it writes itself; the session may change any comment.
+    const own = json<Comment>(
+      await t.withToken(second.raw, "POST", `/api/v1/todos/${todo.id}/comments`, { bodyMd: "new" }),
+    );
     expect(
-      (await t.withToken(second.raw, "PATCH", `/api/v1/comments/${mine.id}`, { bodyMd: "new owner" }))
-        .statusCode,
+      (await t.withToken(second.raw, "PATCH", `/api/v1/comments/${own.id}`, { bodyMd: "new 2" })).statusCode,
     ).toBe(200);
+    expect((await t.call("PATCH", `/api/v1/comments/${mine.id}`, { bodyMd: "by you" })).statusCode).toBe(200);
+    expect(
+      json<Comment[]>(await t.call("GET", `/api/v1/todos/${todo.id}/comments`)).map((c) => c.actor),
+    ).toEqual(["bot", "bot"]);
+  });
+
+  it("never lets a token change a comment of the session", async () => {
+    const t = await makeApp();
+    const todo = await t.create<Todo>("/api/v1/todos", { title: "T" });
+    const c = await t.create<Comment>(`/api/v1/todos/${todo.id}/comments`, { bodyMd: "mine" });
+    const raw = t.token("helper", "write");
+    expect((await t.withToken(raw, "PATCH", `/api/v1/comments/${c.id}`, { bodyMd: "x" })).statusCode).toBe(
+      403,
+    );
+  });
+
+  it("links restored token comments to the token of this device that wrote them, never to a newer namesake", async () => {
+    const t = await makeApp();
+    const todo = await t.create<Todo>("/api/v1/todos", { title: "T" });
+    const bot = await t.create<{ raw: string; token: { id: number } }>("/api/v1/tokens", {
+      name: "bot",
+      scope: "write",
+    });
+    t.advance(1000);
+    const byBot = json<Comment>(
+      await t.withToken(bot.raw, "POST", `/api/v1/todos/${todo.id}/comments`, { bodyMd: "by bot" }),
+    );
+    const zip = (await t.call("GET", "/api/v1/export.zip")).rawPayload;
+    const restore = async () => {
+      const preview = json<RestorePreview>(
+        await t.call("POST", "/api/v1/restore?name=x.zip", zip, { "content-type": "application/zip" }),
+      );
+      const res = await t.call("POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" });
+      expect(res.statusCode).toBe(200);
+    };
+    const patchAs = async (raw: string) =>
+      (await t.withToken(raw, "PATCH", `/api/v1/comments/${byBot.id}`, { bodyMd: `edit ${raw.slice(-4)}` }))
+        .statusCode;
+
+    // Same device, token still active: it owns its comment again.
+    t.advance(1000);
+    await restore();
+    expect(await patchAs(bot.raw)).toBe(200);
+
+    // The token is revoked and a new "bot" is made after the comment was written: no takeover.
+    t.advance(1000);
+    await t.call("DELETE", `/api/v1/tokens/${bot.token.id}`);
+    const newer = await t.create<{ raw: string }>("/api/v1/tokens", { name: "bot", scope: "write" });
+    t.advance(1000);
+    await restore();
+    expect(await patchAs(newer.raw)).toBe(403);
+    expect((await t.call("PATCH", `/api/v1/comments/${byBot.id}`, { bodyMd: "by you" })).statusCode).toBe(
+      200,
+    );
   });
 });

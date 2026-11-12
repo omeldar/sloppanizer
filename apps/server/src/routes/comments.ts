@@ -2,7 +2,7 @@ import { Activity, API_PREFIX, Comment, CreateComment, IdParams, UpdateComment }
 import { z } from "zod";
 import { getActivity } from "../services/activity.ts";
 import { createComment, deleteComment, listComments, updateComment } from "../services/comments.ts";
-import { actorOf, authOf, type App, type Deps } from "./types.ts";
+import { authOf, type App, type Deps } from "./types.ts";
 
 export function commentRoutes(app: App, deps: Deps): void {
   const tags = ["comments"];
@@ -35,7 +35,7 @@ export function commentRoutes(app: App, deps: Deps): void {
       },
     },
     async (request, reply) =>
-      reply.status(201).send(createComment(deps, actorOf(request), request.params.id, request.body.bodyMd)),
+      reply.status(201).send(createComment(deps, authOf(request), request.params.id, request.body.bodyMd)),
   );
   app.patch(
     `${API_PREFIX}/comments/:id`,

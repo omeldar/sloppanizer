@@ -15,10 +15,17 @@ import {
 } from "../src/services/export.ts";
 import { makeApp } from "./helpers.ts";
 
-/** Rows as data.json holds them: the derived name keys are left out (a restore refills them). */
-const KEYED = new Set(["labels", "topics", "person_tags"]);
-const asExported = (table: string, rows: unknown[]) =>
-  KEYED.has(table) ? rows.map((row) => ({ ...(row as object), name_key: undefined })) : rows;
+/** Rows as data.json holds them: name keys and comment token ids are left out (a restore links them again). */
+const LEFT_OUT: Record<string, string> = {
+  labels: "name_key",
+  topics: "name_key",
+  person_tags: "name_key",
+  comments: "author_token_id",
+};
+const asExported = (table: string, rows: unknown[]) => {
+  const column = LEFT_OUT[table];
+  return column ? rows.map((row) => ({ ...(row as object), [column]: undefined })) : rows;
+};
 
 describe("GET /export.zip", () => {
   it("contains every row with its original id, valid front matter and no secrets", async () => {
@@ -63,7 +70,7 @@ describe("GET /export.zip", () => {
       format: 3,
       exportedAt: "2026-11-14T13:04:05.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 7,
+      schemaVersion: 8,
       attachments: { count: 0, bytes: 0, missing: [] },
     });
 
@@ -251,6 +258,8 @@ describe("export format 3", () => {
     expect(Object.keys(data)).toEqual([...EXPORT_TABLES]);
     expect(data.search_fts).toBeUndefined();
     expect(text("data.json")).not.toContain('"name_key"');
+    expect(text("data.json")).not.toContain('"author_token_id"');
+    expect(data.comments.every((c: object) => "author_kind" in c)).toBe(true);
     for (const table of EXPORT_TABLES) {
       const rows = sqlite.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();
       expect(data[table]).toEqual(asExported(table, rows));

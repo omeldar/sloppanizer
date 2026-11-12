@@ -50,6 +50,13 @@
       "when": 1794494115908,
       "tag": "0006_name_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1794494518260,
+      "tag": "0007_comment_authors",
+      "breakpoints": true
     }
   ]
 }

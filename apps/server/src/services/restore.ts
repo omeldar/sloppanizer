@@ -21,6 +21,7 @@ import { ApiError } from "../http/errors.ts";
 import { now } from "./context.ts";
 import { attachmentFileName, buildExport, EXPORT_TABLES, fileStamp } from "./export.ts";
 import { type FolderDeps, freeName, writeFileAtomically } from "./folder-export.ts";
+import { linkCommentAuthors } from "./comments.ts";
 import { repairScopeConflicts } from "./labels.ts";
 import { repairNameKeys } from "./name-keys.ts";
 import { type ExportData, replaceAllData, RowError, type Sequences, tableColumns } from "./restore-data.ts";
@@ -576,6 +577,7 @@ export async function applyRestore(deps: RestoreDeps, uploadId: string): Promise
     sqlite.transaction(() => {
       replaceAllData(sqlite, archive.data, archive.manifest.sequences);
       repairNameKeys(sqlite);
+      linkCommentAuthors(sqlite);
       repairScopeConflicts(deps);
       rebuildSearchIndex(deps.db);
       const broken = sqlite.pragma("foreign_key_check") as unknown[];

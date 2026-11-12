@@ -55,7 +55,7 @@ describe("restore upload and preview", () => {
       format: 3,
       exportedAt: "2026-11-11T10:00:00.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 7,
+      schemaVersion: 8,
       attachments: { count: 1, bytes: 11, missing: [] },
       warnings: [],
       expiresAt: "2026-11-11T11:00:00.000Z",
@@ -408,6 +408,8 @@ describe("restore apply", () => {
         delete row.recurrence;
         delete row.recurrence_prev_id;
       }
+      // Older files name the comment author only; "you" is the session.
+      for (const row of d.comments) delete row.author_kind;
       // Two priority labels on one todo, as an old rename could leave it.
       const high = d.labels.find((l: { name: string }) => l.name === "priority::high");
       const low = d.labels.find((l: { name: string }) => l.name === "priority::low");
@@ -423,6 +425,9 @@ describe("restore apply", () => {
     const rack = json<{ items: Todo[] }>(await t.call("GET", "/api/v1/todos?q=Rack")).items[0];
     expect(rack?.labels.map((l) => l.name)).toEqual(["priority::high", "homelab"]);
     expect(t.deps.db.$client.prepare("SELECT count(*) AS n FROM todo_links").get()).toEqual({ n: 0 });
+    expect(t.deps.db.$client.prepare("SELECT DISTINCT actor, author_kind FROM comments").all()).toEqual([
+      { actor: "you", author_kind: "session" },
+    ]);
 
     const format1 = zipSync({
       "manifest.json": strToU8(

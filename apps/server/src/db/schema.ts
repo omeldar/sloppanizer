@@ -234,14 +234,26 @@ export const comments = sqliteTable(
     todoId: integer("todo_id")
       .notNull()
       .references(() => todos.id, { onDelete: "cascade" }),
+    /** Display name of the author at the time of writing ("you" for the session, else the token name). */
     actor: text("actor").notNull(),
     bodyMd: text("body_md").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
     editedAt: text("edited_at"),
+    /**
+     * Who wrote it: the browser session or an API token (author_token_id, owner of the comment). The id
+     * is only valid on this device: it is left out of exports and linked again after a restore. NULL
+     * for a token comment means no token owns it any more (only the session may change it). The
+     * migration SQL gives author_kind DEFAULT 'token' (needed to add the column); inserts set it.
+     */
+    authorKind: text("author_kind", { enum: ["session", "token"] }).notNull(),
+    authorTokenId: integer("author_token_id").references((): AnySQLiteColumn => apiTokens.id, {
+      onDelete: "set null",
+    }),
   },
   (t) => [
     check("comments_body_check", sql`length(${t.bodyMd}) BETWEEN 1 AND 50000`),
+    check("comments_author_kind_check", sql`${t.authorKind} IN ('session','token')`),
     index("comments_todo_idx").on(t.todoId, t.createdAt),
   ],
 );

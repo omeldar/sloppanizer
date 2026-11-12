@@ -52,6 +52,7 @@ export const LOCAL_COLUMNS: Partial<Record<(typeof EXPORT_TABLES)[number], reado
   labels: ["name_key"],
   topics: ["name_key"],
   person_tags: ["name_key"],
+  comments: ["author_token_id"],
 };
 
 /** The row without the local columns of its table. */
@@ -70,7 +71,8 @@ this device are left out). Export format 3.
   the attachments (count, bytes, ids of files that were missing on disk) and the id sequences of
   todos and attachments (so a restore never gives out an old id again).
 - data.json: every row of every table with its original id (column names as in the database,
-  without the name_key columns, which a restore computes again). This is the file a restore reads.
+  without name_key and comments.author_token_id, which a restore links again). This is the file a
+  restore reads.
   Text is kept exactly as stored, links included.
 - attachments/: every uploaded file as <id>-<name>.
 - todos/: one Markdown file per todo (NNNN-title.md): YAML front matter with the main fields
