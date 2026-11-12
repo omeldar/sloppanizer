@@ -12,8 +12,8 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-/** A database in the step 1 state (migrations 0000 and 0001 only), as an installed step 1 app has it. */
-function step1Database(): { file: string; sqlite: Database.Database } {
+/** A database migrated up to the first `count` journal entries, as an older installed app has it. */
+function olderDatabase(tags: readonly string[]): { file: string; sqlite: Database.Database } {
   const root = mkdtempSync(join(tmpdir(), "organizer-migrate-"));
   roots.push(root);
   const folder = join(root, "drizzle");
@@ -21,8 +21,8 @@ function step1Database(): { file: string; sqlite: Database.Database } {
   const journal = JSON.parse(readFileSync(join(MIGRATIONS_DIR, "meta", "_journal.json"), "utf8")) as {
     entries: { tag: string }[];
   };
-  const step1 = journal.entries.slice(0, 2);
-  expect(step1.map((e) => e.tag)).toEqual(["0000_init", "0001_seed_priority_labels"]);
+  const step1 = journal.entries.slice(0, tags.length);
+  expect(step1.map((e) => e.tag)).toEqual(tags);
   for (const entry of step1)
     copyFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`));
   writeFileSync(join(folder, "meta", "_journal.json"), JSON.stringify({ ...journal, entries: step1 }));
@@ -32,6 +32,9 @@ function step1Database(): { file: string; sqlite: Database.Database } {
   migrate(drizzle(sqlite), { migrationsFolder: folder });
   return { file, sqlite };
 }
+
+/** Step 1 state: migrations 0000 and 0001 only. */
+const step1Database = () => olderDatabase(["0000_init", "0001_seed_priority_labels"]);
 
 const T = "2026-11-01T10:00:00.000Z";
 
@@ -59,7 +62,7 @@ describe("migrations from a step 1 database", () => {
 
     const db = openDb(file);
     const raw = db.$client;
-    expect(schemaVersion(db)).toBe(5);
+    expect(schemaVersion(db)).toBe(6);
     expect(
       raw.prepare("SELECT todo_id, person_id, role FROM todo_people ORDER BY todo_id, person_id").all(),
     ).toEqual([
@@ -150,6 +153,70 @@ describe("migrations from a step 1 database", () => {
     const second = insert.run(T).lastInsertRowid;
     db.$client.prepare("DELETE FROM attachments WHERE id = ?").run(second);
     expect(insert.run(T).lastInsertRowid).toBe(3);
+    db.$client.close();
+  });
+});
+
+describe("migration 0005 on a step 2 database", () => {
+  it("keeps rows, adds repeat columns and links, and enforces their rules", () => {
+    const { file, sqlite } = olderDatabase([
+      "0000_init",
+      "0001_seed_priority_labels",
+      "0002_step2_contacts_threads_notes",
+      "0003_backfill_people_event_roles",
+      "0004_search_index",
+    ]);
+    sqlite.exec(`
+      INSERT INTO todos (id, parent_id, title, created_at, updated_at, last_activity_at) VALUES
+        (1, NULL, 'Parent', '${T}', '${T}', '${T}'),
+        (2, 1, 'Child', '${T}', '${T}', '${T}'),
+        (3, NULL, 'Other', '${T}', '${T}', '${T}');
+      INSERT INTO comments (id, todo_id, actor, body_md, created_at, updated_at) VALUES (1, 2, 'you', 'hi', '${T}', '${T}');
+    `);
+    sqlite.close();
+
+    const db = openDb(file);
+    const raw = db.$client;
+    expect(schemaVersion(db)).toBe(6);
+    expect(
+      raw.prepare("SELECT id, parent_id, recurrence, recurrence_prev_id FROM todos ORDER BY id").all(),
+    ).toEqual([
+      { id: 1, parent_id: null, recurrence: null, recurrence_prev_id: null },
+      { id: 2, parent_id: 1, recurrence: null, recurrence_prev_id: null },
+      { id: 3, parent_id: null, recurrence: null, recurrence_prev_id: null },
+    ]);
+    expect(raw.prepare("SELECT count(*) AS n FROM comments").get()).toEqual({ n: 1 });
+    // The repeat rule must be JSON; one next occurrence per todo.
+    expect(() => raw.prepare("UPDATE todos SET recurrence = 'weekly' WHERE id = 1").run()).toThrow(/CHECK/);
+    raw
+      .prepare(`UPDATE todos SET recurrence = '{"every":"week"}', recurrence_prev_id = NULL WHERE id = 1`)
+      .run();
+    raw.prepare("UPDATE todos SET recurrence_prev_id = 1 WHERE id = 3").run();
+    expect(() => raw.prepare("UPDATE todos SET recurrence_prev_id = 1 WHERE id = 2").run()).toThrow(/UNIQUE/);
+    // Links: no self links, one row per pair and kind, cascade on delete.
+    const link = raw.prepare(
+      "INSERT INTO todo_links (from_id, to_id, kind, created_by, created_at) VALUES (?, ?, ?, 'you', ?)",
+    );
+    link.run(1, 3, "blocks", T);
+    link.run(1, 3, "relates", T);
+    expect(() => link.run(1, 3, "blocks", T)).toThrow(/UNIQUE/);
+    expect(() => link.run(2, 2, "relates", T)).toThrow(/CHECK/);
+    expect(() => link.run(2, 3, "parent", T)).toThrow(/CHECK/);
+    expect(() => link.run(2, 99, "blocks", T)).toThrow(/FOREIGN KEY/);
+    expect(raw.pragma("foreign_key_check")).toEqual([]);
+    // Deleting a todo: links go, the next occurrence forgets it, children become top level.
+    raw.prepare("DELETE FROM todos WHERE id = 1").run();
+    expect(raw.prepare("SELECT count(*) AS n FROM todo_links").get()).toEqual({ n: 0 });
+    expect(raw.prepare("SELECT id, parent_id, recurrence_prev_id FROM todos ORDER BY id").all()).toEqual([
+      { id: 2, parent_id: null, recurrence_prev_id: null },
+      { id: 3, parent_id: null, recurrence_prev_id: null },
+    ]);
+    const indexes = raw
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('todos_parent_idx', 'todos_recurrence_prev_idx', 'todo_links_to_idx') ORDER BY name",
+      )
+      .all();
+    expect(indexes).toHaveLength(3);
     db.$client.close();
   });
 });

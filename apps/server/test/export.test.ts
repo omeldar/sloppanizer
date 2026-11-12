@@ -58,7 +58,7 @@ describe("GET /export.zip", () => {
       format: 2,
       exportedAt: "2026-11-14T13:04:05.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 5,
+      schemaVersion: 6,
       attachments: { count: 0, bytes: 0, missing: [] },
     });
 

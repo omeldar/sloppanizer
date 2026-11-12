@@ -9,6 +9,8 @@ import {
   real,
   sqliteTable,
   text,
+  unique,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
 /**
@@ -124,12 +126,49 @@ export const todos = sqliteTable(
     updatedAt: text("updated_at").notNull(),
     doneAt: text("done_at"),
     lastActivityAt: text("last_activity_at").notNull(),
+    /** The repeat rule as JSON (RecurrenceRule), or null. 0005 adds CHECK json_valid by hand. */
+    recurrence: text("recurrence"),
+    /** The occurrence this todo was created from when the previous one was marked done. */
+    recurrencePrevId: integer("recurrence_prev_id").references((): AnySQLiteColumn => todos.id, {
+      onDelete: "set null",
+    }),
   },
   (t) => [
     check("todos_status_check", sql`${t.status} IN ('open','in_progress','blocked','done')`),
     check("todos_title_check", sql`length(${t.title}) BETWEEN 1 AND 300`),
     index("todos_project_idx").on(t.projectId),
     index("todos_status_idx").on(t.status),
+    index("todos_parent_idx").on(t.parentId),
+    // One next occurrence per todo, also against double clicks and races.
+    uniqueIndex("todos_recurrence_prev_idx")
+      .on(t.recurrencePrevId)
+      .where(sql`${t.recurrencePrevId} IS NOT NULL`),
+  ],
+);
+
+/**
+ * Links between todos. "blocks": from_id blocks to_id. "relates" has no direction and is stored
+ * with from_id < to_id, so a pair has one row.
+ */
+export const todoLinks = sqliteTable(
+  "todo_links",
+  {
+    id: integer("id").primaryKey(),
+    fromId: integer("from_id")
+      .notNull()
+      .references(() => todos.id, { onDelete: "cascade" }),
+    toId: integer("to_id")
+      .notNull()
+      .references(() => todos.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["blocks", "relates"] }).notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    check("todo_links_kind_check", sql`${t.kind} IN ('blocks','relates')`),
+    check("todo_links_self_check", sql`${t.fromId} <> ${t.toId}`),
+    unique("todo_links_pair_unique").on(t.fromId, t.toId, t.kind),
+    index("todo_links_to_idx").on(t.toId),
   ],
 );
 
