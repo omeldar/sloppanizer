@@ -165,6 +165,21 @@ describe("tokens", () => {
     expect((await t.withToken(raw, "GET", "/api/v1/me")).json().actor).toBe("cli");
   });
 
+  it("reserves the name you and keeps active token names unique", async () => {
+    const t = await makeApp();
+    const reserved = await t.call("POST", "/api/v1/tokens", { name: " You ", scope: "write" });
+    expect(reserved.statusCode).toBe(422);
+    expect(reserved.json().error.message).toContain('"you" is reserved');
+    const first = await t.call("POST", "/api/v1/tokens", { name: "mcp", scope: "write" });
+    expect(first.statusCode).toBe(201);
+    const again = await t.call("POST", "/api/v1/tokens", { name: "MCP", scope: "read" });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error.message).toContain('A token named "mcp" exists already');
+    expect(() => t.token("you", "write")).toThrow(/reserved/);
+    await t.call("DELETE", `/api/v1/tokens/${first.json().token.id}`);
+    expect((await t.call("POST", "/api/v1/tokens", { name: "mcp", scope: "write" })).statusCode).toBe(201);
+  });
+
   it("rejects revoked, expired and unknown tokens (401)", async () => {
     const t = await makeApp();
     const created = (await t.call("POST", "/api/v1/tokens", { name: "old", scope: "write" })).json();

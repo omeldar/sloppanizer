@@ -1,9 +1,16 @@
 import { createHash, randomInt } from "node:crypto";
-import { type ApiToken, TOKEN_PATTERN, TOKEN_PREFIX_LENGTH, type TokenScope } from "@organizer/shared";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import {
+  type ApiToken,
+  SESSION_ACTOR,
+  TOKEN_PATTERN,
+  TOKEN_PREFIX_LENGTH,
+  type TokenScope,
+} from "@organizer/shared";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { Clock } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import { apiTokens } from "../db/schema.ts";
+import { ApiError } from "../http/errors.ts";
 
 const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 /** last_used_at is written at most this often per token. */
@@ -38,6 +45,21 @@ export interface NewToken {
 
 /** Creates a token and returns the raw value once; only its sha256 hash is stored. */
 export function createToken(db: Db, clock: Clock, input: NewToken): { token: ApiToken; raw: string } {
+  // Comments and history name the actor by token name, so names must not be shared or look like the session.
+  if (input.name.trim().toLowerCase() === SESSION_ACTOR) {
+    throw new ApiError("validation_failed", 'The name "you" is reserved for the browser session.');
+  }
+  const taken = db
+    .select({ name: apiTokens.name })
+    .from(apiTokens)
+    .where(and(isNull(apiTokens.revokedAt), sql`lower(${apiTokens.name}) = lower(${input.name.trim()})`))
+    .get();
+  if (taken) {
+    throw new ApiError(
+      "conflict",
+      `A token named "${taken.name}" exists already. Pick another name, or revoke that token first.`,
+    );
+  }
   const raw = generateRawToken();
   const row = db
     .insert(apiTokens)

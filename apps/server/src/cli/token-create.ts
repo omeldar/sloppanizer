@@ -35,7 +35,14 @@ export function main(argv: string[]): number {
   ensureDataDir(config.dataDir);
   const db = openDb(join(config.dataDir, DB_FILE));
   try {
-    const { token, raw } = createToken(db, systemClock, { name, scope: scope.data });
+    let created;
+    try {
+      created = createToken(db, systemClock, { name, scope: scope.data });
+    } catch (error) {
+      console.error((error as Error).message);
+      return 2;
+    }
+    const { token, raw } = created;
     if (values.out) {
       writePrivateFile(values.out, `${raw}\n`);
       console.log(

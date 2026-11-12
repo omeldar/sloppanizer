@@ -307,8 +307,20 @@ export const UpdateNote = z
   .superRefine((value, ctx) => checkNotEmpty(ctx, value));
 export type UpdateNote = z.infer<typeof UpdateNote>;
 
+/** The actor name of the browser session; no token may use it. */
+export const SESSION_ACTOR = "you";
+
 export const CreateToken = z.strictObject({
-  name: z.string().trim().min(1, "Give the token a name.").max(100),
+  /** Unique among active tokens (case-insensitive); "you" is reserved for the browser session. */
+  name: z
+    .string()
+    .trim()
+    .min(1, "Give the token a name.")
+    .max(100)
+    .refine(
+      (name) => name.toLowerCase() !== SESSION_ACTOR,
+      'The name "you" is reserved for the browser session.',
+    ),
   scope: TokenScope,
   expiresAt: Timestamp.nullable().optional(),
 });
