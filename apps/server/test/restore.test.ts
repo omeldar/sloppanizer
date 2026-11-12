@@ -62,7 +62,7 @@ describe("restore upload and preview", () => {
     });
     expect(preview.uploadId).toMatch(/^[0-9a-f]{32}$/);
     expect(preview.inFile).toEqual(preview.now);
-    expect(preview.inFile.todos).toBe(2);
+    expect(preview.inFile.todos).toBe(4);
     expect(json<RestorePreview>(await t.call("GET", `/api/v1/restore/${preview.uploadId}`))).toEqual(preview);
     const staged = join(t.dataDir, "restore", `${preview.uploadId}.zip`);
     expect(statSync(staged).mode & 0o777).toBe(0o600);
@@ -136,7 +136,7 @@ describe("restore upload and preview", () => {
       /todos \d+: CHECK constraint failed/,
     );
     // The data stayed as it was.
-    expect(json<{ total: number }>(await t.call("GET", "/api/v1/todos")).total).toBe(2);
+    expect(json<{ total: number }>(await t.call("GET", "/api/v1/todos")).total).toBe(3);
   });
 
   it("refuses duplicate entry names and damaged sizes", async () => {
@@ -278,12 +278,12 @@ describe("restore apply", () => {
     });
 
     const preview = json<RestorePreview>(await upload(t, original));
-    expect(preview.now.todos).toBe(2);
+    expect(preview.now.todos).toBe(4);
     const res = await t.call("POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" });
     expect(res.statusCode).toBe(200);
     const result = res.json() as RestoreResult;
     expect(result.restoredAt).toBe("2026-11-11T10:01:00.000Z");
-    expect(result.counts.todos).toBe(2);
+    expect(result.counts.todos).toBe(4);
     expect(result.safetyCopy.fileName).toBe("organizer-before-restore-20261111-110100.zip");
     const copyPath = join(t.dataDir, "backups", result.safetyCopy.fileName);
     expect(statSync(copyPath).mode & 0o777).toBe(0o600);

@@ -35,6 +35,12 @@ export async function fillEveryTable(t: TestApp) {
   ).json() as Todo[];
   await t.call("POST", `/api/v1/todos/${todo.id}/links`, { links: [{ kind: "blocks", todoId: child?.id }] });
   await t.call("POST", `/api/v1/todos/${todo.id}/comments`, { bodyMd: "First comment" });
+  const weekly = await t.create<Todo>("/api/v1/todos", {
+    title: "Weekly check",
+    dueOn: "2026-11-11",
+    recurrence: { every: "week" },
+  });
+  await t.call("PATCH", `/api/v1/todos/${weekly.id}`, { status: "done" });
   await t.create<Note>("/api/v1/notes", {
     title: "Plan",
     bodyMd: "Notes",
