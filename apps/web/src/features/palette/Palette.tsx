@@ -8,6 +8,7 @@ import { Dialog } from "../../components/Dialog.tsx";
 import { Kbd } from "../../components/ui.tsx";
 import { downloadExport } from "../../lib/export.ts";
 import { useProjects, useSearch, useTodo } from "../../lib/queries.ts";
+import { useIsSession } from "../settings/SessionOnly.tsx";
 import { toggleTheme } from "../../lib/theme.ts";
 import { useDebounced } from "../../lib/useDebounced.ts";
 import { Highlighted, hitTarget, KIND_NAMES, KIND_ORDER } from "../search/hits.tsx";
@@ -36,6 +37,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const client = useQueryClient();
   const { openQuickAdd, openNewNote, openNewPerson } = useCommands();
   const projects = useProjects();
+  const session = useIsSession();
   const [search, setSearch] = useState("");
   // Searches the server 150 ms after the last key, from two characters on.
   const query = useDebounced(search.trim(), 150);
@@ -74,6 +76,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
     { name: "Labels", to: "/labels", keys: "g l" },
     { name: "People", to: "/people", keys: "g p" },
     { name: "Settings", to: "/settings", keys: "g s" },
+    ...(session ? [{ name: "API tokens", to: "/settings/tokens" }] : []),
   ];
 
   return (

@@ -1,0 +1,233 @@
+/* API tokens: a strip bay like the people list, mono columns for prefix and times. */
+.page {
+  max-width: 1080px;
+}
+
+.intro {
+  max-width: 72ch;
+  margin-bottom: 16px;
+  color: var(--text-2);
+}
+
+.created {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius-panel);
+  background: var(--amber-tint);
+}
+
+.createdTitle {
+  font-size: var(--fs-h2);
+  font-weight: 600;
+}
+
+.createdNote {
+  margin: 2px 0 10px;
+  color: var(--amber-text);
+  font-weight: 600;
+}
+
+.rawRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.raw {
+  flex: 1 1 360px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.bay {
+  --cols: minmax(0, 1.4fr) 132px 64px 136px 96px minmax(0, 1fr) 84px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.header,
+.row {
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  column-gap: 10px;
+}
+
+.header {
+  height: 26px;
+  padding-left: 15px;
+  background: var(--sunken);
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.row {
+  position: relative;
+  min-height: var(--row-h);
+  padding-left: 15px;
+  background: var(--strip);
+}
+
+.row::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+}
+
+.row:hover {
+  background: var(--strip-hover);
+}
+
+.row[data-selected] {
+  background: var(--strip-selected);
+}
+
+.row[data-selected]::before {
+  background: var(--amber);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.scope {
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.scope[data-scope="write"] {
+  color: var(--amber-text);
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 6px;
+}
+
+.inactive {
+  margin-top: 18px;
+}
+
+.summary {
+  margin-bottom: 8px;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.summary:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.inactive .row {
+  color: var(--text-2);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 16px 16px;
+}
+
+.scopes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  margin-bottom: 4px;
+  padding: 0;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.scopeOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  cursor: pointer;
+}
+
+.scopeOption[data-on] {
+  border-color: var(--amber);
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
+.scopeOption input {
+  accent-color: var(--amber);
+}
+
+.scopeName {
+  font-weight: 600;
+}
+
+.scopeNote {
+  color: var(--text-2);
+}
+
+.select {
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+}
+
+.error {
+  color: var(--red);
+  font-size: var(--fs-small);
+}
+
+.formActions,
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialogActions {
+  padding: 14px 16px 16px;
+}

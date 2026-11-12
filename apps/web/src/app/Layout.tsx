@@ -246,6 +246,8 @@ function Breadcrumb() {
   else if (pathname === "/people") trail = [{ label: "People" }];
   else if (pathname.startsWith("/people/")) trail = [{ label: "People", to: "/people" }, { label: "Person" }];
   else if (pathname === "/settings") trail = [{ label: "Settings" }];
+  else if (pathname === "/settings/tokens")
+    trail = [{ label: "Settings", to: "/settings" }, { label: "API tokens" }];
   else if (pathname.startsWith("/projects/")) {
     const slug = decodeURIComponent(pathname.slice("/projects/".length));
     trail = [{ label: "Projects" }, { label: projects.data?.find((p) => p.slug === slug)?.name ?? slug }];

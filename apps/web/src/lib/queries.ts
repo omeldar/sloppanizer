@@ -1,12 +1,15 @@
 import {
   Activity,
+  ApiToken,
   Comment,
+  CreatedToken,
   type CreateLabel,
   type CreateNote,
   type CreatePerson,
   type CreatePersonTag,
   type CreateProject,
   type CreateTodo,
+  type CreateToken,
   Label,
   Me,
   NextUp,
@@ -51,6 +54,7 @@ export const keys = {
   notes: (query: NoteListParams) => ["notes", query] as const,
   note: (id: number) => ["note", id] as const,
   search: (query: SearchParams) => ["search", query] as const,
+  tokens: ["tokens"] as const,
 };
 
 export interface PeopleParams {
@@ -380,5 +384,26 @@ export function useDeleteNote() {
       client.removeQueries({ queryKey: keys.note(id) });
       return invalidateNotes(client);
     },
+  });
+}
+
+export const useTokens = () =>
+  useQuery({ queryKey: keys.tokens, queryFn: () => api(z.array(ApiToken), "/tokens") });
+
+/**
+ * Creates a token. Not a mutation hook on purpose: the raw value must stay in the caller's component state,
+ * never in the query or mutation cache.
+ */
+export async function createToken(client: QueryClient, input: CreateToken): Promise<CreatedToken> {
+  const created = await api(CreatedToken, "/tokens", { method: "POST", body: input });
+  void client.invalidateQueries({ queryKey: keys.tokens });
+  return created;
+}
+
+export function useRevokeToken() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => apiVoid(`/tokens/${id}`, { method: "DELETE" }),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.tokens }),
   });
 }

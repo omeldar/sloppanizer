@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { PageHeader } from "../../components/ui.tsx";
 import { Button } from "../../components/ui.tsx";
 import { downloadExport } from "../../lib/export.ts";
@@ -66,6 +67,16 @@ export function SettingsPage() {
           </span>
         </div>
       </section>
+
+      {me.data?.via === "session" && (
+        <section className={styles.section}>
+          <h2 className={styles.heading}>API tokens</h2>
+          <p className={styles.text}>
+            Programs like the MCP server sign in with a token.{" "}
+            <Link to="/settings/tokens">Manage API tokens</Link>
+          </p>
+        </section>
+      )}
 
       {me.data && (
         <section className={styles.section}>
