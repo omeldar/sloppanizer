@@ -23,6 +23,7 @@ import { exportRoutes } from "./routes/export.ts";
 import { labelRoutes } from "./routes/labels.ts";
 import { metaRoutes } from "./routes/meta.ts";
 import { noteRoutes } from "./routes/notes.ts";
+import { peopleStatsRoutes } from "./routes/people-stats.ts";
 import { peopleRoutes } from "./routes/people.ts";
 import { personTagRoutes } from "./routes/person-tags.ts";
 import { projectRoutes } from "./routes/projects.ts";
@@ -95,6 +96,7 @@ export async function buildApp(options: BuildOptions) {
   projectRoutes(app, deps);
   labelRoutes(app, deps);
   peopleRoutes(app, deps);
+  peopleStatsRoutes(app, deps);
   topicRoutes(app, deps);
   personTagRoutes(app, deps);
   todoRoutes(app, deps);

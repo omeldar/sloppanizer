@@ -125,8 +125,10 @@ const searchFold = (text: string): string =>
 
 const lowerAll = (names: readonly string[]): string[] => names.map((n) => n.toLowerCase());
 
-const byName = (a: Person, b: Person): number =>
-  compareNames(a.lastName, b.lastName) || compareNames(a.firstName, b.firstName) || a.id - b.id;
+export const byName = (
+  a: Pick<Person, "id" | "firstName" | "lastName">,
+  b: Pick<Person, "id" | "firstName" | "lastName">,
+): number => compareNames(a.lastName, b.lastName) || compareNames(a.firstName, b.firstName) || a.id - b.id;
 
 /** Newest todo link per person id. */
 function lastLinkByPerson(db: Tx): Map<number, string> {
@@ -140,12 +142,36 @@ function lastLinkByPerson(db: Tx): Map<number, string> {
   );
 }
 
+/** The person filters shared by the directory and the statistics: topic and tag (AND), team. */
+export interface PersonFilters {
+  topic?: readonly string[] | undefined;
+  tag?: readonly string[] | undefined;
+  team?: string | undefined;
+}
+
+export function filterPeople(list: readonly Person[], filters: PersonFilters): Person[] {
+  let out = [...list];
+  if (filters.topic) {
+    const wanted = lowerAll(filters.topic);
+    out = out.filter((p) => wanted.every((t) => lowerAll(p.topics).includes(t)));
+  }
+  if (filters.tag) {
+    const wanted = lowerAll(filters.tag);
+    out = out.filter((p) => wanted.every((t) => lowerAll(p.tags.map((tag) => tag.name)).includes(t)));
+  }
+  if (filters.team) {
+    const team = filters.team.toLowerCase();
+    out = out.filter((p) => p.team.toLowerCase() === team);
+  }
+  return out;
+}
+
 /**
  * People with topics, tags and counts. q matches names (both orders), note, team, email and topic
  * names without case or diacritics; topic and tag filters need every name (AND).
  */
 export function listPeople(db: Tx, query: PeopleQuery): Person[] {
-  let list = loadPeople(db, db.select().from(people).all());
+  let list = filterPeople(loadPeople(db, db.select().from(people).all()), query);
   if (query.q) {
     const needle = searchFold(query.q);
     list = list.filter((p) =>
@@ -158,18 +184,6 @@ export function listPeople(db: Tx, query: PeopleQuery): Person[] {
         ...p.topics,
       ].some((text) => searchFold(text).includes(needle)),
     );
-  }
-  if (query.topic) {
-    const wanted = lowerAll(query.topic);
-    list = list.filter((p) => wanted.every((t) => lowerAll(p.topics).includes(t)));
-  }
-  if (query.tag) {
-    const wanted = lowerAll(query.tag);
-    list = list.filter((p) => wanted.every((t) => lowerAll(p.tags.map((tag) => tag.name)).includes(t)));
-  }
-  if (query.team) {
-    const team = query.team.toLowerCase();
-    list = list.filter((p) => p.team.toLowerCase() === team);
   }
   if (query.kind === "requester") list = list.filter((p) => p.counts.requested > 0);
   if (query.kind === "contact") list = list.filter((p) => p.counts.contact > 0 || p.topics.length > 0);

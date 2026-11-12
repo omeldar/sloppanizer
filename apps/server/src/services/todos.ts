@@ -466,10 +466,11 @@ const priorityKey = sql`coalesce((
   LIMIT 1
 ), 1)`;
 
-const hasLabel = (name: string): SQL =>
+/** The todo (outer table "todos") has the label with this name. */
+export const hasLabel = (name: string): SQL =>
   sql`EXISTS (SELECT 1 FROM ${todoLabels} tl JOIN ${labels} l ON l.id = tl.label_id WHERE tl.todo_id = "todos"."id" AND l.name = ${name})`;
 
-function projectCondition(projectId: number | "inbox" | undefined): SQL | undefined {
+export function projectCondition(projectId: number | "inbox" | undefined): SQL | undefined {
   if (projectId === undefined) return undefined;
   return projectId === "inbox" ? isNull(todos.projectId) : eq(todos.projectId, projectId);
 }
