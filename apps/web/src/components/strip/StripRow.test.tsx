@@ -3,7 +3,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { today } from "../../lib/format.ts";
-import { makeLabel, makePerson, makeTodo, renderWithApp } from "../../test/render.tsx";
+import { makeBrief, makeLabel, makeTodo, renderWithApp } from "../../test/render.tsx";
 import { StripRow } from "./StripRow.tsx";
 
 const DAY = 86_400_000;
@@ -27,7 +27,7 @@ describe("StripRow", () => {
         createdAt: new Date(Date.now() - 41 * DAY).toISOString(),
         dueOn: addDays(today(), 5),
         labels: [makeLabel("priority::high"), makeLabel("homelab")],
-        requestedBy: [makePerson("Anna", "Meier")],
+        requestedBy: [makeBrief("Anna", "Meier")],
         projectId: 3,
         project: { id: 3, slug: "home-lab", name: "Home lab", color: "#4C9AFF" },
       }),

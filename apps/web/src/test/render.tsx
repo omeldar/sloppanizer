@@ -1,4 +1,4 @@
-import type { Label, Person, Todo } from "@organizer/shared";
+import type { Label, Person, PersonBrief, Todo } from "@organizer/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
@@ -65,16 +65,42 @@ export function makeLabel(name: string, overrides: Partial<Label> = {}): Label {
   };
 }
 
-export function makePerson(firstName: string, lastName: string, id = 1): Person {
+export function makePerson(
+  firstName: string,
+  lastName: string,
+  id = 1,
+  overrides: Partial<Person> = {},
+): Person {
   return {
     id,
     firstName,
     lastName,
     note: "",
     displayName: `${firstName} ${lastName}`,
+    team: "",
+    email: "",
+    notesMd: "",
+    topics: [],
+    tags: [],
+    counts: { requested: 0, requestedOpen: 0, requestedDone: 0, contact: 0, contactOpen: 0 },
     createdAt: T,
     updatedAt: T,
+    ...overrides,
   };
+}
+
+/** The short person form inside todos. */
+export function makeBrief(firstName: string, lastName: string, id = 1, overrides: Partial<PersonBrief> = {}) {
+  return {
+    id,
+    firstName,
+    lastName,
+    displayName: `${firstName} ${lastName}`,
+    note: "",
+    team: "",
+    email: "",
+    ...overrides,
+  } satisfies PersonBrief;
 }
 
 export function makeTodo(overrides: Partial<Todo> = {}): Todo {
@@ -95,6 +121,8 @@ export function makeTodo(overrides: Partial<Todo> = {}): Todo {
     durationMs: null,
     labels: [],
     requestedBy: [],
+    contacts: [],
+    commentCount: 0,
     project: null,
     ...overrides,
   };

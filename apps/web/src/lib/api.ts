@@ -35,7 +35,10 @@ export function queryString(query: Query | undefined): string {
 
 interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
+  /** Sent as JSON. */
   body?: unknown;
+  /** Sent as is (file uploads); the server checks the type itself. */
+  raw?: Blob;
   query?: Query;
 }
 
@@ -63,17 +66,17 @@ export async function apiVoid(path: string, options: RequestOptions = {}): Promi
   await send(path, options);
 }
 
-async function send(path: string, { method = "GET", body, query }: RequestOptions): Promise<unknown> {
+async function send(path: string, { method = "GET", body, raw, query }: RequestOptions): Promise<unknown> {
   let response: Response;
+  const headers: Record<string, string> = { accept: "application/json" };
+  if (raw !== undefined) headers["content-type"] = "application/octet-stream";
+  else if (body !== undefined) headers["content-type"] = "application/json";
   try {
     response = await fetch(`${API_PREFIX}${path}${queryString(query)}`, {
       method,
       credentials: "same-origin",
-      headers:
-        body === undefined
-          ? { accept: "application/json" }
-          : { "content-type": "application/json", accept: "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers,
+      body: raw ?? (body === undefined ? undefined : JSON.stringify(body)),
     });
   } catch {
     throw new ApiError(

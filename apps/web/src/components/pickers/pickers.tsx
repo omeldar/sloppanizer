@@ -10,13 +10,16 @@ const INBOX = "inbox";
 export function ProjectPicker({
   value,
   onChange,
+  noneLabel = "Inbox (no project)",
 }: {
   value: number | null;
   onChange: (projectId: number | null) => void;
+  /** Name of the "no project" choice: todos without one are in the Inbox, notes just have none. */
+  noneLabel?: string;
 }) {
   const projects = useProjects();
   const items = [
-    { value: INBOX, label: <span className={styles.sub}>Inbox (no project)</span>, search: "inbox" },
+    { value: INBOX, label: <span className={styles.sub}>{noneLabel}</span>, search: noneLabel },
     ...(projects.data ?? [])
       .filter((p) => p.archivedAt === null)
       .map((p) => ({
@@ -109,7 +112,7 @@ export function PeoplePicker({
   onToggle: (choice: PersonChoice) => void;
 }) {
   const [search, setSearch] = useState("");
-  const people = usePeople(search.trim());
+  const people = usePeople({ q: search.trim() });
   const chosenIds = new Set(value.flatMap((c) => ("personId" in c ? [String(c.personId)] : [])));
   const items = (people.data ?? []).map((person: Person) => ({
     value: String(person.id),
