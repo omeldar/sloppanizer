@@ -166,6 +166,38 @@ describe("todoLine", () => {
   });
 });
 
+const blocker = (status: Todo["status"]) => ({ id: 12, title: "Buy rack", status });
+
+describe("todoLine step 3 parts", () => {
+  it("adds progress, waiting and repeat only when they apply", () => {
+    expect(todoLine(todo(), ctx)).not.toMatch(/subtasks|checklist|waiting|repeats/);
+    const line = todoLine(
+      todo({
+        progress: { subtasks: { total: 5, done: 2 }, checklist: { total: 7, done: 3 } },
+        links: {
+          blocks: [],
+          blockedBy: [blocker("open"), { id: 13, title: "x", status: "in_progress" }],
+          relatesTo: [],
+        },
+        recurrence: { every: "day", interval: 3, basis: "done" },
+      }),
+      ctx,
+    );
+    expect(line).toMatch(
+      / \| 2\/5 subtasks \| checklist 3\/7 \| waiting on #12, #13 \| repeats every 3 days after done$/,
+    );
+  });
+
+  it("does not say waiting when the blocker is done or the todo itself is done", () => {
+    const links = { blocks: [], blockedBy: [blocker("done")], relatesTo: [] };
+    expect(todoLine(todo({ links }), ctx)).not.toContain("waiting");
+    const open = { blocks: [], blockedBy: [blocker("open")], relatesTo: [] };
+    expect(
+      todoLine(todo({ links: open, status: "done", doneAt: "2026-11-10T10:00:00.000Z" }), ctx),
+    ).not.toContain("waiting");
+  });
+});
+
 describe("todoDetail", () => {
   it("adds dates, people ids and the description", () => {
     const text = todoDetail(todo({ descriptionMd: "Use **certbot**.", requestedBy: [anna] }), ctx);

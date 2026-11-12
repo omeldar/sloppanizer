@@ -2,22 +2,29 @@ import {
   type ActivityItem,
   daysBetween,
   describeEvent,
+  describeRecurrence,
+  type FolderExport,
   formatDuration,
   type Label,
   type NextUp,
   type Note,
   type NoteSummary,
+  parseChecklist,
+  type PeopleStats,
   type Person,
   type PersonBrief,
+  type PersonStat,
   type PersonTag,
   type Project,
   type SearchHit,
   type SearchResult,
   type Stats,
   type Todo,
+  type TodoRef,
   type Topic,
   toLocalDate,
   toLocalDateTime,
+  waitingReason,
 } from "@organizer/shared";
 
 /** What "today" means for relative dates. */
@@ -48,6 +55,7 @@ export const personName = (person: Pick<PersonBrief, "displayName">): string => 
 /**
  * One line per todo, e.g.
  * `#142 open | Renew SSL certs | priority::high, homelab | project homelab | due 2026-11-09 (overdue 2d) | open 41d | req: Anna Meier`
+ * and, when they apply, `| 2/5 subtasks | checklist 3/7 | waiting on #12 | repeats every week`.
  */
 export function todoLine(todo: Todo, ctx: DateContext): string {
   const parts = [`#${todo.id} ${todo.status}`, todo.title];
@@ -65,8 +73,16 @@ export function todoLine(todo: Todo, ctx: DateContext): string {
   }
   if (todo.requestedBy.length > 0) parts.push(`req: ${todo.requestedBy.map(personName).join(", ")}`);
   if (todo.contacts.length > 0) parts.push(`contact: ${todo.contacts.map(personName).join(", ")}`);
+  const { subtasks, checklist } = todo.progress;
+  if (subtasks.total > 0) parts.push(`${subtasks.done}/${subtasks.total} subtasks`);
+  if (checklist.total > 0) parts.push(`checklist ${checklist.done}/${checklist.total}`);
+  const waiting = done ? null : waitingReason(todo);
+  if (waiting) parts.push(waiting.label);
+  if (todo.recurrence) parts.push(`repeats ${describeRecurrence(todo.recurrence)}`);
   return parts.join(" | ");
 }
+
+const refText = (ref: TodoRef): string => `#${ref.id} ${ref.title} (${ref.status})`;
 
 export function todoLines(todos: readonly Todo[], ctx: DateContext, empty = "No todos match."): string {
   return todos.length === 0 ? empty : todos.map((todo) => todoLine(todo, ctx)).join("\n");
@@ -78,9 +94,11 @@ const local = (instant: string, ctx: DateContext): string =>
 const contactRef = (p: PersonBrief): string =>
   `${p.displayName} (person ${p.id}${p.team ? `, ${p.team}` : ""})`;
 
-/** Everything about one todo, the description last. */
-export function todoDetail(todo: Todo, ctx: DateContext): string {
-  const lines = [todoLine(todo, ctx), `created ${local(todo.createdAt, ctx)}`];
+/** Everything about one todo (with its subtasks when given), the description last. */
+export function todoDetail(todo: Todo, ctx: DateContext, subtasks: readonly Todo[] = []): string {
+  const lines = [todoLine(todo, ctx)];
+  if (todo.parent) lines.push(`Subtask of #${todo.parent.id} ${todo.parent.title}`);
+  lines.push(`created ${local(todo.createdAt, ctx)}`);
   lines.push(`last activity ${local(todo.lastActivityAt, ctx)}`);
   if (todo.plannedOn) lines.push(`planned ${todo.plannedOn} (${ago(todo.plannedOn, ctx.today)})`);
   if (todo.requestedBy.length > 0) {
@@ -93,6 +111,27 @@ export function todoDetail(todo: Todo, ctx: DateContext): string {
   }
   if (todo.commentCount > 0) {
     lines.push(`comments: ${todo.commentCount} (get_activity shows the thread)`);
+  }
+  const { links } = todo;
+  if (links.blockedBy.length > 0) lines.push(`blocked by: ${links.blockedBy.map(refText).join(", ")}`);
+  if (links.blocks.length > 0) lines.push(`blocks: ${links.blocks.map(refText).join(", ")}`);
+  if (links.relatesTo.length > 0) lines.push(`relates to: ${links.relatesTo.map(refText).join(", ")}`);
+  if (todo.recurrence) {
+    const next = todo.nextOccurrence ? ` (next: #${todo.nextOccurrence.id})` : "";
+    lines.push(`Repeats ${describeRecurrence(todo.recurrence)}${next}`);
+  }
+  if (todo.previousOccurrenceId !== null) lines.push(`previous occurrence: #${todo.previousOccurrenceId}`);
+  if (subtasks.length > 0) {
+    const { done, total } = todo.progress.subtasks;
+    lines.push("", `Subtasks (${done}/${total} done):`, ...subtasks.map((t) => `- ${todoLine(t, ctx)}`));
+  }
+  const items = parseChecklist(todo.descriptionMd);
+  if (items.length > 0) {
+    lines.push(
+      "",
+      "Checklist (check_item takes the number):",
+      ...items.map((item) => `[${item.checked ? "x" : " "}] ${item.index} ${item.text}`),
+    );
   }
   lines.push("", todo.descriptionMd.trim() === "" ? "(no description)" : todo.descriptionMd);
   return lines.join("\n");
@@ -178,6 +217,50 @@ export function personDetail(
     todoLines(todos.contactFor, ctx, "None."),
   );
   lines.push("", "Notes:", person.notesMd.trim() === "" ? "(no notes)" : person.notesMd);
+  return lines.join("\n");
+}
+
+/** `Anna Meier | Platform | requested 14, open 3, done 11, median took 2d 4h | contact 5` */
+export function personStatLine(stat: PersonStat): string {
+  const { person, requested, contact } = stat;
+  const parts = [person.displayName];
+  if (person.team) parts.push(person.team);
+  const median =
+    requested.medianDoneMs === null ? "" : `, median took ${formatDuration(requested.medianDoneMs)}`;
+  parts.push(`requested ${requested.total}, open ${requested.open}, done ${requested.done}${median}`);
+  parts.push(`contact ${contact.total}`);
+  return parts.join(" | ");
+}
+
+/** The period and totals, then one line per person. */
+export function peopleStatsText(stats: PeopleStats): string {
+  const period =
+    stats.from || stats.to ? ` created ${stats.from ?? "any time"} to ${stats.to ?? "today"}` : "";
+  const { totals } = stats;
+  const median = totals.medianDoneMs === null ? "" : `, median took ${formatDuration(totals.medianDoneMs)}`;
+  const role = stats.role === "requester" ? "requesters" : "contacts";
+  if (stats.items.length === 0) return `No ${role} in todos${period}.`;
+  return [
+    `People as ${role}, todos${period}: ${totals.todos} (${totals.open} open, ${totals.done} done${median}):`,
+    ...stats.items.map(personStatLine),
+  ].join("\n");
+}
+
+const sizeText = (bytes: number): string =>
+  bytes < 1024 * 1024
+    ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+    : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+/** The Windows path of a file inside WSL, like Explorer shows it; null outside WSL. */
+export function windowsPathOf(path: string, wslDistro: string | undefined): string | null {
+  if (!wslDistro || !path.startsWith("/")) return null;
+  return `\\\\wsl.localhost\\${wslDistro}${path.replaceAll("/", "\\")}`;
+}
+
+export function folderExportText(file: FolderExport, wslDistro: string | undefined): string {
+  const lines = [`Wrote ${file.fileName} (${sizeText(file.bytes)}) to ${file.path}`];
+  const windows = windowsPathOf(file.path, wslDistro);
+  if (windows) lines.push(`In Windows: ${windows}`);
   return lines.join("\n");
 }
 

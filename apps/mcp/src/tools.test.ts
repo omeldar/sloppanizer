@@ -12,7 +12,7 @@ const at = "2026-10-01T08:00:00.000Z";
 const NOW = new Date("2026-11-11T09:00:00.000Z");
 
 interface Call {
-  method: "GET" | "POST" | "PATCH";
+  method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;
   query?: Record<string, unknown>;
   body?: unknown;
@@ -31,6 +31,9 @@ function fakeApi(handler: Handler): { api: Api; calls: Call[] } {
       run({ method: "GET", path, query: query as Record<string, unknown> }) as never,
     post: async (path, body) => run({ method: "POST", path, body }) as never,
     patch: async (path, body) => run({ method: "PATCH", path, body }) as never,
+    delete: async (path, query) => {
+      await run({ method: "DELETE", path, query: query as Record<string, unknown> });
+    },
   };
   return { api, calls };
 }
@@ -40,10 +43,10 @@ afterEach(async () => {
   await Promise.all(clients.splice(0).map((client) => client.close()));
 });
 
-async function connect(handler: Handler) {
+async function connect(handler: Handler, wslDistro?: string) {
   const { api, calls } = fakeApi(handler);
   const server = new McpServer({ name: "test", version: "0.0.0" });
-  registerTools(server, { api, timeZone: "Europe/Zurich", now: () => NOW });
+  registerTools(server, { api, timeZone: "Europe/Zurich", now: () => NOW, wslDistro });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test-client", version: "0.0.0" });
   await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
@@ -346,27 +349,27 @@ describe("note tools", () => {
     ]);
   });
 
-  it("update_note appends after a blank line and refuses body plus appendText", async () => {
-    const { call, calls } = await connect(({ method }) =>
-      method === "GET" ? note({ bodyMd: "- first\n\n" }) : note({ bodyMd: "- first\n\n- second" }),
-    );
-    await call("update_note", { id: 4, appendText: "- second", project: null });
-    expect(calls.at(-1)).toEqual({
-      method: "PATCH",
-      path: "/notes/4",
-      body: { bodyMd: "- first\n\n- second", projectId: null },
-    });
+  it("update_note leaves the append to the server (one PATCH, no read first) and refuses body plus appendText", async () => {
+    const { call, calls } = await connect(() => note({ bodyMd: "- first\n\n- second" }));
+    const result = await call("update_note", { id: 4, appendText: "- second", project: null });
+    expect(calls).toEqual([
+      { method: "PATCH", path: "/notes/4", body: { appendMd: "- second", projectId: null } },
+    ]);
+    expect(result.isError).toBe(false);
     const both = await call("update_note", { id: 4, body: "x", appendText: "y" });
     expect(both).toEqual({
       isError: true,
       text: "Give either body (replaces the text) or appendText (adds to it), not both.",
     });
+    expect(calls).toHaveLength(1);
   });
 
-  it("update_note appends to an empty note without leading blank lines", async () => {
+  it("update_note refuses an appendText that is only whitespace", async () => {
     const { call, calls } = await connect(() => note());
-    await call("update_note", { id: 4, appendText: "first" });
-    expect(calls.at(-1)?.body).toEqual({ bodyMd: "first" });
+    const result = await call("update_note", { id: 4, appendText: "  \n " });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("Write something to append.");
+    expect(calls).toEqual([]);
   });
 });
 
@@ -409,5 +412,298 @@ describe("inputs follow the shared rules", () => {
     const { call, calls } = await connect(() => [person()]);
     await call("list_people", { topic: ["  firewall   rules "] });
     expect(calls[0]?.query?.topic).toEqual(["firewall rules"]);
+  });
+});
+
+const ref = (id: number, title: string, status: Todo["status"] = "open") => ({ id, title, status });
+
+describe("step 3 tools", () => {
+  it("list_todos passes the parent filter", async () => {
+    const { call, calls } = await connect(() => page([]));
+    await call("list_todos", { parent: "none" });
+    await call("list_todos", { parent: 42 });
+    expect(calls.map((c) => c.query?.parentId)).toEqual(["none", 42]);
+  });
+
+  it("get_todo shows parent, subtasks, checklist numbers, links and the repeat", async () => {
+    const parent = todo({
+      id: 42,
+      title: "Rack setup",
+      parent: ref(7, "Home lab"),
+      descriptionMd: "Steps:\n- [x] Order cables\n- [ ] Mount rails\n",
+      progress: { subtasks: { total: 2, done: 1 }, checklist: { total: 2, done: 1 } },
+      links: { blocks: [ref(50, "Install server")], blockedBy: [ref(12, "Buy rack")], relatesTo: [] },
+      recurrence: { every: "week", interval: 1, weekdays: ["mon"], basis: "schedule" },
+      nextOccurrence: ref(143, "Rack setup"),
+    });
+    const { call, calls } = await connect(({ path }) =>
+      path === "/todos/42"
+        ? parent
+        : page([
+            todo({ id: 43, title: "Cable" }),
+            todo({ id: 44, title: "Label", status: "done", doneAt: at }),
+          ]),
+    );
+    const { text } = await call("get_todo", { id: 42 });
+    expect(calls[1]).toMatchObject({
+      path: "/todos",
+      query: { parentId: 42, status: "all", sort: "position" },
+    });
+    const lines = text.split("\n");
+    expect(lines[0]).toContain("| 1/2 subtasks | checklist 1/2 | waiting on #12 | repeats every week on Mon");
+    expect(lines).toContain("Subtask of #7 Home lab");
+    expect(lines).toContain("blocked by: #12 Buy rack (open)");
+    expect(lines).toContain("blocks: #50 Install server (open)");
+    expect(lines).toContain("Repeats every week on Mon (next: #143)");
+    expect(lines).toContain("Subtasks (1/2 done):");
+    expect(lines.some((l) => l.startsWith("- #43 open | Cable"))).toBe(true);
+    expect(lines).toContain("[x] 0 Order cables");
+    expect(lines).toContain("[ ] 1 Mount rails");
+  });
+
+  it("get_todo does not ask for subtasks when there are none", async () => {
+    const { call, calls } = await connect(() => todo());
+    await call("get_todo", { id: 142 });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("create_todo and update_todo send parent and repeat; null clears them", async () => {
+    const { call, calls } = await connect(() => todo());
+    const rule = { every: "month", monthDay: -1 };
+    await call("create_todo", { title: "Pay rent", dueOn: "2026-11-30", parent: 42, repeat: rule });
+    expect(calls[0]?.body).toEqual({
+      title: "Pay rent",
+      dueOn: "2026-11-30",
+      parentId: 42,
+      recurrence: { every: "month", monthDay: -1, interval: 1, basis: "schedule" },
+    });
+    await call("update_todo", { id: 142, parent: null, repeat: null });
+    expect(calls[1]?.body).toEqual({ parentId: null, recurrence: null });
+  });
+
+  it("refuses a repeat rule the API would refuse, with the shared message", async () => {
+    const { call, calls } = await connect(() => todo());
+    const result = await call("create_todo", {
+      title: "x",
+      dueOn: "2026-11-30",
+      repeat: { every: "day", interval: 3, basis: "done", weekdays: ["mon"] },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("Weekdays only work with a weekly repeat.");
+    expect(calls).toEqual([]);
+  });
+
+  it("mark_done withSubtasks marks open subtasks of every level and reports the next occurrence", async () => {
+    const children: Record<number, number[]> = { 42: [43, 44], 43: [45], 44: [], 45: [] };
+    const { call, calls } = await connect(({ method, path, query, body }) => {
+      if (method === "GET" && path === "/todos") {
+        return page((children[query?.parentId as number] ?? []).map((id) => todo({ id })));
+      }
+      if (method === "POST") {
+        const ids = (body as { ids: number[] }).ids;
+        return {
+          updated: ids.map((id) =>
+            todo({ id, status: "done", doneAt: at, nextOccurrence: id === 42 ? ref(143, "Weekly") : null }),
+          ),
+        };
+      }
+      return todo({ id: 143, title: "Weekly", dueOn: "2026-11-18" });
+    });
+    const { text } = await call("mark_done", { ids: [42], withSubtasks: true });
+    const bulk = calls.find((c) => c.method === "POST");
+    expect(bulk?.body).toEqual({ ids: [42, 43, 44, 45], patch: { status: "done" } });
+    expect(
+      calls.filter((c) => c.method === "GET" && c.path === "/todos").map((c) => c.query?.parentId),
+    ).toEqual([42, 43, 44, 45]);
+    expect(calls.at(-1)?.path).toBe("/todos/143");
+    expect(text).toContain("Next occurrence:\n#143 open | Weekly");
+  });
+
+  it("mark_done without withSubtasks leaves subtasks alone", async () => {
+    const { call, calls } = await connect(() => ({ updated: [todo({ status: "done", doneAt: at })] }));
+    const { text } = await call("mark_done", { ids: [142] });
+    expect(calls).toHaveLength(1);
+    expect(text).not.toContain("Next occurrence");
+  });
+
+  it("add_subtasks posts the titles in order", async () => {
+    const { call, calls } = await connect(() => [todo({ id: 43, title: "a" }), todo({ id: 44, title: "b" })]);
+    const { text } = await call("add_subtasks", { todo: 42, titles: ["a", "b"] });
+    expect(calls[0]).toEqual({ method: "POST", path: "/todos/42/subtasks", body: { titles: ["a", "b"] } });
+    expect(text.split("\n")[0]).toBe("Added 2 subtasks to #42:");
+  });
+
+  describe("check_item", () => {
+    const withList = todo({
+      id: 42,
+      descriptionMd: "- [ ] Order cables\n- [x] Mount rails\n- [ ] order cables\n",
+    });
+
+    it("ticks by number and sends the text it saw", async () => {
+      const { call, calls } = await connect(({ method }) => (method === "GET" ? withList : withList));
+      const { text } = await call("check_item", { todo: 42, item: 1, checked: false });
+      expect(calls[1]).toEqual({
+        method: "POST",
+        path: "/todos/42/checklist",
+        body: { index: 1, checked: false, text: "Mount rails" },
+      });
+      expect(text).toMatch(/^Unchecked "Mount rails" on #42/);
+    });
+
+    it("finds the exact text first and asks for the number when only a case-insensitive match is ambiguous", async () => {
+      const { call, calls } = await connect(() => withList);
+      await call("check_item", { todo: 42, item: "order cables" });
+      expect(calls[1]?.body).toEqual({ index: 2, checked: true, text: "order cables" });
+      const ambiguous = await connect(() => todo({ descriptionMd: "- [ ] A\n- [ ] a b\n- [ ] A\n" }));
+      const result = await ambiguous.call("check_item", { todo: 142, item: "A" });
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain('Several items read "A"; pass the number.');
+    });
+
+    it("lists the items when the one asked for is missing, and when the checklist changed meanwhile", async () => {
+      const { call } = await connect(({ method }) => {
+        if (method === "GET") return withList;
+        throw new ApiError(409, "conflict", "The checklist changed; reload and try again.", {
+          items: [{ index: 0, text: "Order cables", checked: true, line: 0 }],
+        });
+      });
+      const missing = await call("check_item", { todo: 42, item: 7 });
+      expect(missing.text).toContain("No item 7 on #42.\nThe checklist reads:\n[ ] 0 Order cables");
+      const stale = await call("check_item", { todo: 42, item: 0 });
+      expect(stale).toEqual({
+        isError: true,
+        text: "The checklist changed; reload and try again.\nThe checklist now reads:\n[x] 0 Order cables",
+      });
+    });
+
+    it("says when the todo has no checklist", async () => {
+      const { call } = await connect(() => todo());
+      expect(await call("check_item", { todo: 142, item: 0 })).toEqual({
+        isError: true,
+        text: "#142 has no checklist in its description.",
+      });
+    });
+  });
+
+  it("link_todos and unlink_todos send the kind seen from the todo; a loop names the chain", async () => {
+    const { call, calls } = await connect(({ method, body }) => {
+      if (method === "POST" && (body as { links: { todoId: number }[] }).links[0]?.todoId === 1) {
+        throw new ApiError(422, "validation_failed", "That link would make a loop.", { chain: [1, 2, 1] });
+      }
+      return todo({ id: 2 });
+    });
+    const linked = await call("link_todos", { todo: 2, kind: "blocked_by", other: 12 });
+    expect(calls[0]).toEqual({
+      method: "POST",
+      path: "/todos/2/links",
+      body: { links: [{ kind: "blocked_by", todoId: 12 }] },
+    });
+    expect(linked.text.split("\n")[0]).toBe("Linked: #2 is blocked by #12.");
+    const loop = await call("link_todos", { todo: 2, kind: "blocks", other: 1 });
+    expect(loop).toEqual({
+      isError: true,
+      text: "That link would make a loop.\nChain: #1 blocks #2 blocks #1",
+    });
+    const removed = await call("unlink_todos", { todo: 2, kind: "relates", other: 9 });
+    expect(calls.at(-1)).toEqual({ method: "DELETE", path: "/todos/2/links/9", query: { kind: "relates" } });
+    expect(removed.text).toBe("Removed the link: #2 relates to #9.");
+  });
+
+  it("people_stats sends the filters and prints one line per person", async () => {
+    const stats = {
+      from: "2026-01-01",
+      to: null,
+      role: "requester",
+      totals: { todos: 14, open: 3, done: 11, medianDoneMs: 187_200_000 },
+      items: [
+        {
+          person: {
+            id: 7,
+            firstName: "Anna",
+            lastName: "Meier",
+            displayName: "Anna Meier",
+            note: "",
+            team: "Platform",
+          },
+          requested: {
+            total: 14,
+            open: 3,
+            done: 11,
+            medianDoneMs: 187_200_000,
+            p90DoneMs: null,
+            oldestOpenDays: 12,
+            lastAt: at,
+          },
+          contact: { total: 5, open: 1, done: 4 },
+        },
+        {
+          person: {
+            id: 8,
+            firstName: "Max",
+            lastName: "Muster",
+            displayName: "Max Muster",
+            note: "",
+            team: "",
+          },
+          requested: {
+            total: 0,
+            open: 0,
+            done: 0,
+            medianDoneMs: null,
+            p90DoneMs: null,
+            oldestOpenDays: null,
+            lastAt: null,
+          },
+          contact: { total: 2, open: 2, done: 0 },
+        },
+      ],
+    };
+    const { call, calls } = await connect(({ path }) => (path === "/projects" ? [homelab] : stats));
+    const { text } = await call("people_stats", {
+      from: "2026-01-01",
+      topic: ["VPN"],
+      project: "homelab",
+      sort: "speed",
+    });
+    expect(calls.at(-1)).toEqual({
+      method: "GET",
+      path: "/stats/people",
+      query: {
+        from: "2026-01-01",
+        to: undefined,
+        role: "requester",
+        topic: ["VPN"],
+        tag: undefined,
+        team: undefined,
+        label: undefined,
+        projectId: homelab.id,
+        sort: "speed",
+        limit: 50,
+      },
+    });
+    expect(text.split("\n")).toEqual([
+      "People as requesters, todos created 2026-01-01 to today: 14 (3 open, 11 done, median took 2d 4h):",
+      "Anna Meier | Platform | requested 14, open 3, done 11, median took 2d 4h | contact 5",
+      "Max Muster | requested 0, open 0, done 0 | contact 2",
+    ]);
+  });
+
+  it("export_to_folder returns the written path, and the Windows path inside WSL", async () => {
+    const file = {
+      at,
+      path: "/home/me/.local/share/organizer/exports/organizer-export-2026-11-12.zip",
+      fileName: "organizer-export-2026-11-12.zip",
+      bytes: 3 * 1024 * 1024,
+    };
+    const inWsl = await connect(() => file, "Ubuntu");
+    expect((await inWsl.call("export_to_folder")).text).toBe(
+      `Wrote ${file.fileName} (3.0 MB) to ${file.path}\n` +
+        "In Windows: \\\\wsl.localhost\\Ubuntu\\home\\me\\.local\\share\\organizer\\exports\\organizer-export-2026-11-12.zip",
+    );
+    expect(inWsl.calls[0]).toEqual({ method: "POST", path: "/export/folder", body: {} });
+    const outside = await connect(() => file);
+    expect((await outside.call("export_to_folder")).text).toBe(
+      `Wrote ${file.fileName} (3.0 MB) to ${file.path}`,
+    );
   });
 });

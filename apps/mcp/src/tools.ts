@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import {
   type Activity,
+  type ChecklistItem,
   BulkUpdate,
   type BulkUpdateResult,
   CalendarDate,
@@ -11,13 +12,19 @@ import {
   CreateNote,
   CreatePerson,
   CreateProject,
+  CreateSubtasks,
   CreateTodo,
+  type FolderExport,
   type Label,
+  LinkKind,
   NextQuery,
   type NextUp,
   type Note,
   NoteListQuery,
   type NotePage,
+  parseChecklist,
+  type PeopleStats,
+  PeopleStatsQuery,
   type Person,
   PersonRef,
   PersonTagName,
@@ -25,6 +32,7 @@ import {
   PeopleQuery,
   priorityOf,
   type Project,
+  RecurrenceRule,
   SearchKind,
   SearchQuery,
   type SearchResult,
@@ -46,10 +54,12 @@ import {
   activityLine,
   type DateContext,
   dateContext,
+  folderExportText,
   labelLine,
   nextUpText,
   noteDetail,
   noteLine,
+  peopleStatsText,
   personDetail,
   personLine,
   personTagLine,
@@ -66,6 +76,8 @@ export interface ToolDeps {
   api: Api;
   timeZone: string;
   now?: () => Date;
+  /** WSL distribution, to show Windows paths of written files. */
+  wslDistro?: string | undefined;
 }
 
 // ---------- shared input pieces ----------
@@ -115,6 +127,13 @@ const TagNames = (what: string) =>
   CreatePerson.shape.tags
     .unwrap()
     .describe(`${what} Person tags must exist (list_person_tags); they are the user's own judgments.`);
+
+const Repeat = RecurrenceRule.nullable().describe(
+  'Repeat rule; null stops repeating. Needs dueOn or plannedOn. Examples: {"every":"week","weekdays":["mon"]}, ' +
+    '{"every":"month","monthDay":-1} (last day), {"every":"month","monthWeekday":{"nth":2,"weekday":"tue"}}, ' +
+    '{"every":"day","interval":3,"basis":"done"} (3 days after it was done), "until":"2026-12-31" ends it. ' +
+    "When a repeating todo is marked done, the next one is created with the dates moved.",
+);
 
 const NoteId = z.number().int().positive().describe("Note id from list_notes.");
 
@@ -227,6 +246,15 @@ function errorText(error: unknown): string {
     if (Array.isArray(details.unknownTags)) {
       lines.push("list_person_tags shows the person tags; the user adds new ones on the Labels page.");
     }
+    if (Array.isArray(details.chain)) {
+      lines.push(`Chain: ${(details.chain as number[]).map((id) => `#${id}`).join(" blocks ")}`);
+    }
+    if (Array.isArray(details.unknownTodoIds)) {
+      lines.push(`Unknown todos: ${(details.unknownTodoIds as number[]).map((id) => `#${id}`).join(", ")}`);
+    }
+    if (Array.isArray(details.items)) {
+      lines.push("The checklist now reads:", ...(details.items as ChecklistItem[]).map(checklistLine));
+    }
     if (Array.isArray(details.issues)) {
       for (const issue of details.issues as { path?: string; message?: string }[]) {
         lines.push(`- ${String(issue.path ?? "").replace(/^body\./, "")}: ${issue.message ?? ""}`);
@@ -234,6 +262,30 @@ function errorText(error: unknown): string {
     }
   }
   return lines.join("\n");
+}
+
+const checklistLine = (item: ChecklistItem): string =>
+  `[${item.checked ? "x" : " "}] ${item.index} ${item.text}`;
+
+const LINK_TEXT: Record<LinkKind, string> = {
+  blocks: "blocks",
+  blocked_by: "is blocked by",
+  relates: "relates to",
+};
+
+/** Open subtasks of these todos, all levels down (subtasks nest up to 5 levels). */
+async function openDescendants(api: Api, ids: readonly number[]): Promise<number[]> {
+  const found: number[] = [];
+  let level = [...ids];
+  while (level.length > 0) {
+    // oxlint-disable-next-line no-await-in-loop -- one level after the other, each level in parallel
+    const pages = await Promise.all(
+      level.map((parentId) => api.get<TodoPage>("/todos", { parentId, limit: 500 })),
+    );
+    level = pages.flatMap((page) => page.items.map((todo) => todo.id)).filter((id) => !found.includes(id));
+    found.push(...level);
+  }
+  return found;
 }
 
 const out = <T>(fmt: "text" | "json", data: T, text: (data: T) => string): string =>
@@ -354,6 +406,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           .positive()
           .optional()
           .describe("Only todos linked to this person (as requester unless personRole says otherwise)."),
+        parent: TodoListQuery.shape.parentId.describe(
+          'Only the subtasks of this todo id, or "none" for top-level todos only.',
+        ),
         personRole: TodoListQuery.shape.personRole
           .unwrap()
           .optional()
@@ -381,6 +436,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         projectId: await projectFilter(api, args.project),
         label: args.labels,
         personId: args.personId,
+        parentId: args.parent,
         personRole: args.personRole,
         q: args.q,
         dueBefore: args.dueBefore,
@@ -409,13 +465,26 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     {
       title: "Get todo",
       description:
-        "One todo with all details and its Markdown description. Use it before editing a todo's text.",
+        "One todo with all details: parent, subtasks, checklist items with their numbers, links (blocks, " +
+        "blocked by, relates to), repeat rule and its Markdown description. Use it before editing a todo's text.",
       inputSchema: { id: TodoId, format },
       annotations: READ,
     },
     async (args) => {
       const todo = await api.get<Todo>(`/todos/${args.id}`);
-      return out(args.format, todo, (data) => todoDetail(data, ctx()));
+      const subtasks =
+        todo.progress.subtasks.total === 0
+          ? []
+          : (
+              await api.get<TodoPage>("/todos", {
+                parentId: todo.id,
+                status: "all",
+                sort: "position",
+                order: "asc",
+                limit: 500,
+              })
+            ).items;
+      return out(args.format, todo, (data) => todoDetail(data, ctx(), subtasks));
     },
   );
 
@@ -426,7 +495,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       description:
         "Add a todo. Without a project it lands in the Inbox. Set a priority with a label like priority::high " +
         "(critical, high, medium, low). requestedBy records who asked for it, contacts who to ask about it; " +
-        "names are found or created.",
+        "names are found or created. parent makes it a subtask; repeat makes it come back (a new todo is " +
+        "created for the next date when it is marked done).",
       inputSchema: {
         title: CreateTodo.shape.title.describe("Short title, what needs doing."),
         description: CreateTodo.shape.descriptionMd.describe("Details in Markdown."),
@@ -437,6 +507,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         labels: Labels("Labels to set.").optional(),
         requestedBy: People("Who asked for it.").optional(),
         contacts: People("Who to ask or involve (colleagues who know the topic).").optional(),
+        parent: TodoId.optional().describe(
+          "Makes it a subtask of this todo. Without project it takes the parent's project.",
+        ),
+        repeat: Repeat.optional(),
         format,
       },
       annotations: WRITE,
@@ -454,6 +528,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           labels: args.labels,
           requestedBy: toPeople(args.requestedBy),
           contacts: toPeople(args.contacts),
+          parentId: args.parent,
+          recurrence: args.repeat,
         }),
       );
       return out(args.format, todo, (data) => `Created ${todoLine(data, ctx())}`);
@@ -467,7 +543,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       description:
         "Change one todo: title, description, status (open, in_progress, blocked, done), project, dates, labels, " +
         "requested by, contacts. labels/requestedBy/contacts replace the full set; the add*/remove* fields " +
-        "change only those (e.g. addContacts adds a colleague to ask). Send only what changes.",
+        "change only those (e.g. addContacts adds a colleague to ask). parent moves it under another todo " +
+        "(null: top level again); repeat sets or stops (null) the repeat rule. Send only what changes.",
       inputSchema: {
         id: TodoId,
         title: UpdateTodo.shape.title,
@@ -487,6 +564,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         contacts: People("Full contact set (replaces all).").optional(),
         addContacts: People("Contacts to add.").optional(),
         removeContacts: People("Contacts to remove (never creates anyone).").optional(),
+        parent: TodoId.nullable()
+          .optional()
+          .describe("Make it a subtask of this todo; null: top level again."),
+        repeat: Repeat.optional(),
         format,
       },
       annotations: { ...WRITE, idempotentHint: true },
@@ -510,6 +591,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           contacts: toPeople(args.contacts),
           addContacts: toPeople(args.addContacts),
           removeContacts: toPeople(args.removeContacts),
+          parentId: args.parent,
+          recurrence: args.repeat,
         }),
       );
       return out(args.format, todo, (data) => `Updated ${todoLine(data, ctx())}`);
@@ -562,16 +645,155 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     {
       title: "Mark done",
       description:
-        "Mark one or more todos done; the result shows how long each took. To reopen, use update_todo with status open.",
-      inputSchema: { ids: TodoIds, format },
+        "Mark one or more todos done; the result shows how long each took and the next occurrence of a " +
+        "repeating todo. withSubtasks also marks their open subtasks done. To reopen, use update_todo with " +
+        "status open.",
+      inputSchema: {
+        ids: TodoIds,
+        withSubtasks: z.boolean().default(false).describe("Also mark the open subtasks (all levels) done."),
+        format,
+      },
       annotations: { ...WRITE, idempotentHint: true },
     },
     async (args) => {
-      const result = await api.post<BulkUpdateResult>("/todos/bulk", {
-        ids: args.ids,
-        patch: { status: "done" },
+      const ids = args.withSubtasks
+        ? [...new Set([...args.ids, ...(await openDescendants(api, args.ids))])]
+        : args.ids;
+      if (ids.length > 200) {
+        throw new ToolError(`With their subtasks these are ${ids.length} todos; mark at most 200 at once.`);
+      }
+      const result = await api.post<BulkUpdateResult>("/todos/bulk", { ids, patch: { status: "done" } });
+      const nextRefs = result.updated.flatMap((todo) => (todo.nextOccurrence ? [todo.nextOccurrence] : []));
+      const next = await Promise.all(nextRefs.map((ref) => api.get<Todo>(`/todos/${ref.id}`)));
+      return out(args.format, { ...result, nextOccurrences: next }, (data) => {
+        const lines = [`Done:`, todoLines(data.updated, ctx())];
+        if (next.length > 0) lines.push("Next occurrence:", todoLines(next, ctx()));
+        return lines.join("\n");
       });
-      return out(args.format, result, (data) => `Done:\n${todoLines(data.updated, ctx())}`);
+    },
+  );
+
+  tool(
+    "add_subtasks",
+    {
+      title: "Add subtasks",
+      description:
+        "Add subtasks (child todos) under a todo, in the given order. They take the parent's project. For a " +
+        "quick list of steps inside one todo, a Markdown checklist in its description works too (check_item).",
+      inputSchema: {
+        todo: TodoId.describe("The parent todo id."),
+        titles: CreateSubtasks.shape.titles.describe("Titles of the new subtasks (1 to 50)."),
+        format,
+      },
+      annotations: WRITE,
+    },
+    async (args) => {
+      const created = await api.post<Todo[]>(`/todos/${args.todo}/subtasks`, { titles: args.titles });
+      return out(
+        args.format,
+        created,
+        (data) =>
+          `Added ${data.length} subtask${data.length === 1 ? "" : "s"} to #${args.todo}:\n${todoLines(data, ctx())}`,
+      );
+    },
+  );
+
+  tool(
+    "check_item",
+    {
+      title: "Check item",
+      description:
+        "Tick or untick one checklist item (a Markdown task list line like - [ ] Order cables) in a todo's " +
+        "description. get_todo lists the items with their numbers. Only that one item changes.",
+      inputSchema: {
+        todo: TodoId,
+        item: z
+          .union([z.number().int().min(0), z.string().trim().min(1)])
+          .describe("The item number from get_todo, or its exact text."),
+        checked: z.boolean().default(true).describe("true ticks it (default), false unticks it."),
+        format,
+      },
+      annotations: { ...WRITE, idempotentHint: true },
+    },
+    async (args) => {
+      const current = await api.get<Todo>(`/todos/${args.todo}`);
+      const items = parseChecklist(current.descriptionMd);
+      if (items.length === 0) throw new ToolError(`#${args.todo} has no checklist in its description.`);
+      const wanted = args.item;
+      let matches: ChecklistItem[];
+      if (typeof wanted === "number") {
+        matches = items.filter((item) => item.index === wanted);
+      } else {
+        matches = items.filter((item) => item.text.trim() === wanted);
+        if (matches.length === 0) {
+          const lower = wanted.toLowerCase();
+          matches = items.filter((item) => item.text.trim().toLowerCase() === lower);
+        }
+      }
+      const [item] = matches;
+      if (!item || matches.length > 1) {
+        const problem =
+          matches.length > 1
+            ? `Several items read "${String(wanted)}"; pass the number.`
+            : `No item ${typeof wanted === "number" ? wanted : `"${wanted}"`} on #${args.todo}.`;
+        throw new ToolError([problem, "The checklist reads:", ...items.map(checklistLine)].join("\n"));
+      }
+      const todo = await api.post<Todo>(`/todos/${args.todo}/checklist`, {
+        index: item.index,
+        checked: args.checked,
+        text: item.text,
+      });
+      return out(
+        args.format,
+        todo,
+        (data) => `${args.checked ? "Checked" : "Unchecked"} "${item.text}" on ${todoLine(data, ctx())}`,
+      );
+    },
+  );
+
+  tool(
+    "link_todos",
+    {
+      title: "Link todos",
+      description:
+        "Link two todos: blocks (this todo must be done first), blocked_by (the other one must be done first) " +
+        "or relates (just related). A todo waiting on an open blocker leaves the Next up ranking until the " +
+        "blocker is done; a blocker gets extra points.",
+      inputSchema: {
+        todo: TodoId,
+        kind: LinkKind.describe("blocks, blocked_by or relates, seen from todo."),
+        other: TodoId.describe("The other todo id."),
+        format,
+      },
+      annotations: { ...WRITE, idempotentHint: true },
+    },
+    async (args) => {
+      const todo = await api.post<Todo>(`/todos/${args.todo}/links`, {
+        links: [{ kind: args.kind, todoId: args.other }],
+      });
+      return out(
+        args.format,
+        todo,
+        (data) => `Linked: #${args.todo} ${LINK_TEXT[args.kind]} #${args.other}.\n${todoLine(data, ctx())}`,
+      );
+    },
+  );
+
+  tool(
+    "unlink_todos",
+    {
+      title: "Unlink todos",
+      description: "Remove a link between two todos (the same kind as when it was added, seen from todo).",
+      inputSchema: {
+        todo: TodoId,
+        kind: LinkKind.describe("blocks, blocked_by or relates, seen from todo."),
+        other: TodoId.describe("The other todo id."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async (args) => {
+      await api.delete(`/todos/${args.todo}/links/${args.other}`, { kind: args.kind });
+      return `Removed the link: #${args.todo} ${LINK_TEXT[args.kind]} #${args.other}.`;
     },
   );
 
@@ -791,6 +1013,66 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   );
 
   tool(
+    "people_stats",
+    {
+      title: "People statistics",
+      description:
+        "Who asks for how much and how fast it gets done: per person the todos they requested (total, open, " +
+        "done, median time to done) and how often they are a contact. Filter the people by topic, tag or team " +
+        "and the todos by created date (from, to), labels or project.",
+      inputSchema: {
+        from: PeopleStatsQuery.shape.from.describe("Todos created on or after this date (YYYY-MM-DD)."),
+        to: PeopleStatsQuery.shape.to.describe("Todos created on or before this date (YYYY-MM-DD)."),
+        role: PeopleStatsQuery.shape.role.describe(
+          "requester (default): people who asked for todos; contact: people to ask about them.",
+        ),
+        topic: z.array(TopicName).max(10).optional().describe("Only people with all these topics."),
+        tag: z.array(PersonTagName).max(10).optional().describe("Only people with all these person tags."),
+        team: PeopleStatsQuery.shape.team.describe("Exact team name (case-insensitive)."),
+        labels: Labels("Only todos with all of these labels.").optional(),
+        project: ProjectInput.optional(),
+        sort: PeopleStatsQuery.shape.sort.describe(
+          "total (default), open, done, speed (fastest median first), recent or name.",
+        ),
+        limit: PeopleStatsQuery.shape.limit.describe("How many people (default 50)."),
+        format,
+      },
+      annotations: READ,
+    },
+    async (args) => {
+      const stats = await api.get<PeopleStats>("/stats/people", {
+        from: args.from,
+        to: args.to,
+        role: args.role,
+        topic: args.topic,
+        tag: args.tag,
+        team: args.team,
+        label: args.labels,
+        projectId: await projectFilter(api, args.project),
+        sort: args.sort,
+        limit: args.limit,
+      });
+      return out(args.format, stats, peopleStatsText);
+    },
+  );
+
+  tool(
+    "export_to_folder",
+    {
+      title: "Export to folder",
+      description:
+        "Write a full export zip (all data and attachments) to the export folder as a backup. Returns the " +
+        "path. Older export files beyond the newest few are removed by the server.",
+      inputSchema: { format },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => {
+      const file = await api.post<FolderExport>("/export/folder", {});
+      return out(args.format, file, (data) => folderExportText(data, deps.wslDistro));
+    },
+  );
+
+  tool(
     "list_topics",
     {
       title: "List topics",
@@ -1001,12 +1283,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         id: NoteId,
         title: UpdateNote.shape.title,
         body: UpdateNote.shape.bodyMd.describe("New Markdown body (replaces it)."),
-        appendText: z
-          .string()
-          .min(1)
-          .max(200_000)
-          .optional()
-          .describe("Markdown to add at the end, after a blank line (not together with body)."),
+        appendText: UpdateNote.shape.appendMd.describe(
+          "Markdown to add at the end, after a blank line (not together with body).",
+        ),
         project: ProjectInput.nullable()
           .optional()
           .describe('Project id or slug; "inbox", "none" or null removes the project.'),
@@ -1019,17 +1298,13 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       if (args.body !== undefined && args.appendText !== undefined) {
         throw new ToolError("Give either body (replaces the text) or appendText (adds to it), not both.");
       }
-      let body = args.body;
-      if (args.appendText !== undefined) {
-        const current = await api.get<Note>(`/notes/${args.id}`);
-        const base = current.bodyMd.replace(/\s+$/, "");
-        body = base === "" ? args.appendText : `${base}\n\n${args.appendText}`;
-      }
+      // The server appends inside its transaction, so an edit in the web app at the same time is kept.
       const note = await api.patch<Note>(
         `/notes/${args.id}`,
         compact({
           title: args.title,
-          bodyMd: body,
+          bodyMd: args.body,
+          appendMd: args.appendText,
           projectId: await noteProject(api, args.project),
           pinned: args.pinned,
         }),

@@ -31,6 +31,7 @@ export interface Api {
   get<T>(path: string, query?: Query): Promise<T>;
   post<T>(path: string, body: unknown): Promise<T>;
   patch<T>(path: string, body: unknown): Promise<T>;
+  delete(path: string, query?: Query): Promise<void>;
 }
 
 function readToken(file: string): string {
@@ -112,5 +113,6 @@ export function createApi(config: McpConfig, fetchImpl: typeof fetch = fetch): A
     get: (path, query) => request("GET", path, undefined, query),
     post: (path, body) => request("POST", path, body),
     patch: (path, body) => request("PATCH", path, body),
+    delete: (path, query) => request("DELETE", path, undefined, query),
   };
 }
