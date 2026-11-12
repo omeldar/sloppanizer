@@ -18,6 +18,13 @@ export class ApiError extends Error {
   }
 }
 
+declare module "fastify" {
+  interface FastifyContextConfig {
+    /** Message of the 413 answer when the body is over the route's limit. */
+    tooLargeMessage?: string;
+  }
+}
+
 export const notFound = (what: string, id: number | string): ApiError =>
   new ApiError("not_found", `${what} ${id} does not exist. Check the id.`);
 
@@ -61,7 +68,8 @@ export function registerErrorHandling(app: FastifyInstance): void {
       return reply.status(422).send(errorBody("validation_failed", `Invalid request: ${error.message}`));
     }
     if (error.statusCode === 413) {
-      return reply.status(422).send(errorBody("validation_failed", "The request body is too large."));
+      const message = request.routeOptions.config.tooLargeMessage ?? "The request body is too large.";
+      return reply.status(413).send(errorBody("too_large", message));
     }
     request.log.error({ err: error }, "unhandled error");
     return reply

@@ -17,6 +17,7 @@ import { openDb } from "./db/index.ts";
 import { registerErrorHandling } from "./http/errors.ts";
 import { registerSecurity } from "./http/security.ts";
 import { registerWeb } from "./http/web.ts";
+import { attachmentRoutes } from "./routes/attachments.ts";
 import { commentRoutes } from "./routes/comments.ts";
 import { exportRoutes } from "./routes/export.ts";
 import { labelRoutes } from "./routes/labels.ts";
@@ -91,6 +92,7 @@ export async function buildApp(options: BuildOptions) {
   todoRoutes(app, deps);
   commentRoutes(app, deps);
   noteRoutes(app, deps);
+  attachmentRoutes(app, deps);
   tokenRoutes(app, deps);
   exportRoutes(app, deps);
   await registerWeb(app, config.webDir);
