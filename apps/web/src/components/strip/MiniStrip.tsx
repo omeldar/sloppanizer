@@ -4,6 +4,7 @@ import { forwardRef, type HTMLAttributes } from "react";
 import { dueState, dueText } from "../../lib/format.ts";
 import { LabelPill } from "../LabelPill.tsx";
 import styles from "./MiniStrip.module.css";
+import { hasFacts, TodoFacts } from "./TodoFacts.tsx";
 
 type Props = HTMLAttributes<HTMLDivElement> & {
   todo: Todo;
@@ -57,13 +58,14 @@ export const MiniStrip = forwardRef<HTMLDivElement, Props>(function MiniStrip(
             {todo.title}
           </Link>
         </span>
-        {(labels.length > 0 || todo.dueOn || aside) && (
+        {(labels.length > 0 || todo.dueOn || aside || hasFacts(todo)) && (
           <span className={styles.meta}>
             <span className={styles.labels}>
               {labels.map((label) => (
                 <LabelPill key={label.id} name={label.name} color={label.color} />
               ))}
             </span>
+            <TodoFacts todo={todo} compact />
             {todo.dueOn && (
               <span
                 className={styles.due}

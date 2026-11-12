@@ -42,8 +42,10 @@ export function useTodoActions() {
         marking ? `Could not mark #${todo.id} done.` : `Could not reopen #${todo.id}.`,
       );
       if (!saved) return;
+      // A repeating todo gets its next occurrence in the same change; undo removes it again if untouched.
+      const nextOne = marking && saved.nextOccurrence ? `. Next one: #${saved.nextOccurrence.id}` : "";
       toast.show({
-        message: marking ? `Marked #${todo.id} done` : `Reopened #${todo.id}`,
+        message: marking ? `Marked #${todo.id} done${nextOne}` : `Reopened #${todo.id}`,
         action: {
           label: "Undo",
           run: () => void update(todo.id, { status: previous }, `Could not undo the change to #${todo.id}.`),

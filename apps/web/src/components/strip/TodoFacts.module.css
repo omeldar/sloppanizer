@@ -1,0 +1,31 @@
+.facts {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.progress {
+  font-family: var(--font-mono);
+  font-size: var(--fs-pill);
+  line-height: 16px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  color: var(--text-2);
+}
+
+.repeat {
+  display: inline-flex;
+  color: var(--text-2);
+}
+
+.waiting {
+  font-family: var(--font-mono);
+  font-size: var(--fs-pill);
+  line-height: 16px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--amber-tint);
+  color: var(--amber-text);
+}

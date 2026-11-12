@@ -213,7 +213,8 @@
 }
 
 .reason[data-kind="due_today"],
-.reason[data-kind="in_progress"] {
+.reason[data-kind="in_progress"],
+.reason[data-kind="blocks"] {
   color: var(--amber-text);
   background: var(--amber-tint);
 }

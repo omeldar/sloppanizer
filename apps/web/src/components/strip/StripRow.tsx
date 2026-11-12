@@ -4,6 +4,7 @@ import { type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } f
 import { dueState, dueText, shortAge } from "../../lib/format.ts";
 import { LabelPill } from "../LabelPill.tsx";
 import styles from "./Strip.module.css";
+import { hasFacts, TodoFacts } from "./TodoFacts.tsx";
 
 /** Matches --t-collapse: the row folds away, then the change is sent. */
 export const COLLAPSE_MS = 180;
@@ -41,7 +42,10 @@ export function StripRow({
   const [collapsing, setCollapsing] = useState(false);
   const priority = priorityOf(todo.labels);
   // The priority pill and band already say it; the chips show the other reasons.
-  const visibleReasons = (reasons ?? []).filter((reason) => reason.kind !== "priority");
+  // "waiting" shows as a fact chip on every strip, so the reason would repeat it.
+  const visibleReasons = (reasons ?? []).filter(
+    (reason) => reason.kind !== "priority" && reason.kind !== "waiting",
+  );
   const rowRef = useRef<HTMLLIElement>(null);
 
   useEffect(() => {
@@ -117,8 +121,9 @@ export function StripRow({
             </span>
           )}
         </span>
-        {visibleReasons.length > 0 && (
+        {(visibleReasons.length > 0 || hasFacts(todo)) && (
           <span className={styles.reasons}>
+            <TodoFacts todo={todo} />
             {visibleReasons.map((reason) => (
               <span
                 key={reason.kind}

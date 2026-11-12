@@ -62,6 +62,28 @@ describe("StripList", () => {
     expect(screen.queryByText("Marked #2 done")).toBeNull();
   });
 
+  it("names the next occurrence when a repeating todo is marked done", async () => {
+    const weekly = makeTodo({
+      id: 4,
+      dueOn: "2026-11-12",
+      recurrence: { every: "week", interval: 1, basis: "schedule", weekdays: ["thu"] },
+    });
+    mockApi(({ method }) =>
+      method === "PATCH"
+        ? {
+            body: {
+              ...weekly,
+              status: "done",
+              nextOccurrence: { id: 143, title: weekly.title, status: "open" },
+            },
+          }
+        : { body: weekly },
+    );
+    renderWithApp(<StripList items={[{ todo: weekly }]} label="List" collapseOnDone={false} />);
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Mark #4 done" }));
+    expect(await screen.findByText("Marked #4 done. Next one: #143")).toBeTruthy();
+  });
+
   it("undo puts an in progress todo back to in progress, not to open", async () => {
     const started = [makeTodo({ id: 7, status: "in_progress" })];
     const calls = fakeServer(started);
