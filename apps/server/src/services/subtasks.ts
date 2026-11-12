@@ -1,10 +1,10 @@
 import type { CreateSubtasks, Todo } from "@organizer/shared";
-import { eq, max } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { todos } from "../db/schema.ts";
 import { notFound } from "../http/errors.ts";
 import { type Ctx, now } from "./context.ts";
 import { recordEvents } from "./events.ts";
-import { assertCanBeParent } from "./hierarchy.ts";
+import { assertCanBeParent, nextChildPosition } from "./hierarchy.ts";
 import { insertTodo } from "./todos.ts";
 
 /**
@@ -17,12 +17,7 @@ export function createSubtasks(ctx: Ctx, actor: string, parentId: number, input:
     if (!parent) throw notFound("Todo", parentId);
     assertCanBeParent(tx, null, parentId);
     const at = now(ctx);
-    const last = tx
-      .select({ p: max(todos.position) })
-      .from(todos)
-      .where(eq(todos.parentId, parentId))
-      .get();
-    const start = last?.p === null || last?.p === undefined ? 0 : last.p + 1;
+    const start = nextChildPosition(tx, parentId);
     const created = input.titles.map((title, i) =>
       insertTodo(tx, at, actor, { title, projectId: parent.projectId }, { parentId, position: start + i }),
     );

@@ -2,26 +2,38 @@ import {
   ACTIVE_STATUSES,
   applyLabelChange,
   buildNextUp,
+  countChecklist,
   type CreateTodo,
   type NextQuery,
   type NextUp,
   type PersonBrief,
   type PersonRef,
   type PersonRole,
+  RecurrenceRule,
   sortLabels,
   startOfLocalDay,
+  nextOccurrence,
+  normalizeRecurrence,
+  recurrenceProblem,
+  type RecurrenceRuleInput,
+  resetChecklist,
+  shiftTodoDates,
   type Todo,
   type TodoListQuery,
+  type TodoRef,
+  toLocalDate,
   type TodoPage,
   todoDurationMs,
   type UpdateTodo,
 } from "@organizer/shared";
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
-import { comments, events, labels, people, todoLabels, todoPeople, todos } from "../db/schema.ts";
+import { comments, events, labels, people, todoLabels, todoLinks, todoPeople, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
 import { type EventInput, recordEvents } from "./events.ts";
+import { assertCanBeParent, nextChildPosition } from "./hierarchy.ts";
 import { resolveLabels, toLabel } from "./labels.ts";
+import { linksByTodo } from "./links.ts";
 import { assertProjectExists, projectRefs } from "./projects.ts";
 import { resolvePeople, toPersonBrief } from "./people.ts";
 import { indexTodo, removeTodoFromIndex } from "./search-index.ts";
@@ -75,6 +87,7 @@ export function hydrate(db: Tx, rows: readonly TodoRow[]): Todo[] {
     db,
     rows.map((r) => r.projectId),
   );
+  const relations = todoRelations(db, rows);
   return rows.map((row) => ({
     id: row.id,
     projectId: row.projectId,
@@ -95,7 +108,62 @@ export function hydrate(db: Tx, rows: readonly TodoRow[]): Todo[] {
     contacts: contactsByTodo.get(row.id) ?? [],
     commentCount: commentCounts.get(row.id) ?? 0,
     project: row.projectId === null ? null : (projectById.get(row.projectId) ?? null),
+    parent: row.parentId === null ? null : (relations.refs.get(row.parentId) ?? null),
+    progress: {
+      subtasks: relations.children.get(row.id) ?? { total: 0, done: 0 },
+      checklist: countChecklist(row.descriptionMd),
+    },
+    links: relations.links.get(row.id) ?? { blocks: [], blockedBy: [], relatesTo: [] },
+    recurrence: parseRecurrence(row.recurrence),
+    previousOccurrenceId: row.recurrencePrevId,
+    nextOccurrence: relations.next.get(row.id) ?? null,
   }));
+}
+
+/** The stored rule, or null (also for a value that no longer parses). */
+export function parseRecurrence(json: string | null): RecurrenceRule | null {
+  if (json === null) return null;
+  const parsed = RecurrenceRule.safeParse(JSON.parse(json));
+  return parsed.success ? parsed.data : null;
+}
+
+/** Parents, child counts, links and next occurrences of the given todos, one grouped query each per chunk. */
+function todoRelations(db: Tx, rows: readonly TodoRow[]) {
+  const ids = rows.map((r) => r.id);
+  const refs = new Map<number, TodoRef>();
+  const children = new Map<number, { total: number; done: number }>();
+  const next = new Map<number, TodoRef>();
+  const parentIds = [...new Set(rows.map((r) => r.parentId).filter((id) => id !== null))];
+  for (const part of chunks(parentIds)) {
+    for (const t of db
+      .select({ id: todos.id, title: todos.title, status: todos.status })
+      .from(todos)
+      .where(inArray(todos.id, part))
+      .all())
+      refs.set(t.id, t);
+  }
+  for (const part of chunks(ids)) {
+    for (const c of db
+      .select({
+        parentId: todos.parentId,
+        total: count(),
+        done: sql<number>`sum(${todos.status} = 'done')`,
+      })
+      .from(todos)
+      .where(inArray(todos.parentId, part))
+      .groupBy(todos.parentId)
+      .all()) {
+      if (c.parentId !== null) children.set(c.parentId, { total: c.total, done: Number(c.done) });
+    }
+    for (const t of db
+      .select({ id: todos.id, title: todos.title, status: todos.status, prev: todos.recurrencePrevId })
+      .from(todos)
+      .where(inArray(todos.recurrencePrevId, part))
+      .all()) {
+      if (t.prev !== null) next.set(t.prev, { id: t.id, title: t.title, status: t.status });
+    }
+  }
+  return { refs, children, next, links: linksByTodo(db, ids) };
 }
 
 export function getTodo(db: Tx, id: number): Todo {
@@ -194,8 +262,124 @@ export function insertTodo(
   return todo;
 }
 
+/** Message when a repeat rule has no date to count from. */
+const NEEDS_DATE = "A repeating todo needs a due date or a planned day.";
+
+/** The rule as stored: normalized from the anchor (due date, else planned day). 422 without an anchor. */
+function storedRule(
+  rule: RecurrenceRuleInput,
+  dueOn: string | null,
+  plannedOn: string | null,
+): RecurrenceRule {
+  const anchor = dueOn ?? plannedOn;
+  if (anchor === null) throw new ApiError("validation_failed", NEEDS_DATE);
+  const problem = recurrenceProblem(rule, anchor);
+  if (problem) throw new ApiError("validation_failed", problem);
+  return normalizeRecurrence(rule, anchor);
+}
+
+const todoSummary = (t: { id: number; title: string }) => ({ id: t.id, title: t.title });
+
+function todoRow(tx: Tx, id: number): TodoRow {
+  const row = tx.select().from(todos).where(eq(todos.id, id)).get();
+  if (!row) throw notFound("Todo", id);
+  return row;
+}
+
+function touchTodos(tx: Tx, at: string, ids: readonly number[]): void {
+  if (ids.length > 0)
+    tx.update(todos)
+      .set({ updatedAt: at, lastActivityAt: at })
+      .where(inArray(todos.id, [...ids]))
+      .run();
+}
+
+/**
+ * Creates a todo. With parentId it becomes the last subtask (the parent records subtasks_changed)
+ * and takes the parent's project unless projectId is given. A repeat rule needs a date.
+ */
 export function createTodo(ctx: Ctx, actor: string, input: CreateTodo): Todo {
-  return ctx.db.transaction((tx) => insertTodo(tx, now(ctx), actor, input));
+  return ctx.db.transaction((tx) => {
+    const at = now(ctx);
+    const rule = input.recurrence
+      ? storedRule(input.recurrence, input.dueOn ?? null, input.plannedOn ?? null)
+      : null;
+    const extra: NewTodoExtra = { recurrence: rule === null ? null : JSON.stringify(rule) };
+    let projectId = input.projectId;
+    if (input.parentId !== undefined) {
+      assertCanBeParent(tx, null, input.parentId);
+      if (projectId === undefined) projectId = todoRow(tx, input.parentId).projectId;
+      extra.parentId = input.parentId;
+      extra.position = nextChildPosition(tx, input.parentId);
+    }
+    const todo = insertTodo(tx, at, actor, { ...input, projectId }, extra);
+    if (input.parentId !== undefined) {
+      touchTodos(tx, at, [input.parentId]);
+      recordEvents(tx, actor, at, [
+        {
+          todoId: input.parentId,
+          kind: "subtasks_changed",
+          data: { added: [todoSummary(todo)], removed: [] },
+        },
+      ]);
+    }
+    return todo;
+  });
+}
+
+/**
+ * When a repeating todo is done and has no next occurrence yet: creates the next one with the same
+ * title, description (checklist unchecked), project, labels and people, dates moved to the next
+ * date. Missed dates are skipped; after `until` nothing is created. Children, comments and links
+ * are not copied. The done todo records recurred.
+ */
+function createNextOccurrence(tx: Tx, at: string, actor: string, id: number, timeZone: string): void {
+  const todo = getTodo(tx, id);
+  const anchor = todo.dueOn ?? todo.plannedOn;
+  if (todo.recurrence === null || anchor === null || todo.nextOccurrence !== null) return;
+  const today = toLocalDate(at, timeZone);
+  const date = nextOccurrence(todo.recurrence, { anchor, doneOn: today, today });
+  if (date === null) return;
+  const dates = shiftTodoDates(todo, date);
+  const next = insertTodo(
+    tx,
+    at,
+    actor,
+    {
+      title: todo.title,
+      descriptionMd: resetChecklist(todo.descriptionMd),
+      projectId: todo.projectId,
+      dueOn: dates.dueOn,
+      plannedOn: dates.plannedOn,
+      labels: todo.labels.map((l) => l.name),
+      requestedBy: todo.requestedBy.map((p) => ({ personId: p.id })),
+      contacts: todo.contacts.map((p) => ({ personId: p.id })),
+    },
+    { recurrence: JSON.stringify(todo.recurrence), recurrencePrevId: todo.id },
+  );
+  recordEvents(tx, actor, at, [
+    {
+      todoId: todo.id,
+      kind: "recurred",
+      data: { next: { id: next.id, title: next.title, dueOn: next.dueOn, plannedOn: next.plannedOn } },
+    },
+  ]);
+}
+
+/**
+ * Undo of "done" on a repeating todo: its next occurrence goes away when nobody touched it yet
+ * (never changed, still open, no comments, subtasks or links); otherwise it stays.
+ */
+function removeUntouchedNext(tx: Tx, id: number): void {
+  const next = tx.select().from(todos).where(eq(todos.recurrencePrevId, id)).get();
+  if (!next || next.updatedAt !== next.createdAt || next.status !== "open") return;
+  const used = tx.get<{ n: number }>(sql`
+    SELECT (SELECT count(*) FROM ${comments} WHERE todo_id = ${next.id})
+         + (SELECT count(*) FROM ${todos} WHERE parent_id = ${next.id})
+         + (SELECT count(*) FROM ${todoLinks} WHERE from_id = ${next.id} OR to_id = ${next.id}) AS n`);
+  if (used.n > 0) return;
+  tx.delete(todos).where(eq(todos.id, next.id)).run();
+  removeTodoFromIndex(tx, next.id);
 }
 
 const normNames = (list: readonly string[]): string =>
@@ -298,10 +482,19 @@ function applyPeopleChange(
  * scoped label exclusivity and requesters, plus one event per kind of change. Position alone is
  * reordering, not activity: it bumps updated_at only and records no event.
  */
-function applyChange(tx: Tx, at: string, actor: string, current: Todo, change: UpdateTodo): void {
+function applyChange(
+  tx: Tx,
+  at: string,
+  actor: string,
+  current: Todo,
+  change: UpdateTodo,
+  timeZone: string,
+): void {
   const set: Partial<TodoRow> = {};
   const evts: EventInput[] = [];
   const event = (kind: EventInput["kind"], data: unknown) => evts.push({ todoId: current.id, kind, data });
+  /** Other todos that get an event and an activity bump (old and new parent). */
+  const others: EventInput[] = [];
 
   if (change.title !== undefined && change.title !== current.title) {
     set.title = change.title;
@@ -335,6 +528,44 @@ function applyChange(tx: Tx, at: string, actor: string, current: Todo, change: U
     });
   }
   if (change.position !== undefined && change.position !== current.position) set.position = change.position;
+
+  if (change.parentId !== undefined && change.parentId !== current.parentId) {
+    if (change.parentId !== null) {
+      assertCanBeParent(tx, current.id, change.parentId);
+      if (change.position === undefined) set.position = nextChildPosition(tx, change.parentId);
+    }
+    set.parentId = change.parentId;
+    const self = todoSummary(current);
+    const ref = (id: number | null) => (id === null ? null : todoSummary(todoRow(tx, id)));
+    event("parent_changed", { from: ref(current.parentId), to: ref(change.parentId) });
+    if (current.parentId !== null) {
+      others.push({
+        todoId: current.parentId,
+        kind: "subtasks_changed",
+        data: { added: [], removed: [self] },
+      });
+    }
+    if (change.parentId !== null) {
+      others.push({
+        todoId: change.parentId,
+        kind: "subtasks_changed",
+        data: { added: [self], removed: [] },
+      });
+    }
+  }
+
+  const datesChanged = dueOn !== current.dueOn || plannedOn !== current.plannedOn;
+  const rule = change.recurrence === undefined ? current.recurrence : change.recurrence;
+  if (change.recurrence !== undefined || (rule !== null && datesChanged)) {
+    const stored =
+      rule === null ? null : change.recurrence === undefined ? rule : storedRule(rule, dueOn, plannedOn);
+    if (stored !== null && dueOn === null && plannedOn === null)
+      throw new ApiError("validation_failed", NEEDS_DATE);
+    if (JSON.stringify(stored) !== JSON.stringify(current.recurrence)) {
+      set.recurrence = stored === null ? null : JSON.stringify(stored);
+      event("recurrence_changed", { from: current.recurrence, to: stored });
+    }
+  }
 
   if (change.labels !== undefined || change.addLabels !== undefined || change.removeLabels !== undefined) {
     const names = (list: readonly string[] | undefined) =>
@@ -375,12 +606,19 @@ function applyChange(tx: Tx, at: string, actor: string, current: Todo, change: U
   if (evts.length > 0 || set.descriptionMd !== undefined) set.lastActivityAt = at;
   tx.update(todos).set(set).where(eq(todos.id, current.id)).run();
   if (set.title !== undefined || set.descriptionMd !== undefined) indexTodo(tx, current.id);
-  recordEvents(tx, actor, at, evts);
+  touchTodos(
+    tx,
+    at,
+    others.map((e) => e.todoId),
+  );
+  recordEvents(tx, actor, at, [...evts, ...others]);
+  if (set.status === "done") createNextOccurrence(tx, at, actor, current.id, timeZone);
+  else if (set.status !== undefined && current.status === "done") removeUntouchedNext(tx, current.id);
 }
 
 export function updateTodo(ctx: Ctx, actor: string, id: number, change: UpdateTodo): Todo {
   return ctx.db.transaction((tx) => {
-    applyChange(tx, now(ctx), actor, getTodo(tx, id), change);
+    applyChange(tx, now(ctx), actor, getTodo(tx, id), change, ctx.timeZone);
     return getTodo(tx, id);
   });
 }
@@ -406,7 +644,7 @@ export function bulkUpdate(ctx: Ctx, actor: string, ids: readonly number[], chan
     }
     const at = now(ctx);
     const byId = new Map(hydrate(tx, rows).map((t) => [t.id, t]));
-    for (const id of ids) applyChange(tx, at, actor, byId.get(id) as Todo, change);
+    for (const id of ids) applyChange(tx, at, actor, byId.get(id) as Todo, change, ctx.timeZone);
     const after = new Map(
       hydrate(
         tx,
@@ -486,6 +724,8 @@ function listConditions(query: TodoListQuery, timeZone: string): SQL | undefined
       sql`EXISTS (SELECT 1 FROM ${todoPeople} tp WHERE tp.todo_id = "todos"."id" AND tp.person_id = ${query.personId}${role})`,
     );
   }
+  if (query.parentId === "none") conditions.push(isNull(todos.parentId));
+  else if (query.parentId !== undefined) conditions.push(eq(todos.parentId, query.parentId));
   if (query.q) conditions.push(sql`${todos.title} LIKE ${`%${escapeLike(query.q)}%`} ESCAPE '\\'`);
   if (query.dueBefore !== undefined) conditions.push(sql`${todos.dueOn} < ${query.dueBefore}`);
   if (query.plannedOn !== undefined) conditions.push(eq(todos.plannedOn, query.plannedOn));

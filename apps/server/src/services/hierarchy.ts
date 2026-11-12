@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { eq, max, sql } from "drizzle-orm";
 import { todos } from "../db/schema.ts";
 import { ApiError } from "../http/errors.ts";
 import type { Tx } from "./context.ts";
@@ -63,4 +63,14 @@ export function assertCanBeParent(db: Tx, childId: number | null, parentId: numb
       `Subtasks go at most ${MAX_DEPTH} levels deep. Pick a parent higher up.`,
     );
   }
+}
+
+/** Position after the last child of a parent (0 for the first). */
+export function nextChildPosition(db: Tx, parentId: number): number {
+  const last = db
+    .select({ p: max(todos.position) })
+    .from(todos)
+    .where(eq(todos.parentId, parentId))
+    .get();
+  return last?.p === null || last?.p === undefined ? 0 : last.p + 1;
 }
