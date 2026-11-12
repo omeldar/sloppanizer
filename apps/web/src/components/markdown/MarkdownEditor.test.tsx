@@ -6,6 +6,8 @@ import { MarkdownEditor } from "./MarkdownEditor.tsx";
 
 afterEach(() => vi.unstubAllGlobals());
 
+const failingUpload = () => Promise.reject(new ApiError(413, "too_large", "Files can be up to 25 MB."));
+
 function paste(target: Element, files: File[]) {
   fireEvent.paste(target, {
     clipboardData: { files, types: ["Files"], getData: () => "", items: [] },
@@ -43,8 +45,7 @@ describe("MarkdownEditor file paste", () => {
 
   it("removes the placeholder and shows the server's message when the upload fails", async () => {
     const onChange = vi.fn<(text: string) => void>();
-    const upload = () => Promise.reject(new ApiError(413, "too_large", "Files can be up to 25 MB."));
-    renderWithApp(<MarkdownEditor label="Notes" value="Hi " onChange={onChange} upload={upload} />);
+    renderWithApp(<MarkdownEditor label="Notes" value="Hi " onChange={onChange} upload={failingUpload} />);
     const content = await screen.findByLabelText("Notes");
 
     paste(content, [new File(["x"], "huge.zip")]);
@@ -58,7 +59,14 @@ describe("MarkdownEditor file paste", () => {
 
   it("sends with ctrl+enter when the editor has a submit action", async () => {
     const onSubmit = vi.fn<() => void>();
-    renderWithApp(<MarkdownEditor label="Comment" value="" onChange={vi.fn()} onSubmit={onSubmit} />);
+    renderWithApp(
+      <MarkdownEditor
+        label="Comment"
+        value=""
+        onChange={vi.fn<(text: string) => void>()}
+        onSubmit={onSubmit}
+      />,
+    );
     const content = await screen.findByLabelText("Comment");
     fireEvent.keyDown(content, { key: "Enter", ctrlKey: true });
     expect(onSubmit).toHaveBeenCalledOnce();

@@ -6,6 +6,11 @@ export function today(now: Date = new Date()): string {
   return toLocalDate(now, timeZone);
 }
 
+/** The local calendar day of an instant, "2026-11-12". */
+export function toDate(instant: string): string {
+  return toLocalDate(instant, timeZone);
+}
+
 /** Age of an open todo, one unit only so the column stays narrow: "41d", "3h", "12m". */
 export function shortAge(createdAt: string, now: Date = new Date()): string {
   const days = daysSince(createdAt, today(now), timeZone);

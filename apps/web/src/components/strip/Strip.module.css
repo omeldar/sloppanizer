@@ -1,6 +1,6 @@
 /* Flight strips: a bay of stacked strips, each with a priority band and boxed mono fields on the right. */
 .bay {
-  --cols: 3px 34px 60px minmax(0, 1fr) 96px 96px 156px;
+  --cols: 3px 34px 60px minmax(0, 1fr) 48px 96px 96px 156px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -14,7 +14,7 @@
 }
 
 .bay[data-ranked] {
-  --cols: 3px 34px 34px 60px minmax(0, 1fr) 96px 96px 156px;
+  --cols: 3px 34px 34px 60px minmax(0, 1fr) 48px 96px 96px 156px;
 }
 
 .header {
@@ -218,6 +218,7 @@
   background: var(--amber-tint);
 }
 
+.comments,
 .due,
 .age,
 .project {
@@ -232,6 +233,13 @@
   color: var(--text-2);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+.comments {
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0 8px;
+  color: var(--text-2);
 }
 
 .due[data-state="overdue"] {
@@ -302,10 +310,10 @@
 
 @media (max-width: 900px) {
   .bay {
-    --cols: 3px 34px 52px minmax(0, 1fr) 92px;
+    --cols: 3px 34px 52px minmax(0, 1fr) 44px 92px;
   }
   .bay[data-ranked] {
-    --cols: 3px 28px 34px 52px minmax(0, 1fr) 92px;
+    --cols: 3px 28px 34px 52px minmax(0, 1fr) 44px 92px;
   }
   .age,
   .project,

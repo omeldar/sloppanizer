@@ -103,6 +103,7 @@ export function StripList({ items, label, ranked = false, collapseOnDone = true,
           <span />
           <span />
           <span />
+          <span />
           <span>Due</span>
           <span>Age</span>
           <span>Project</span>

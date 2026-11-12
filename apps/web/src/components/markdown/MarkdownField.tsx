@@ -55,7 +55,7 @@ export function MarkdownField({
   useEffect(() => () => clearTimeout(timer.current), []);
 
   return (
-    <>
+    <div className={styles.field}>
       <div className={styles.fieldHead}>
         <h2 className={styles.fieldTitle}>{title}</h2>
         <span className={styles.saveState} aria-live="polite">
@@ -96,6 +96,6 @@ export function MarkdownField({
       ) : (
         <p className={styles.emptyText}>{emptyText}</p>
       )}
-    </>
+    </div>
   );
 }

@@ -107,9 +107,12 @@ export type PersonChoice =
 export function PeoplePicker({
   value,
   onToggle,
+  label = "Requested by",
 }: {
   value: readonly PersonChoice[];
   onToggle: (choice: PersonChoice) => void;
+  /** Requested by or Contacts. */
+  label?: string;
 }) {
   const [search, setSearch] = useState("");
   const people = usePeople({ q: search.trim() });
@@ -119,13 +122,13 @@ export function PeoplePicker({
     label: (
       <>
         {person.displayName}
-        {person.note && <span className={styles.sub}>{person.note}</span>}
+        {(person.note || person.team) && <span className={styles.sub}>{person.note || person.team}</span>}
       </>
     ),
   }));
   return (
     <Picker
-      label="Requested by"
+      label={label}
       placeholder="Search people or type First Last"
       items={items}
       selected={chosenIds}

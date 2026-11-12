@@ -217,3 +217,15 @@
     order: -1;
   }
 }
+
+.peopleField {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.peopleField .peopleEdit {
+  width: auto;
+  color: var(--text-3);
+}

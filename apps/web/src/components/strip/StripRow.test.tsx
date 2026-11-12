@@ -44,6 +44,17 @@ describe("StripRow", () => {
     expect(item.dataset.priority).toBe("high");
   });
 
+  it("shows the comment count only when there are comments", async () => {
+    row({ todo: makeTodo({ id: 4, commentCount: 3 }) });
+    expect((await screen.findByTitle("3 comments")).textContent).toContain("3");
+  });
+
+  it("leaves the comment column empty without comments", async () => {
+    row({ todo: makeTodo({ id: 5, commentCount: 0 }) });
+    await screen.findByText("#5");
+    expect(screen.queryByTitle(/comment/)).toBeNull();
+  });
+
   it("marks an overdue date red and a date today amber", async () => {
     row({ todo: makeTodo({ id: 1, dueOn: addDays(today(), -2) }) });
     const due = await screen.findByText(addDays(today(), -2));

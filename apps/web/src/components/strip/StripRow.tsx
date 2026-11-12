@@ -132,6 +132,24 @@ export function StripRow({
           </span>
         )}
       </span>
+      <span
+        className={styles.comments}
+        title={
+          todo.commentCount > 0
+            ? `${todo.commentCount} ${todo.commentCount === 1 ? "comment" : "comments"}`
+            : undefined
+        }
+      >
+        {todo.commentCount > 0 && (
+          <>
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="M1.5 2h9v6h-5l-2.5 2v-2h-1.5z" fill="none" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
+            <span className="visually-hidden">Comments:</span>
+            {todo.commentCount}
+          </>
+        )}
+      </span>
       <DueCell todo={todo} />
       <span className={styles.age}>
         {done && todo.durationMs !== null

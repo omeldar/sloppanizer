@@ -1,5 +1,6 @@
 import {
   formatDuration,
+  type PersonRole,
   PRIORITIES,
   type Todo,
   TODO_STATUSES,
@@ -7,9 +8,10 @@ import {
   STATUS_LABELS,
 } from "@organizer/shared";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Dialog } from "../../components/Dialog.tsx";
 import { LabelPill } from "../../components/LabelPill.tsx";
+import type { MarkdownEditorHandle } from "../../components/markdown/MarkdownEditor.tsx";
 import { MarkdownField } from "../../components/markdown/MarkdownField.tsx";
 import { Popover } from "../../components/Popover.tsx";
 import { LabelPicker, PeoplePicker, ProjectPicker } from "../../components/pickers/pickers.tsx";
@@ -27,7 +29,9 @@ import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { ApiError, errorMessage } from "../../lib/api.ts";
 import { absoluteTime, dueText, relativeTime } from "../../lib/format.ts";
 import { useDeleteTodo, useTodo } from "../../lib/queries.ts";
-import { personRef, type PickerKind } from "./TodoPickerDialog.tsx";
+import { PersonChip } from "../people/PersonChip.tsx";
+import { Activity } from "./Activity.tsx";
+import { chosen, type PickerKind, togglePersonPatch } from "./TodoPickerDialog.tsx";
 import styles from "./TodoPage.module.css";
 import { useTodoActions } from "./useTodoActions.ts";
 
@@ -35,6 +39,7 @@ const route = getRouteApi("/todos/$id");
 
 export function TodoPage() {
   const { id } = route.useParams();
+  const search = route.useSearch();
   const todoId = Number(id);
   const todo = useTodo(todoId);
 
@@ -53,14 +58,15 @@ export function TodoPage() {
   }
   if (todo.isPending) return <Loading />;
   if (todo.isError) return <ErrorState error={todo.error} onRetry={() => void todo.refetch()} />;
-  return <TodoDetail key={todo.data.id} todo={todo.data} />;
+  return <TodoDetail key={todo.data.id} todo={todo.data} focusComment={search.comment} />;
 }
 
-function TodoDetail({ todo }: { todo: Todo }) {
+function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number }) {
   const { toggleDone, setPriority, patch } = useTodoActions();
   const [editingTitle, setEditingTitle] = useState(false);
   const [picker, setPicker] = useState<PickerKind | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const composer = useRef<MarkdownEditorHandle>(null);
 
   const bindings: KeyBinding[] = [
     { keys: "e", run: () => setEditingTitle(true), label: "Edit title", group: "Todo" },
@@ -68,6 +74,8 @@ function TodoDetail({ todo }: { todo: Todo }) {
     { keys: "l", run: () => setPicker("labels"), label: "Labels", group: "Todo" },
     { keys: "p", run: () => setPicker("project"), label: "Project", group: "Todo" },
     { keys: "r", run: () => setPicker("people"), label: "Requested by", group: "Todo" },
+    { keys: "o", run: () => setPicker("contacts"), label: "Contacts", group: "Todo" },
+    { keys: "m", run: () => composer.current?.focus(), label: "Write a comment", group: "Todo" },
     ...PRIORITIES.map((priority, i) => ({
       keys: String(i + 1),
       run: () => void setPriority(todo, priority),
@@ -108,9 +116,12 @@ function TodoDetail({ todo }: { todo: Todo }) {
       </div>
 
       <div className={styles.columns}>
-        <section className={styles.body} aria-label="Description">
-          <Description todo={todo} />
-        </section>
+        <div className={styles.body}>
+          <section aria-label="Description">
+            <Description todo={todo} />
+          </section>
+          <Activity todo={todo} composerRef={composer} focusComment={focusComment} />
+        </div>
 
         <aside className={styles.side} aria-label="Details">
           <dl className={styles.fields}>
@@ -173,31 +184,22 @@ function TodoDetail({ todo }: { todo: Todo }) {
 
             <dt>Requested by</dt>
             <dd>
-              <Popover
+              <PeopleField
+                todo={todo}
+                role="requester"
                 open={picker === "people"}
                 onOpenChange={pick("people")}
-                trigger={
-                  <FieldButton empty={todo.requestedBy.length === 0}>
-                    {todo.requestedBy.length === 0
-                      ? "Nobody"
-                      : todo.requestedBy.map((p) => p.displayName).join(", ")}
-                  </FieldButton>
-                }
-              >
-                <PeoplePicker
-                  value={todo.requestedBy.map((p) => ({ personId: p.id, displayName: p.displayName }))}
-                  onToggle={(choice) => {
-                    const linked =
-                      "personId" in choice && todo.requestedBy.some((p) => p.id === choice.personId);
-                    void patch(
-                      todo.id,
-                      linked
-                        ? { removeRequestedBy: [personRef(choice)] }
-                        : { addRequestedBy: [personRef(choice)] },
-                    );
-                  }}
-                />
-              </Popover>
+              />
+            </dd>
+
+            <dt>Contacts</dt>
+            <dd>
+              <PeopleField
+                todo={todo}
+                role="contact"
+                open={picker === "contacts"}
+                onOpenChange={pick("contacts")}
+              />
             </dd>
 
             <dt>Due</dt>
@@ -248,12 +250,55 @@ function TodoDetail({ todo }: { todo: Todo }) {
             </Button>
           </div>
           <p className={styles.keysHint}>
-            <Kbd keys="l" /> labels <Kbd keys="p" /> project <Kbd keys="r" /> people <Kbd keys="1" />
-            to <Kbd keys="4" /> priority
+            <Kbd keys="l" /> labels <Kbd keys="p" /> project <Kbd keys="r" /> requested by <Kbd keys="o" />
+            contacts <Kbd keys="m" /> comment <Kbd keys="1" /> to <Kbd keys="4" /> priority
           </p>
         </aside>
       </div>
       <DeleteDialog todo={todo} open={confirmDelete} onOpenChange={setConfirmDelete} />
+    </div>
+  );
+}
+
+/** Requesters or contacts: chips with a hover card, and a button that opens the people picker. */
+function PeopleField({
+  todo,
+  role,
+  open,
+  onOpenChange,
+}: {
+  todo: Todo;
+  role: PersonRole;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { patch } = useTodoActions();
+  const people = role === "contact" ? todo.contacts : todo.requestedBy;
+  const label = role === "contact" ? "Contacts" : "Requested by";
+  return (
+    <div className={styles.peopleField}>
+      {people.map((person) => (
+        <PersonChip key={person.id} person={person} />
+      ))}
+      <Popover
+        open={open}
+        onOpenChange={onOpenChange}
+        trigger={
+          <FieldButton
+            empty={people.length === 0}
+            className={people.length > 0 ? styles.peopleEdit : undefined}
+            aria-label={`${label}: add or remove people`}
+          >
+            {people.length === 0 ? "Nobody" : "Edit"}
+          </FieldButton>
+        }
+      >
+        <PeoplePicker
+          label={label}
+          value={chosen(people)}
+          onToggle={(choice) => void patch(todo.id, togglePersonPatch(todo, role, choice))}
+        />
+      </Popover>
     </div>
   );
 }

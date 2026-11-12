@@ -139,6 +139,10 @@
 }
 
 /* MarkdownField: heading, save state and the Write / Preview switch. */
+.field {
+  min-width: 0;
+}
+
 .fieldHead {
   display: flex;
   align-items: center;
