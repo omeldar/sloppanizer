@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { EmptyState, ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { useSearch } from "../../lib/queries.ts";
-import { useDebounced } from "../../lib/useDebounced.ts";
 import { useOnChange } from "../../lib/useOnChange.ts";
+import { useUrlText } from "../../lib/useUrlText.ts";
 import { Highlighted, hitTarget, KIND_NAMES, KIND_ORDER, KIND_SINGULAR } from "./hits.tsx";
 import styles from "./Search.module.css";
 
@@ -19,20 +19,21 @@ export interface SearchPageSearch {
 export function SearchPage() {
   const search = route.useSearch();
   const navigate = useNavigate();
-  const [text, setText] = useState(search.q ?? "");
-  const q = useDebounced(text.trim(), 150);
+  // The URL follows the typed text, so a search can be shared or reloaded, and a new ?q= shows up here.
+  const {
+    text,
+    setText,
+    settled: q,
+  } = useUrlText(
+    search.q ?? "",
+    (value) => void navigate({ to: "/search", search: { ...search, q: value || undefined }, replace: true }),
+  );
   const input = useRef<HTMLInputElement>(null);
   const result = useSearch(
     { q, kinds: search.kind ? [search.kind] : undefined, limit: search.kind ? 100 : 20 },
     q.length > 0,
   );
   const items = result.data?.items ?? [];
-
-  // The URL follows the typed text, so a search can be shared or reloaded.
-  useEffect(() => {
-    if ((search.q ?? "") !== q)
-      void navigate({ to: "/search", search: { ...search, q: q || undefined }, replace: true });
-  }, [q, search, navigate]);
 
   useEffect(() => input.current?.focus(), []);
 

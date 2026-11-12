@@ -16,6 +16,7 @@ import {
 } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { type PeopleParams, usePeople, usePersonTags, useTeams } from "../../lib/queries.ts";
+import { useUrlText } from "../../lib/useUrlText.ts";
 import styles from "./People.module.css";
 import { PeopleTabs } from "./PeopleTabs.tsx";
 import { TopicInput } from "./TopicInput.tsx";
@@ -69,6 +70,8 @@ export function PeoplePage() {
   const set = (patch: Partial<PeopleSearch>) =>
     void navigate({ to: "/people", search: { ...search, ...patch }, replace: true });
   const filtered = Boolean(search.q || search.topic || search.team || search.tag || search.kind);
+  // The list asks the server once typing pauses, not on every key.
+  const filter = useUrlText(search.q ?? "", (q) => set({ q: q || undefined }));
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const filterRef = useRef<HTMLInputElement>(null);
@@ -123,8 +126,8 @@ export function PeoplePage() {
         <TextInput
           ref={filterRef}
           className={styles.search}
-          value={search.q ?? ""}
-          onChange={(e) => set({ q: e.target.value || undefined })}
+          value={filter.text}
+          onChange={(e) => filter.setText(e.target.value)}
           placeholder="Name, team, email or topic"
           aria-label="Search people"
         />

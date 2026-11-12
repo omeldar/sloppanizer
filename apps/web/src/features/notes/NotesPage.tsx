@@ -7,6 +7,7 @@ import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { absoluteTime, relativeTime } from "../../lib/format.ts";
 import { type NoteListParams, useNotes, useProjects } from "../../lib/queries.ts";
 import { useOnChange } from "../../lib/useOnChange.ts";
+import { useUrlText } from "../../lib/useUrlText.ts";
 import { NoteEditor } from "./NoteEditor.tsx";
 import styles from "./Notes.module.css";
 
@@ -61,6 +62,9 @@ function NotesLayout({
       ? void navigate({ to: "/notes", search: next, replace: true })
       : void navigate({ to: "/notes/$id", params: { id: String(noteId) }, search: next, replace: true });
 
+  // The list asks the server once typing pauses, not on every key.
+  const filter = useUrlText(search.q ?? "", (q) => setSearch({ ...search, q: q || undefined }));
+
   const [selectedId, setSelectedId] = useState<number | null>(noteId);
   useOnChange(noteId, setSelectedId);
   const filterRef = useRef<HTMLInputElement>(null);
@@ -102,8 +106,8 @@ function NotesLayout({
         <div className={styles.filters}>
           <TextInput
             ref={filterRef}
-            value={search.q ?? ""}
-            onChange={(e) => setSearch({ ...search, q: e.target.value || undefined })}
+            value={filter.text}
+            onChange={(e) => filter.setText(e.target.value)}
             placeholder="Filter by title"
             aria-label="Filter notes by title"
           />
