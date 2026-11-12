@@ -3,19 +3,9 @@ import { type FormEvent, useState } from "react";
 import { Dialog } from "../../components/Dialog.tsx";
 import { Button, Field, TextInput } from "../../components/ui.tsx";
 import { errorMessage } from "../../lib/api.ts";
+import { PROJECT_COLORS } from "../../lib/color.ts";
 import { useCreateProject } from "../../lib/queries.ts";
 import styles from "./Projects.module.css";
-
-export const PROJECT_COLORS = [
-  "#8B95A5",
-  "#4C9AFF",
-  "#36B37E",
-  "#FFB224",
-  "#F2555A",
-  "#A77BF3",
-  "#2EC5CE",
-  "#E5739F",
-];
 
 export function NewProjectDialog({
   open,

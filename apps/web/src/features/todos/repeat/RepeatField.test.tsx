@@ -50,6 +50,18 @@ describe("repeat panel", () => {
     );
     const field = (await screen.findByRole("button", { name: "Repeat" })) as HTMLButtonElement;
     expect(field.disabled).toBe(true);
-    expect(screen.getByText("Set a due date or planned day first.")).toBeTruthy();
+    const hint = screen.getByText("Set a due date or planned day first.");
+    expect(field.getAttribute("aria-describedby")).toBe(hint.id);
+  });
+
+  it("gives each field its own hint id, so two on a page do not share one", async () => {
+    renderWithApp(
+      <>
+        <RepeatField value={null} anchor={null} open={false} onOpenChange={() => {}} onChange={() => {}} />
+        <RepeatField value={null} anchor={null} open={false} onOpenChange={() => {}} onChange={() => {}} />
+      </>,
+    );
+    const [first, second] = await screen.findAllByRole("button", { name: "Repeat" });
+    expect(first?.getAttribute("aria-describedby")).not.toBe(second?.getAttribute("aria-describedby"));
   });
 });

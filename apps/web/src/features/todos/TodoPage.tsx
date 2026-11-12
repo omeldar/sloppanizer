@@ -11,7 +11,7 @@ import {
 } from "@organizer/shared";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "../../components/Dialog.tsx";
 import { LabelPill } from "../../components/LabelPill.tsx";
 import type { MarkdownEditorHandle } from "../../components/markdown/MarkdownEditor.tsx";
@@ -563,10 +563,10 @@ function Description({ todo }: { todo: Todo }) {
   const client = useQueryClient();
   const toast = useToast();
   const count = countChecklist(todo.descriptionMd);
-  const checklist = {
-    busy: toggle.isPending,
-    onToggle: (item: ChecklistItem, checked: boolean) =>
-      toggle.mutate(
+  const { mutate: toggleItem, isPending: busy } = toggle;
+  const onToggle = useCallback(
+    (item: ChecklistItem, checked: boolean) =>
+      toggleItem(
         { index: item.index, checked, text: item.text },
         {
           onError: (error) => {
@@ -580,7 +580,10 @@ function Description({ todo }: { todo: Todo }) {
           },
         },
       ),
-  };
+    [toggleItem, client, toast],
+  );
+  // Stable between renders, so the preview does not rebuild its checklist context each time.
+  const checklist = useMemo(() => ({ busy, onToggle }), [busy, onToggle]);
   return (
     <MarkdownField
       title="Description"

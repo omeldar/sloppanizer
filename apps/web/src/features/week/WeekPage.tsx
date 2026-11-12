@@ -9,15 +9,16 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { addDays, formatDuration, type Todo } from "@organizer/shared";
+import { addDays, type Todo } from "@organizer/shared";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { MiniStrip } from "../../components/strip/MiniStrip.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
-import { Button, ErrorState, Kbd, Loading, PageHeader } from "../../components/ui.tsx";
+import { Announce, Button, ErrorState, Kbd, Loading, PageHeader } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
-import { today } from "../../lib/format.ts";
+import { today, tookText } from "../../lib/format.ts";
 import { useTodos } from "../../lib/queries.ts";
+import { useScrollIntoView } from "../../lib/listCursor.ts";
 import { useTodoActions } from "../todos/useTodoActions.ts";
 import { daysOfWeek, shiftWeek, weekPlace, weekStart } from "./week.ts";
 import styles from "./Week.module.css";
@@ -258,6 +259,17 @@ function WeekBoard({ days, today: now }: { days: string[]; today: string }) {
           }
         }}
       >
+        <Announce
+          text={
+            selected
+              ? `#${selected.todo.id} ${selected.todo.title}, ${
+                  days[selected.col]
+                    ? `${dayName(days[selected.col] as string)} ${days[selected.col]}`
+                    : "not planned this week"
+                }`
+              : ""
+          }
+        />
         <div className={styles.days}>
           {days.map((date, col) => (
             <DropZone
@@ -361,14 +373,8 @@ function DraggableStrip({
 }) {
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id: todo.id });
   const { role: _role, tabIndex: _tabIndex, ...dragAttributes } = attributes;
-  const ref = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (selected) ref.current?.scrollIntoView?.({ block: "nearest" });
-  }, [selected]);
-  const took =
-    todo.status === "done" && todo.durationMs !== null
-      ? `took ${formatDuration(todo.durationMs)}`
-      : undefined;
+  const ref = useScrollIntoView<HTMLDivElement>(selected);
+  const took = tookText(todo);
   return (
     <li className={styles.slot}>
       <MiniStrip

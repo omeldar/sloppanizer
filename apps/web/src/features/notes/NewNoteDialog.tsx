@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useId, useState } from "react";
 import { useCommands } from "../../app/commands.tsx";
 import { Dialog } from "../../components/Dialog.tsx";
 import { Popover } from "../../components/Popover.tsx";
@@ -34,6 +34,8 @@ function NewNoteForm({ projectId: startProject, onDone }: { projectId: number | 
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const project = projects.data?.find((p) => p.id === projectId);
+  const projectLabel = useId();
+  const projectButton = useId();
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -60,11 +62,22 @@ function NewNoteForm({ projectId: startProject, onDone }: { projectId: number | 
         />
       </Field>
       <div className={styles.newRow}>
-        <span className={styles.newLabel}>Project</span>
+        <span id={projectLabel} className={styles.newLabel}>
+          Project
+        </span>
         <Popover
           open={picking}
           onOpenChange={setPicking}
-          trigger={<FieldButton empty={!project}>{project?.name ?? "No project"}</FieldButton>}
+          trigger={
+            // Read as "Project Home lab": the label, then the current choice.
+            <FieldButton
+              id={projectButton}
+              aria-labelledby={`${projectLabel} ${projectButton}`}
+              empty={!project}
+            >
+              {project?.name ?? "No project"}
+            </FieldButton>
+          }
         >
           <ProjectPicker
             value={projectId}

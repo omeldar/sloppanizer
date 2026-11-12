@@ -86,6 +86,15 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
   );
 }
 
+/** Read out by screen readers when the text changes, e.g. a keyboard cursor that does not move focus. */
+export function Announce({ text }: { text: string }) {
+  return (
+    <p className="visually-hidden" aria-live="polite">
+      {text}
+    </p>
+  );
+}
+
 export function Loading({ label = "Loading" }: { label?: string }) {
   return (
     <div className={styles.loading} role="status">

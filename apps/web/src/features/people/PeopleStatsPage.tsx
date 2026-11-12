@@ -1,11 +1,12 @@
 import type { PersonStat } from "@organizer/shared";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useState } from "react";
 import { EmptyState, ErrorState, Loading, PageHeader, TextInput } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { today as localToday, toDate } from "../../lib/format.ts";
 import { useLabels, usePeopleStats, useProjects } from "../../lib/queries.ts";
-import { joinList, splitList, TagFilter, TeamFilter } from "./PeoplePage.tsx";
+import { stepCursor, useScrollIntoView } from "../../lib/listCursor.ts";
+import { joinList, splitList, TagFilter, TeamFilter } from "./filters.tsx";
 import { PeopleTabs } from "./PeopleTabs.tsx";
 import styles from "./PeopleStats.module.css";
 import {
@@ -56,12 +57,14 @@ export function PeopleStatsPage() {
   );
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const index = items.findIndex((s) => s.person.id === selectedId);
-  const move = (delta: number) => {
-    if (items.length === 0) return;
-    const next = index === -1 ? (delta > 0 ? 0 : items.length - 1) : index + delta;
-    setSelectedId(items[Math.max(0, Math.min(items.length - 1, next))]?.person.id ?? null);
-  };
+  const move = (delta: number) =>
+    setSelectedId(
+      stepCursor(
+        items.map((s) => s.person.id),
+        selectedId,
+        delta,
+      ),
+    );
   const bindings: KeyBinding[] = [
     { keys: "j", run: () => move(1), label: "Next person", group: "People statistics" },
     { keys: "k", run: () => move(-1), label: "Previous person", group: "People statistics" },
@@ -361,10 +364,7 @@ function StatRow({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const ref = useRef<HTMLTableRowElement>(null);
-  useEffect(() => {
-    if (selected) ref.current?.scrollIntoView?.({ block: "nearest" });
-  }, [selected]);
+  const ref = useScrollIntoView<HTMLTableRowElement>(selected);
   const numbers = roleNumbers(stat, role);
   const bar = barParts(numbers, maxTotal);
   const { person, requested, contact } = stat;

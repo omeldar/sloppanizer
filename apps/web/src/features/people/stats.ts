@@ -1,6 +1,6 @@
 import { addDays, formatDuration, type PEOPLE_STATS_SORTS, type PersonStat } from "@organizer/shared";
 import type { PeopleStatsParams } from "../../lib/queries.ts";
-import { splitList } from "./PeoplePage.tsx";
+import { splitList } from "./filters.tsx";
 
 export const PERIODS = {
   "30d": "Last 30 days",

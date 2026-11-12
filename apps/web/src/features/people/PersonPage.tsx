@@ -31,6 +31,7 @@ import {
 } from "../../components/ui.tsx";
 import { useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { ApiError, errorMessage } from "../../lib/api.ts";
+import { PROJECT_COLORS } from "../../lib/color.ts";
 import { absoluteTime, toDate } from "../../lib/format.ts";
 import {
   useCreatePersonTag,
@@ -45,7 +46,6 @@ import {
   useTopics,
   useUpdatePerson,
 } from "../../lib/queries.ts";
-import { PROJECT_COLORS } from "../projects/NewProjectDialog.tsx";
 import { EmailActions } from "./EmailActions.tsx";
 import { InlineText } from "./InlineText.tsx";
 import { PersonStats } from "./PersonStats.tsx";

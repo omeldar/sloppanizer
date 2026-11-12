@@ -39,7 +39,8 @@ const checklistComponents = { ...baseComponents, li: ListItem, input: Checkbox }
  * `checklist`, task list boxes can be clicked; each box is matched to its item by source line.
  */
 export function MarkdownPreview({ source, checklist }: { source: string; checklist?: ChecklistControl }) {
-  const items = useMemo(() => (checklist ? parseChecklist(source) : []), [checklist, source]);
+  const clickable = checklist !== undefined;
+  const items = useMemo(() => (clickable ? parseChecklist(source) : []), [clickable, source]);
   const context = useMemo(() => (checklist ? { ...checklist, items } : null), [checklist, items]);
   return (
     <div className={styles.preview}>

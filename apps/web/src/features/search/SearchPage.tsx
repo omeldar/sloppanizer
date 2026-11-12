@@ -6,6 +6,7 @@ import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { useSearch } from "../../lib/queries.ts";
 import { useOnChange } from "../../lib/useOnChange.ts";
 import { useUrlText } from "../../lib/useUrlText.ts";
+import { useScrollIntoView } from "../../lib/listCursor.ts";
 import { Highlighted, hitTarget, KIND_NAMES, KIND_ORDER, KIND_SINGULAR } from "./hits.tsx";
 import styles from "./Search.module.css";
 
@@ -150,10 +151,7 @@ function Tab({
 }
 
 function Result({ hit, selected, showKind }: { hit: SearchHit; selected: boolean; showKind: boolean }) {
-  const ref = useRef<HTMLLIElement>(null);
-  useEffect(() => {
-    if (selected) ref.current?.scrollIntoView?.({ block: "nearest" });
-  }, [selected]);
+  const ref = useScrollIntoView<HTMLLIElement>(selected);
   const target = hitTarget(hit);
   return (
     <li ref={ref} className={styles.result} data-selected={selected || undefined} data-kind={hit.kind}>

@@ -72,3 +72,10 @@ export function formatBytes(bytes: number): string {
   }
   return `${value.toFixed(1)} ${units[unit]}`;
 }
+
+/** "took 2d 4h" for a done todo with a measured duration. */
+export function tookText(todo: { status: string; durationMs: number | null }): string | undefined {
+  return todo.status === "done" && todo.durationMs !== null
+    ? `took ${formatDuration(todo.durationMs)}`
+    : undefined;
+}

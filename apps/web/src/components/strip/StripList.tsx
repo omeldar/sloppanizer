@@ -5,6 +5,7 @@ import { TodoPickerDialog, type PickerKind } from "../../features/todos/TodoPick
 import { useTodoActions } from "../../features/todos/useTodoActions.ts";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { StripRow } from "./StripRow.tsx";
+import { stepCursor } from "../../lib/listCursor.ts";
 import styles from "./Strip.module.css";
 
 export interface StripItem {
@@ -34,16 +35,14 @@ export function StripList({ items, label, ranked = false, collapseOnDone = true,
   const index = items.findIndex((item) => item.todo.id === selectedId);
   const selected = index === -1 ? undefined : items[index]?.todo;
 
-  const move = (delta: number) => {
-    if (items.length === 0) return;
-    const next =
-      index === -1
-        ? delta > 0
-          ? 0
-          : items.length - 1
-        : Math.min(items.length - 1, Math.max(0, index + delta));
-    setSelectedId(items[next]?.todo.id ?? null);
-  };
+  const move = (delta: number) =>
+    setSelectedId(
+      stepCursor(
+        items.map((item) => item.todo.id),
+        selectedId,
+        delta,
+      ),
+    );
 
   const onSelected = (run: (todo: Todo) => void) => () => {
     if (selected) run(selected);

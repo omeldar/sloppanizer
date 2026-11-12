@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { queryString } from "../../lib/api.ts";
-import { peopleParams, splitList } from "./PeoplePage.tsx";
+import { splitList } from "./filters.tsx";
+import { peopleParams } from "./PeoplePage.tsx";
 
 describe("people filters in the URL", () => {
   it("turns the URL's comma lists into the API query, all filters together", () => {

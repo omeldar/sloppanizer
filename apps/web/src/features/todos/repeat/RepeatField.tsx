@@ -1,5 +1,5 @@
 import { describeRecurrence, ordinal, type RecurrenceRule, WEEKDAYS, type Weekday } from "@organizer/shared";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useId, useState } from "react";
 import { Popover } from "../../../components/Popover.tsx";
 import { Button, FieldButton } from "../../../components/ui.tsx";
 import { today as localToday } from "../../../lib/format.ts";
@@ -27,13 +27,14 @@ interface Props {
 
 /** The Repeat field: plain words for the rule, a popover with presets and a custom form. */
 export function RepeatField({ value, anchor, open, onOpenChange, onChange }: Props) {
+  const hintId = useId();
   if (!anchor) {
     return (
       <span className={styles.disabled}>
-        <FieldButton empty disabled aria-label="Repeat" aria-describedby="repeat-hint">
+        <FieldButton empty disabled aria-label="Repeat" aria-describedby={hintId}>
           Does not repeat
         </FieldButton>
-        <span id="repeat-hint" className={styles.hint}>
+        <span id={hintId} className={styles.hint}>
           Set a due date or planned day first.
         </span>
       </span>

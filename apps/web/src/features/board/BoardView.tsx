@@ -11,25 +11,19 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  addDays,
-  formatDuration,
-  type Todo,
-  type TodoStatus,
-  type UpdateTodo,
-  STATUS_LABELS,
-} from "@organizer/shared";
+import { addDays, type Todo, type TodoStatus, type UpdateTodo, STATUS_LABELS } from "@organizer/shared";
 import { useNavigate } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { MiniStrip } from "../../components/strip/MiniStrip.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
-import { Button, ErrorState, Loading } from "../../components/ui.tsx";
+import { Announce, Button, ErrorState, Loading } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
-import { today } from "../../lib/format.ts";
+import { today, tookText } from "../../lib/format.ts";
 import { type TodoListParams, useTodos } from "../../lib/queries.ts";
 import { useTodoActions } from "../todos/useTodoActions.ts";
 import styles from "./Board.module.css";
 import { planMove } from "../../lib/positions.ts";
+import { useScrollIntoView } from "../../lib/listCursor.ts";
 
 export const BOARD_COLUMNS: readonly TodoStatus[] = ["open", "in_progress", "blocked", "done"];
 const DONE_DAYS = 14;
@@ -224,6 +218,13 @@ export function BoardView({ filters }: { filters: BoardFilters }) {
           }
         }}
       >
+        <Announce
+          text={
+            selected
+              ? `#${selected.todo.id} ${selected.todo.title}, ${STATUS_LABELS[BOARD_COLUMNS[selected.col] ?? "open"]}`
+              : ""
+          }
+        />
         {BOARD_COLUMNS.map((status, col) => (
           <Column
             key={status}
@@ -256,12 +257,6 @@ export function BoardView({ filters }: { filters: BoardFilters }) {
       </DragOverlay>
     </DndContext>
   );
-}
-
-function tookText(todo: Todo): string | undefined {
-  return todo.status === "done" && todo.durationMs !== null
-    ? `took ${formatDuration(todo.durationMs)}`
-    : undefined;
 }
 
 function Column({
@@ -322,10 +317,7 @@ function Card({ todo, selected, onSelect }: { todo: Todo; selected: boolean; onS
   });
   // The board has its own keys (h, j, k, l, shift+h, shift+l), so the card is no extra tab stop or button.
   const { role: _role, tabIndex: _tabIndex, ...dragAttributes } = attributes;
-  const ref = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (selected) ref.current?.scrollIntoView?.({ block: "nearest" });
-  }, [selected]);
+  const ref = useScrollIntoView<HTMLDivElement>(selected);
   return (
     <li className={styles.slot}>
       <MiniStrip

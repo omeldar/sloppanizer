@@ -53,6 +53,8 @@ describe("board keys", () => {
     await within(open).findByText("Patch the firewall");
 
     fireEvent.keyDown(window, { key: "j" });
+    // The cursor does not move focus, so screen readers hear the selected card instead.
+    expect(document.querySelector("[aria-live]")?.textContent).toBe("#7 Patch the firewall, Open");
     fireEvent.keyDown(window, { key: "L" });
 
     await waitFor(() =>

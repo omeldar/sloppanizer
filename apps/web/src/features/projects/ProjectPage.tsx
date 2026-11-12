@@ -2,7 +2,7 @@ import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import type { CSSProperties } from "react";
 import { EmptyState, ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
 import { useProjects } from "../../lib/queries.ts";
-import { BoardFilterBar } from "../board/BoardPage.tsx";
+import { BoardFilterBar } from "../board/BoardFilterBar.tsx";
 import { BoardView } from "../board/BoardView.tsx";
 import styles from "../lists/Lists.module.css";
 import { TodoListView } from "../lists/TodoListView.tsx";

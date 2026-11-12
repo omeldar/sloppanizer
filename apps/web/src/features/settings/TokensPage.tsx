@@ -1,6 +1,6 @@
 import type { ApiToken, TokenScope } from "@organizer/shared";
 import { useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { Dialog } from "../../components/Dialog.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import {
@@ -17,6 +17,7 @@ import { errorMessage } from "../../lib/api.ts";
 import { absoluteTime, relativeTime } from "../../lib/format.ts";
 import { createToken, useRevokeToken, useTokens } from "../../lib/queries.ts";
 import { useNow } from "../../lib/useNow.ts";
+import { stepCursor, useScrollIntoView } from "../../lib/listCursor.ts";
 import { SessionOnly } from "./SessionOnly.tsx";
 import styles from "./Tokens.module.css";
 
@@ -73,11 +74,14 @@ function TokensView() {
   const active = all.filter((t) => isActive(t, now));
   const inactive = all.filter((t) => !isActive(t, now));
   const index = active.findIndex((t) => t.id === selectedId);
-  const move = (delta: number) => {
-    if (active.length === 0) return;
-    const next = index === -1 ? (delta > 0 ? 0 : active.length - 1) : index + delta;
-    setSelectedId(active[Math.max(0, Math.min(active.length - 1, next))]?.id ?? null);
-  };
+  const move = (delta: number) =>
+    setSelectedId(
+      stepCursor(
+        active.map((t) => t.id),
+        selectedId,
+        delta,
+      ),
+    );
   const bindings: KeyBinding[] = [
     { keys: "j", run: () => move(1), label: "Next token", group: "API tokens" },
     { keys: "k", run: () => move(-1), label: "Previous token", group: "API tokens" },
@@ -233,10 +237,7 @@ function TokenRow({
   onSelect?: () => void;
   onRevoke?: () => void;
 }) {
-  const ref = useRef<HTMLLIElement>(null);
-  useEffect(() => {
-    if (selected) ref.current?.scrollIntoView?.({ block: "nearest" });
-  }, [selected]);
+  const ref = useScrollIntoView<HTMLLIElement>(selected);
   const end = onRevoke
     ? token.expiresAt
       ? absoluteTime(token.expiresAt)

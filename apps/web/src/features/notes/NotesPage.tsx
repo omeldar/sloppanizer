@@ -1,6 +1,6 @@
 import type { NoteSummary } from "@organizer/shared";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useRef, useState } from "react";
 import { useCommands } from "../../app/commands.tsx";
 import { Button, EmptyState, ErrorState, Kbd, Loading, TextInput } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
@@ -8,6 +8,7 @@ import { absoluteTime, relativeTime } from "../../lib/format.ts";
 import { type NoteListParams, useNotes, useProjects } from "../../lib/queries.ts";
 import { useOnChange } from "../../lib/useOnChange.ts";
 import { useUrlText } from "../../lib/useUrlText.ts";
+import { stepCursor, useScrollIntoView } from "../../lib/listCursor.ts";
 import { NoteEditor } from "./NoteEditor.tsx";
 import styles from "./Notes.module.css";
 
@@ -68,12 +69,14 @@ function NotesLayout({
   const [selectedId, setSelectedId] = useState<number | null>(noteId);
   useOnChange(noteId, setSelectedId);
   const filterRef = useRef<HTMLInputElement>(null);
-  const index = ordered.findIndex((n) => n.id === selectedId);
-  const move = (delta: number) => {
-    if (ordered.length === 0) return;
-    const next = index === -1 ? (delta > 0 ? 0 : ordered.length - 1) : index + delta;
-    setSelectedId(ordered[Math.max(0, Math.min(ordered.length - 1, next))]?.id ?? null);
-  };
+  const move = (delta: number) =>
+    setSelectedId(
+      stepCursor(
+        ordered.map((n) => n.id),
+        selectedId,
+        delta,
+      ),
+    );
   const open = (id: number) => void navigate({ to: "/notes/$id", params: { id: String(id) }, search });
 
   const bindings: KeyBinding[] = [
@@ -207,10 +210,7 @@ function NoteRow({
   open: boolean;
   search: NotesSearch;
 }) {
-  const ref = useRef<HTMLLIElement>(null);
-  useEffect(() => {
-    if (selected) ref.current?.scrollIntoView?.({ block: "nearest" });
-  }, [selected]);
+  const ref = useScrollIntoView<HTMLLIElement>(selected);
   return (
     <li ref={ref} className={styles.row} data-selected={selected || undefined} data-open={open || undefined}>
       <Link

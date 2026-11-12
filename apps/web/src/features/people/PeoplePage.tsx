@@ -1,23 +1,15 @@
 import type { Person } from "@organizer/shared";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useCommands } from "../../app/commands.tsx";
 import { LabelPill } from "../../components/LabelPill.tsx";
-import { Popover } from "../../components/Popover.tsx";
-import { Picker } from "../../components/pickers/Picker.tsx";
-import {
-  Button,
-  EmptyState,
-  ErrorState,
-  FieldButton,
-  Loading,
-  PageHeader,
-  TextInput,
-} from "../../components/ui.tsx";
+import { Button, EmptyState, ErrorState, Loading, PageHeader, TextInput } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
-import { type PeopleParams, usePeople, usePersonTags, useTeams } from "../../lib/queries.ts";
+import { type PeopleParams, usePeople } from "../../lib/queries.ts";
 import { useUrlText } from "../../lib/useUrlText.ts";
+import { stepCursor, useScrollIntoView } from "../../lib/listCursor.ts";
 import styles from "./People.module.css";
+import { joinList, splitList, TagFilter, TeamFilter } from "./filters.tsx";
 import { PeopleTabs } from "./PeopleTabs.tsx";
 import { TopicInput } from "./TopicInput.tsx";
 
@@ -40,14 +32,6 @@ const TABS = [
   { kind: "requester", label: "Requesters" },
   { kind: "contact", label: "Contacts" },
 ] as const;
-
-export function splitList(value: string | undefined): string[] {
-  return value ? value.split(",").filter(Boolean) : [];
-}
-
-export function joinList(values: readonly string[]): string | undefined {
-  return values.length > 0 ? values.join(",") : undefined;
-}
 
 /** URL search -> API query; the URL keeps lists as comma text. */
 export function peopleParams(search: PeopleSearch): PeopleParams {
@@ -75,12 +59,14 @@ export function PeoplePage() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const filterRef = useRef<HTMLInputElement>(null);
-  const index = list.findIndex((p) => p.id === selectedId);
-  const move = (delta: number) => {
-    if (list.length === 0) return;
-    const next = index === -1 ? (delta > 0 ? 0 : list.length - 1) : index + delta;
-    setSelectedId(list[Math.max(0, Math.min(list.length - 1, next))]?.id ?? null);
-  };
+  const move = (delta: number) =>
+    setSelectedId(
+      stepCursor(
+        list.map((p) => p.id),
+        selectedId,
+        delta,
+      ),
+    );
   const bindings: KeyBinding[] = [
     { keys: "j", run: () => move(1), label: "Next person", group: "People" },
     { keys: "k", run: () => move(-1), label: "Previous person", group: "People" },
@@ -208,10 +194,7 @@ function PersonRow({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const ref = useRef<HTMLLIElement>(null);
-  useEffect(() => {
-    if (selected) ref.current?.scrollIntoView?.({ block: "nearest" });
-  }, [selected]);
+  const ref = useScrollIntoView<HTMLLIElement>(selected);
   const { counts } = person;
   return (
     // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- a click moves the list cursor (j/k do the same by keyboard)
@@ -238,72 +221,5 @@ function PersonRow({
       <span className={styles.num}>{counts.requestedDone}</span>
       <span className={styles.num}>{counts.contact}</span>
     </li>
-  );
-}
-
-export function TeamFilter({
-  value,
-  onChange,
-}: {
-  value?: string;
-  onChange: (team: string | undefined) => void;
-}) {
-  const teams = useTeams();
-  return (
-    <label className={styles.sort}>
-      <span>Team</span>
-      <select
-        className={styles.select}
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value || undefined)}
-      >
-        <option value="">Any team</option>
-        {(teams.data ?? []).map((team) => (
-          <option key={team.name} value={team.name}>
-            {team.name}
-          </option>
-        ))}
-        {value && !teams.data?.some((t) => t.name.toLowerCase() === value.toLowerCase()) && (
-          <option value={value}>{value}</option>
-        )}
-      </select>
-    </label>
-  );
-}
-
-export function TagFilter({ value, onChange }: { value: string[]; onChange: (tags: string[]) => void }) {
-  const tags = usePersonTags();
-  const [open, setOpen] = useState(false);
-  const selected = new Set(value.map((v) => v.toLowerCase()));
-  return (
-    <Popover
-      open={open}
-      onOpenChange={setOpen}
-      trigger={
-        <FieldButton empty={value.length === 0} className={styles.tagButton}>
-          {value.length === 0 ? "Any tag" : value.join(", ")}
-        </FieldButton>
-      }
-    >
-      <Picker
-        label="Person tags"
-        placeholder="Filter by tags (all must match)"
-        items={(tags.data ?? []).map((tag) => ({
-          value: tag.name.toLowerCase(),
-          search: tag.name,
-          label: <LabelPill name={tag.name} color={tag.color} />,
-          note: String(tag.peopleCount),
-        }))}
-        selected={selected}
-        onPick={(lower) => {
-          const tag = tags.data?.find((t) => t.name.toLowerCase() === lower);
-          if (!tag) return;
-          onChange(
-            selected.has(lower) ? value.filter((v) => v.toLowerCase() !== lower) : [...value, tag.name],
-          );
-        }}
-        empty="No person tags yet. Create them on the Labels page or a person's page."
-      />
-    </Popover>
   );
 }

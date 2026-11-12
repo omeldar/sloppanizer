@@ -64,7 +64,7 @@ describe("new note from the notes list", () => {
     await screen.findByText("No note matches. Clear the filter or pick another project.", {}, LAZY_PAGE);
     fireEvent.keyDown(window, { key: "n" });
     const dialog = await screen.findByRole("dialog", { name: "New note" });
-    expect(within(dialog).getByRole("button", { name: "Home lab" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Project Home lab" })).toBeTruthy();
   });
 
   it("starts without a project on the unfiltered list", async () => {
@@ -72,7 +72,7 @@ describe("new note from the notes list", () => {
     await screen.findByText("No notes yet. Press n to write one.", {}, LAZY_PAGE);
     fireEvent.keyDown(window, { key: "n" });
     const dialog = await screen.findByRole("dialog", { name: "New note" });
-    expect(within(dialog).getByRole("button", { name: "No project" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Project No project" })).toBeTruthy();
   });
 });
 
