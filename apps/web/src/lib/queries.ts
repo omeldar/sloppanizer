@@ -11,6 +11,8 @@ import {
   type CreateProject,
   type CreateTodo,
   type CreateToken,
+  type BulkPatch,
+  BulkUpdateResult,
   FolderExport,
   RestorePreview,
   RestoreResult,
@@ -117,6 +119,8 @@ export interface TodoListParams {
   label?: readonly string[];
   personId?: number;
   personRole?: "requester" | "contact" | "any";
+  /** Children of this todo, or "none" for top-level todos only. */
+  parentId?: number | "none";
   q?: string;
   /** Inclusive calendar dates (YYYY-MM-DD). */
   plannedFrom?: string;
@@ -291,6 +295,57 @@ export function useToggleChecklist(todoId: number) {
       client.setQueryData(keys.todo(todo.id), todo);
       return invalidateTodoViews(client);
     },
+  });
+}
+
+/** The direct children of a todo, in their order. */
+export const childrenParams = (parentId: number): TodoListParams => ({
+  parentId,
+  status: "all",
+  sort: "position",
+  order: "asc",
+  limit: 200,
+});
+
+/** One patch for many todos (all or nothing). */
+export function useBulkUpdate() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { ids: number[]; patch: BulkPatch }) =>
+      api(BulkUpdateResult, "/todos/bulk", { method: "POST", body: input }),
+    onSuccess: () => invalidateTodoViews(client),
+  });
+}
+
+/** Links between todos change both todos, Next up (blocked ones leave the ranking) and lists. */
+export function useAddLinks(todoId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (links: { kind: "blocks" | "blocked_by" | "relates"; todoId: number }[]) =>
+      api(Todo, `/todos/${todoId}/links`, { method: "POST", body: { links } }),
+    onSuccess: (todo) => {
+      client.setQueryData(keys.todo(todo.id), todo);
+      return invalidateTodoViews(client);
+    },
+  });
+}
+
+export function useRemoveLink(todoId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ otherId, kind }: { otherId: number; kind: "blocks" | "blocked_by" | "relates" }) =>
+      apiVoid(`/todos/${todoId}/links/${otherId}`, { method: "DELETE", query: { kind } }),
+    onSuccess: () => invalidateTodoViews(client),
+  });
+}
+
+/** Creates child todos in the given order after the last child. */
+export function useAddSubtasks(todoId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (titles: string[]) =>
+      api(z.array(Todo), `/todos/${todoId}/subtasks`, { method: "POST", body: { titles } }),
+    onSuccess: () => invalidateTodoViews(client),
   });
 }
 

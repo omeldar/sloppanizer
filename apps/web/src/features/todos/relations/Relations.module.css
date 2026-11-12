@@ -1,0 +1,263 @@
+/* Subtasks and links on the todo page. */
+.linkDialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px 16px;
+}
+
+.kinds {
+  display: flex;
+  gap: 6px;
+}
+
+.kind {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  cursor: pointer;
+}
+
+.kind[data-on] {
+  border-color: var(--amber);
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
+.kind:focus-within {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.kind input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.kindName {
+  font-weight: 600;
+}
+
+.kindNote {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.error {
+  color: var(--red);
+  font-size: var(--fs-small);
+}
+
+.subtaskInput {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.addInput {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: transparent;
+}
+
+.addInput:focus-visible {
+  border-style: solid;
+  border-color: var(--amber);
+  outline: none;
+}
+
+.pasted {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--amber);
+  background: var(--amber-tint);
+  font-size: var(--fs-small);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 22px 0 6px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sectionTitle {
+  font-size: var(--fs-h2);
+  font-weight: 600;
+}
+
+.progress {
+  display: inline-flex;
+  width: 120px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.progress span {
+  background: var(--text-3);
+}
+
+.count {
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto 48px minmax(0, 1fr) 96px 88px auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 8px 0 6px;
+  background: var(--strip);
+}
+
+.linkRow {
+  grid-template-columns: 48px minmax(0, 1fr) 96px auto;
+  padding-left: 12px;
+}
+
+.row:hover {
+  background: var(--strip-hover);
+}
+
+.row[data-selected] {
+  background: var(--strip-selected);
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -2px;
+}
+
+.row[data-dragging] {
+  z-index: 1;
+  box-shadow: var(--menu-shadow);
+}
+
+.handle {
+  color: var(--text-3);
+  font-size: 11px;
+  letter-spacing: -2px;
+  cursor: grab;
+  user-select: none;
+}
+
+.check {
+  accent-color: var(--amber);
+}
+
+.rowId {
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.rowTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.rowTitle:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.row[data-done] .rowTitle {
+  color: var(--text-2);
+  text-decoration: line-through;
+}
+
+.rowStatus {
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.rowDue {
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.rowDue[data-state="overdue"] {
+  color: var(--red);
+}
+
+.rowMenu {
+  padding: 2px 6px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.rowMenu:hover,
+.rowMenu:focus-visible {
+  color: var(--text);
+}
+
+.none {
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.linkGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.groupTitle {
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.waiting {
+  margin-bottom: 12px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--amber);
+  background: var(--amber-tint);
+  color: var(--text);
+}
+
+.waitingRef {
+  font-family: var(--font-mono);
+  color: var(--amber-text);
+}

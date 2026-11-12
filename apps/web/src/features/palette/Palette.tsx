@@ -38,7 +38,7 @@ const ID_QUERY = /^#?(\d+)$/;
 function PaletteBody({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const client = useQueryClient();
-  const { openQuickAdd, openNewNote, openNewPerson } = useCommands();
+  const { openQuickAdd, openNewNote, openNewPerson, todoCommands } = useCommands();
   const projects = useProjects();
   const session = useIsSession();
   const toast = useToast();
@@ -165,6 +165,30 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
         )}
         {!idMatch && (
           <>
+            {todoCommands && (
+              <Command.Group heading={`Todo #${todoCommands.todoId}`} className={styles.group}>
+                <Item value="new subtask" onSelect={run(todoCommands.newSubtask)} keys="s">
+                  New subtask
+                </Item>
+                <Item
+                  value="add link blocks blocked by relates"
+                  onSelect={run(todoCommands.addLink)}
+                  keys="b"
+                >
+                  Add link
+                </Item>
+                {todoCommands.repeat && (
+                  <Item value="repeat recurring" onSelect={run(todoCommands.repeat)} keys="shift+r">
+                    Repeat
+                  </Item>
+                )}
+                {todoCommands.goToParent && (
+                  <Item value="go to parent todo" onSelect={run(todoCommands.goToParent)} keys="u">
+                    Go to parent
+                  </Item>
+                )}
+              </Command.Group>
+            )}
             <Command.Group heading="Actions" className={styles.group}>
               <Item value="new todo" onSelect={run(() => openQuickAdd())} keys="c">
                 New todo

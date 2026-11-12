@@ -5,6 +5,15 @@ export interface QuickAddDefaults {
   projectSlug?: string;
 }
 
+/** Actions of the todo page that is open, for the palette (null on other pages). */
+export interface TodoCommands {
+  todoId: number;
+  newSubtask: () => void;
+  addLink: () => void;
+  repeat?: () => void;
+  goToParent?: () => void;
+}
+
 interface Commands {
   openQuickAdd: (defaults?: QuickAddDefaults) => void;
   /** Opens the new note dialog; the note starts in this project (null = none). */
@@ -12,6 +21,7 @@ interface Commands {
   openNewPerson: () => void;
   openPalette: () => void;
   openHelp: () => void;
+  setTodoCommands: (commands: TodoCommands | null) => void;
 }
 
 interface CommandState {
@@ -21,6 +31,7 @@ interface CommandState {
   newPerson: boolean;
   palette: boolean;
   help: boolean;
+  todoCommands: TodoCommands | null;
   close: (which: Overlay) => void;
 }
 
@@ -35,6 +46,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
   const [newPerson, setNewPerson] = useState(false);
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
+  const [todoCommands, setTodoCommands] = useState<TodoCommands | null>(null);
 
   const value = useMemo(
     () => ({
@@ -43,6 +55,8 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
       newPerson,
       palette,
       help,
+      todoCommands,
+      setTodoCommands,
       openQuickAdd: (defaults: QuickAddDefaults = {}) => {
         setPalette(false);
         setQuickAdd(defaults);
@@ -65,7 +79,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         if (which === "help") setHelp(false);
       },
     }),
-    [quickAdd, newNote, newPerson, palette, help],
+    [quickAdd, newNote, newPerson, palette, help, todoCommands],
   );
   return <CommandsContext.Provider value={value}>{children}</CommandsContext.Provider>;
 }

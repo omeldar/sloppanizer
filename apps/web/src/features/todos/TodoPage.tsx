@@ -11,7 +11,7 @@ import {
 } from "@organizer/shared";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Dialog } from "../../components/Dialog.tsx";
 import { LabelPill } from "../../components/LabelPill.tsx";
 import type { MarkdownEditorHandle } from "../../components/markdown/MarkdownEditor.tsx";
@@ -31,7 +31,20 @@ import {
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { ApiError, errorMessage } from "../../lib/api.ts";
 import { absoluteTime, dueText, relativeTime } from "../../lib/format.ts";
-import { invalidateTodoViews, useDeleteTodo, useTodo, useToggleChecklist } from "../../lib/queries.ts";
+import {
+  childrenParams,
+  invalidateTodoViews,
+  useBulkUpdate,
+  useDeleteTodo,
+  useTodo,
+  useTodos,
+  useToggleChecklist,
+} from "../../lib/queries.ts";
+import { useCommands } from "../../app/commands.tsx";
+import { AddLinkDialog } from "./relations/AddLinkDialog.tsx";
+import { Links, linkedIds, WaitingLine } from "./relations/Links.tsx";
+import { Subtasks } from "./relations/Subtasks.tsx";
+import { TodoSearchPicker } from "./relations/TodoSearchPicker.tsx";
 import { PersonChip } from "../people/PersonChip.tsx";
 import { Activity } from "./Activity.tsx";
 import { chosen, type PickerKind, togglePersonPatch } from "./TodoPickerDialog.tsx";
@@ -64,16 +77,42 @@ export function TodoPage() {
   return <TodoDetail key={todo.data.id} todo={todo.data} focusComment={search.comment} />;
 }
 
+type SidePicker = PickerKind | "parent";
+
 function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number }) {
-  const { toggleDone, setPriority, patch } = useTodoActions();
+  const { setPriority, patch } = useTodoActions();
+  const navigate = useNavigate();
+  const { setTodoCommands } = useCommands();
   const [editingTitle, setEditingTitle] = useState(false);
-  const [picker, setPicker] = useState<PickerKind | null>(null);
+  const [picker, setPicker] = useState<SidePicker | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [addingLink, setAddingLink] = useState(false);
   const composer = useRef<MarkdownEditorHandle>(null);
+  const subtaskInput = useRef<HTMLInputElement>(null);
+  const done = useDoneWithSubtasks(todo);
+
+  const newSubtask = () => subtaskInput.current?.focus();
+  const goToParent = () =>
+    todo.parent && void navigate({ to: "/todos/$id", params: { id: String(todo.parent.id) } });
+
+  // The palette offers this page's actions while it is open.
+  useEffect(() => {
+    setTodoCommands({
+      todoId: todo.id,
+      newSubtask,
+      addLink: () => setAddingLink(true),
+      goToParent: todo.parent ? goToParent : undefined,
+    });
+    return () => setTodoCommands(null);
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- the actions only change with these values
+  }, [todo.id, todo.parent?.id, setTodoCommands]);
 
   const bindings: KeyBinding[] = [
     { keys: "e", run: () => setEditingTitle(true), label: "Edit title", group: "Todo" },
-    { keys: "x", run: () => void toggleDone(todo), label: "Mark done or reopen", group: "Todo" },
+    { keys: "x", run: done.toggle, label: "Mark done or reopen", group: "Todo" },
+    { keys: "s", run: newSubtask, label: "Add subtask", group: "Todo" },
+    { keys: "b", run: () => setAddingLink(true), label: "Add link", group: "Todo" },
+    { keys: "u", run: goToParent, label: "Go to the parent todo", group: "Todo" },
     { keys: "l", run: () => setPicker("labels"), label: "Labels", group: "Todo" },
     { keys: "p", run: () => setPicker("project"), label: "Project", group: "Todo" },
     { keys: "r", run: () => setPicker("people"), label: "Requested by", group: "Todo" },
@@ -88,10 +127,18 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
   ];
   useKeys(bindings, { enabled: !editingTitle });
 
-  const pick = (kind: PickerKind) => (open: boolean) => setPicker(open ? kind : null);
+  const pick = (kind: SidePicker) => (open: boolean) => setPicker(open ? kind : null);
 
   return (
     <div className={styles.page}>
+      {todo.parent && (
+        <nav className={styles.parent} aria-label="Parent todo">
+          <span className={styles.parentLabel}>Subtask of</span>
+          <Link to="/todos/$id" params={{ id: String(todo.parent.id) }} className={styles.parentLink}>
+            <span className={styles.parentId}>#{todo.parent.id}</span> {todo.parent.title}
+          </Link>
+        </nav>
+      )}
       <div className={styles.head}>
         <span className={styles.id}>#{todo.id}</span>
         {editingTitle ? (
@@ -120,9 +167,12 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
 
       <div className={styles.columns}>
         <div className={styles.body}>
+          <WaitingLine todo={todo} />
           <section aria-label="Description">
             <Description todo={todo} />
           </section>
+          <Subtasks todo={todo} inputRef={subtaskInput} />
+          <Links todo={todo} onAdd={() => setAddingLink(true)} />
           <Activity todo={todo} composerRef={composer} focusComment={focusComment} />
         </div>
 
@@ -160,6 +210,11 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
                   }}
                 />
               </Popover>
+            </dd>
+
+            <dt>Subtask of</dt>
+            <dd>
+              <ParentField todo={todo} open={picker === "parent"} onOpenChange={pick("parent")} />
             </dd>
 
             <dt>Labels</dt>
@@ -241,11 +296,7 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
           </dl>
 
           <div className={styles.sideActions}>
-            <Button
-              variant={todo.status === "done" ? "secondary" : "primary"}
-              hint="x"
-              onClick={() => void toggleDone(todo)}
-            >
+            <Button variant={todo.status === "done" ? "secondary" : "primary"} hint="x" onClick={done.toggle}>
               {todo.status === "done" ? "Reopen" : "Mark done"}
             </Button>
             <Button variant="ghost" onClick={() => setConfirmDelete(true)}>
@@ -254,12 +305,140 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
           </div>
           <p className={styles.keysHint}>
             <Kbd keys="l" /> labels <Kbd keys="p" /> project <Kbd keys="r" /> requested by <Kbd keys="o" />
-            contacts <Kbd keys="m" /> comment <Kbd keys="1" /> to <Kbd keys="4" /> priority
+            contacts <Kbd keys="m" /> comment <Kbd keys="1" /> to <Kbd keys="4" /> priority <Kbd keys="s" />{" "}
+            subtask <Kbd keys="b" /> link
+            {todo.parent && (
+              <>
+                {" "}
+                <Kbd keys="u" /> parent
+              </>
+            )}
           </p>
         </aside>
       </div>
       <DeleteDialog todo={todo} open={confirmDelete} onOpenChange={setConfirmDelete} />
+      <AddLinkDialog
+        todoId={todo.id}
+        open={addingLink}
+        onOpenChange={setAddingLink}
+        exclude={linkedIds(todo)}
+      />
+      <Dialog
+        open={done.asking !== null}
+        onOpenChange={(open) => !open && done.cancel()}
+        title={
+          done.asking
+            ? `${done.asking.length} ${done.asking.length === 1 ? "subtask is" : "subtasks are"} still open. Mark them done too?`
+            : ""
+        }
+        width={460}
+      >
+        <div className={styles.dialogActions}>
+          <Button onClick={() => void done.confirm(false)}>No, only #{todo.id}</Button>
+          {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the answer the question asks for */}
+          <Button variant="primary" onClick={() => void done.confirm(true)} autoFocus>
+            Yes, mark them done
+          </Button>
+        </div>
+      </Dialog>
     </div>
+  );
+}
+
+/**
+ * Done for a todo with open subtasks first asks whether to close them too (bulk), else it is the
+ * normal done or reopen with undo.
+ */
+function useDoneWithSubtasks(todo: Todo) {
+  const { toggleDone } = useTodoActions();
+  const bulk = useBulkUpdate();
+  const toast = useToast();
+  const children = useTodos(childrenParams(todo.id), todo.progress.subtasks.total > 0);
+  const [asking, setAsking] = useState<Todo[] | null>(null);
+  const open = (children.data?.items ?? []).filter((c) => c.status !== "done");
+
+  const toggle = () => {
+    if (
+      todo.status !== "done" &&
+      todo.progress.subtasks.total > todo.progress.subtasks.done &&
+      open.length > 0
+    ) {
+      setAsking(open);
+      return;
+    }
+    void toggleDone(todo);
+  };
+
+  const confirm = async (withChildren: boolean) => {
+    const openChildren = asking ?? [];
+    setAsking(null);
+    if (!withChildren) return toggleDone(todo);
+    try {
+      await bulk.mutateAsync({ ids: [todo.id, ...openChildren.map((c) => c.id)], patch: { status: "done" } });
+    } catch (error) {
+      toast.show({ tone: "error", message: `Could not mark them done. ${errorMessage(error)}` });
+      return;
+    }
+    // Undo puts each one back to the status it had.
+    const before = [todo, ...openChildren];
+    const byStatus = new Map<TodoStatus, number[]>();
+    for (const t of before) byStatus.set(t.status, [...(byStatus.get(t.status) ?? []), t.id]);
+    toast.show({
+      message: `Marked #${todo.id} and ${openChildren.length} ${openChildren.length === 1 ? "subtask" : "subtasks"} done`,
+      action: {
+        label: "Undo",
+        run: () => {
+          for (const [status, ids] of byStatus) bulk.mutate({ ids, patch: { status } });
+        },
+      },
+    });
+  };
+
+  return { toggle, asking, confirm, cancel: () => setAsking(null) };
+}
+
+/** "Subtask of": pick the parent by #id or title, or clear it. */
+function ParentField({
+  todo,
+  open,
+  onOpenChange,
+}: {
+  todo: Todo;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { patch } = useTodoActions();
+  return (
+    <span className={styles.parentField}>
+      <Popover
+        open={open}
+        onOpenChange={onOpenChange}
+        trigger={
+          <FieldButton empty={!todo.parent} aria-label="Subtask of">
+            {todo.parent ? `#${todo.parent.id} ${todo.parent.title}` : "None"}
+          </FieldButton>
+        }
+      >
+        <TodoSearchPicker
+          label="Parent todo"
+          exclude={[todo.id]}
+          onPick={(parent) => {
+            onOpenChange(false);
+            if (parent.id !== todo.parent?.id) void patch(todo.id, { parentId: parent.id });
+          }}
+        />
+      </Popover>
+      {todo.parent && (
+        <button
+          type="button"
+          className={styles.clear}
+          onClick={() => void patch(todo.id, { parentId: null })}
+          aria-label="Clear subtask of"
+        >
+          Clear
+        </button>
+      )}
+    </span>
   );
 }
 

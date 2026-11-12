@@ -229,3 +229,49 @@
   width: auto;
   color: var(--text-3);
 }
+
+/* Parent breadcrumb above the title of a subtask. */
+.parent {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: var(--fs-small);
+}
+
+.parentLabel {
+  color: var(--text-3);
+}
+
+.parentLink {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.parentLink:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.parentId {
+  font-family: var(--font-mono);
+}
+
+.parentField {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 16px 16px;
+}
