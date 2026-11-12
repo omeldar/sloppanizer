@@ -228,7 +228,16 @@ describe("headers and files", () => {
     const spec = (await t.call("GET", "/api/openapi.json")).json();
     expect(spec.openapi).toMatch(/^3\./);
     expect(Object.keys(spec.paths)).toEqual(
-      expect.arrayContaining(["/api/v1/todos", "/api/v1/todos/{id}", "/api/v1/next"]),
+      expect.arrayContaining([
+        "/api/v1/todos",
+        "/api/v1/todos/{id}",
+        "/api/v1/next",
+        "/api/v1/todos/{id}/activity",
+        "/api/v1/notes",
+        "/api/v1/attachments",
+        "/api/v1/search",
+        "/api/v1/person-tags",
+      ]),
     );
     const docs = await t.call("GET", "/api/docs/");
     expect(docs.statusCode).toBe(200);
