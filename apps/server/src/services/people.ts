@@ -365,12 +365,13 @@ export function deletePerson(ctx: Ctx, id: number): void {
   });
 }
 
-function ambiguous(db: Tx, rows: PersonRow[]): ApiError {
+/** Namesakes in a todo write: the short form only (the note tells them apart), never tags or notes. */
+function ambiguous(rows: PersonRow[]): ApiError {
   const first = rows[0] as PersonRow;
   return new ApiError(
     "conflict",
     `ambiguous person, use personId: ${rows.length} people are named ${first.firstName} ${first.lastName}.`,
-    { candidates: loadPeople(db, rows) },
+    { candidates: rows.map(toPersonBrief) },
   );
 }
 
@@ -396,7 +397,7 @@ export function resolvePeople(db: Tx, at: string, refs: readonly PersonRef[], cr
       continue;
     }
     const matches = findNamesakes(db, ref.firstName, ref.lastName);
-    if (matches.length > 1) throw ambiguous(db, matches);
+    if (matches.length > 1) throw ambiguous(matches);
     const match = matches[0];
     if (match) out.push(match);
     else if (create) out.push(insertPerson(db, at, ref.firstName, ref.lastName));

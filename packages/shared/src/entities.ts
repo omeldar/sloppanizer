@@ -225,6 +225,10 @@ export type ApiToken = z.infer<typeof ApiToken>;
 export const CreatedToken = z.strictObject({ token: ApiToken, raw: z.string() });
 export type CreatedToken = z.infer<typeof CreatedToken>;
 
+/** Body of the 409 "ambiguous person, use personId" from todo writes: the short form of each namesake. */
+export const AmbiguousPersonDetails = z.strictObject({ candidates: z.array(PersonBrief) });
+export type AmbiguousPersonDetails = z.infer<typeof AmbiguousPersonDetails>;
+
 /** Body of a 409 when a person with the same name exists. */
 export const DuplicatePersonDetails = z.strictObject({ existing: Person });
 export type DuplicatePersonDetails = z.infer<typeof DuplicatePersonDetails>;

@@ -115,7 +115,16 @@ describe("contacts on todos", () => {
     });
     expect(ambiguous.statusCode).toBe(409);
     expect(ambiguous.json().error.details.candidates).toHaveLength(2);
-    expect(ambiguous.json().error.details.candidates[0]).toHaveProperty("counts");
+    // The short form only: no counts, tags or private notes in an error of a todo write.
+    expect(Object.keys(ambiguous.json().error.details.candidates[0]).toSorted()).toEqual([
+      "displayName",
+      "email",
+      "firstName",
+      "id",
+      "lastName",
+      "note",
+      "team",
+    ]);
     expect(json<TodoPage>(await t.call("GET", "/api/v1/todos")).total).toBe(0);
 
     const todo = await createTodo(t, { title: "x" });
