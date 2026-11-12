@@ -1,10 +1,14 @@
-/** Key notation: "x", "Enter", "ctrl+k", "mod+Enter" (ctrl or cmd), sequences with a space: "g n". */
+/**
+ * Key notation: "x", "Enter", "ctrl+k", "mod+Enter" (ctrl or cmd), "shift+h", sequences with a space: "g n".
+ * Shift is only written for letters: "shift+h" matches the key "H" (the browser reports the shifted letter).
+ */
 export interface Chord {
   key: string;
   ctrl: boolean;
   meta: boolean;
   alt: boolean;
   mod: boolean;
+  shift: boolean;
 }
 
 export function parseChord(text: string): Chord {
@@ -12,7 +16,15 @@ export function parseChord(text: string): Chord {
   // "+" itself as a key: "shift++" is not used; a lone "+" stays a key.
   const key = parts.length > 1 && parts.at(-1) === "" ? "+" : (parts.pop() ?? "");
   const mods = new Set(parts.map((p) => p.toLowerCase()));
-  return { key, ctrl: mods.has("ctrl"), meta: mods.has("meta"), alt: mods.has("alt"), mod: mods.has("mod") };
+  const shift = mods.has("shift") && /^[a-z]$/i.test(key);
+  return {
+    key: shift ? key.toUpperCase() : key,
+    ctrl: mods.has("ctrl"),
+    meta: mods.has("meta"),
+    alt: mods.has("alt"),
+    mod: mods.has("mod"),
+    shift,
+  };
 }
 
 export function parseKeys(text: string): Chord[] {
@@ -51,6 +63,7 @@ export function keyCaps(text: string): string[] {
     if (chord.ctrl || chord.mod) caps.push("Ctrl");
     if (chord.meta) caps.push("Cmd");
     if (chord.alt) caps.push("Alt");
+    if (chord.shift) caps.push("Shift");
     const name =
       chord.key === "Escape"
         ? "Esc"

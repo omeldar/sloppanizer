@@ -1,0 +1,152 @@
+/* A board card is a short flight strip: the same band and mono id, stacked in a column. */
+.card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr);
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--strip);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.card:hover {
+  background: var(--strip-hover);
+}
+
+.card[data-selected] {
+  background: var(--strip-selected);
+  border-color: var(--line-strong);
+}
+
+.card[data-selected] .band {
+  background: var(--amber);
+}
+
+.card[data-ghost] {
+  opacity: 0.35;
+}
+
+.card[data-lifted] {
+  cursor: grabbing;
+  border-color: var(--amber);
+  box-shadow: var(--menu-shadow);
+}
+
+.card[data-dimmed] .title {
+  color: var(--text-2);
+}
+
+.band {
+  border-radius: 1px 0 0 1px;
+}
+
+.card[data-priority="critical"] .band {
+  background: var(--band-critical);
+}
+.card[data-priority="high"] .band {
+  background: var(--band-high);
+}
+.card[data-priority="medium"] .band {
+  background: var(--band-medium);
+}
+.card[data-priority="low"] .band {
+  background: var(--band-low);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 8px 6px 9px;
+}
+
+.top {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.id {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--fs-small);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.title:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--text-3);
+  text-underline-offset: 3px;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  height: 18px;
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.due,
+.aside {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+.due[data-state="overdue"] {
+  color: var(--red);
+}
+
+.due[data-state="today"] {
+  color: var(--amber-text);
+}
+
+.card[data-narrow] .top {
+  flex-direction: column;
+  gap: 1px;
+}
+
+.card[data-narrow] .title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.card[data-narrow] .due,
+.card[data-narrow] .aside {
+  margin-left: 0;
+}

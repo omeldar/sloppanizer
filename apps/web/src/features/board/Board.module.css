@@ -1,0 +1,147 @@
+/* Four bays side by side; each column is a strip bay with a mono count in its header. */
+.board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--sunken);
+}
+
+.column[data-over] {
+  border-color: var(--amber);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
+
+.column[data-cursor] .columnHead {
+  box-shadow: inset 0 -2px 0 var(--amber);
+}
+
+.columnHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.columnDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: var(--text-3);
+}
+
+.column[data-status="in_progress"] .columnDot {
+  background: var(--amber);
+}
+
+.column[data-status="blocked"] .columnDot {
+  background: var(--red);
+}
+
+.column[data-status="done"] .columnDot {
+  background: transparent;
+  border: 1px solid var(--text-3);
+}
+
+.columnName {
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.columnCount {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 120px;
+  max-height: calc(100vh - 230px);
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.slot {
+  min-width: 0;
+}
+
+.empty {
+  padding: 18px 8px;
+  color: var(--text-3);
+  font-size: var(--fs-small);
+  text-align: center;
+}
+
+.doneFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 6px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.since {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.select {
+  height: 28px;
+  max-width: 200px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  font-size: var(--fs-small);
+}
+
+.keysHint {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+@media (max-width: 1100px) {
+  .board {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}
