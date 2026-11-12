@@ -1,6 +1,6 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { EditorState } from "@codemirror/state";
+import { Annotation, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap, placeholder as placeholderExt } from "@codemirror/view";
 import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import { errorMessage } from "../../lib/api.ts";
@@ -25,6 +25,11 @@ interface Props {
   placeholder?: string;
   /** Smaller start height for comment boxes. */
   compact?: boolean;
+  /**
+   * Take in later `value` changes that differ from the editor's text (an autosaving field showing a change
+   * made elsewhere). Without it, `value` only sets the start and the editor owns its text.
+   */
+  followValue?: boolean;
   /** Stores a pasted, dropped or picked file (default: the attachments API). */
   upload?: Upload;
   ref?: Ref<MarkdownEditorHandle>;
@@ -47,7 +52,20 @@ const theme = EditorView.theme({
   },
 });
 
-/** CodeMirror 6 Markdown editor. The document is owned by CodeMirror; `value` only sets the start. */
+/** Marks a change that came in through `value`, so it is not reported back through onChange. */
+const fromOutside = Annotation.define<boolean>();
+
+/** The smallest single change that turns `from` into `to`, so the cursor outside it stays put. */
+export function replaceChange(from: string, to: string): { from: number; to: number; insert: string } {
+  const max = Math.min(from.length, to.length);
+  let start = 0;
+  while (start < max && from[start] === to[start]) start += 1;
+  let end = 0;
+  while (end < max - start && from[from.length - 1 - end] === to[to.length - 1 - end]) end += 1;
+  return { from: start, to: from.length - end, insert: to.slice(start, to.length - end) };
+}
+
+/** CodeMirror 6 Markdown editor. The document is owned by CodeMirror; `value` sets the start (see followValue). */
 export function MarkdownEditor({
   value,
   onChange,
@@ -57,6 +75,7 @@ export function MarkdownEditor({
   label,
   placeholder = "Write notes in Markdown: lists, links, code, tables.",
   compact = false,
+  followValue = false,
   upload = uploadAttachment,
   ref,
 }: Props) {
@@ -115,7 +134,9 @@ export function MarkdownEditor({
           theme,
           pendingUploads,
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) latest.current.onChange(update.state.doc.toString());
+            if (update.docChanged && !update.transactions.some((tr) => tr.annotation(fromOutside))) {
+              latest.current.onChange(update.state.doc.toString());
+            }
           }),
           EditorView.domEventHandlers({
             blur: () => latest.current.onBlur?.(),
@@ -142,9 +163,21 @@ export function MarkdownEditor({
       viewRef.current = null;
       view.destroy();
     };
-    // The editor is created once; later `value` changes come from the editor itself.
+    // The editor is created once; later `value` changes come from the editor itself or the effect below.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!followValue || !view) return;
+    const current = view.state.doc.toString();
+    if (current === value) return;
+    // Not undoable: undo would bring back the old text and save it over the new one.
+    view.dispatch({
+      changes: replaceChange(current, value),
+      annotations: [fromOutside.of(true), Transaction.addToHistory.of(false)],
+    });
+  }, [followValue, value]);
 
   return (
     <div className={styles.editorBox}>

@@ -1,10 +1,10 @@
-import { type ReactNode, type Ref, useEffect, useRef, useState } from "react";
+import { type ReactNode, type Ref, useState } from "react";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./MarkdownEditor.tsx";
 import styles from "./Markdown.module.css";
 import { type ChecklistControl, MarkdownPreview } from "./MarkdownPreview.tsx";
+import { useAutosave } from "./useAutosave.ts";
 
-/** Pause after the last keystroke before the text is saved. */
-export const SAVE_DELAY_MS = 700;
+export { SAVE_DELAY_MS } from "./useAutosave.ts";
 const SAVE_STATE_TEXT = { idle: "", saved: "Saved", pending: "Not saved yet", saving: "Saving" } as const;
 
 interface Props {
@@ -25,13 +25,14 @@ interface Props {
 }
 
 /**
- * A titled Markdown block with Write and Preview that saves itself: after a short pause, on blur and
- * when switching to Preview. Used for todo descriptions, notes and person notes.
+ * A titled Markdown block with Write and Preview that saves itself: after a short pause, on blur, when
+ * switching to Preview and when it goes away. Text changed elsewhere shows up unless there are unsaved
+ * edits. Used for todo descriptions, notes and person notes.
  */
 export function MarkdownField({
   title,
   value,
-  save: persist,
+  save,
   emptyText,
   startWriting = false,
   autoFocus = false,
@@ -40,35 +41,7 @@ export function MarkdownField({
   meta,
 }: Props) {
   const [editing, setEditing] = useState(startWriting || value === "");
-  const [draft, setDraft] = useState(value);
-  // "idle" until the first change, so untouched text shows no save state.
-  const [state, setState] = useState<"idle" | "saved" | "pending" | "saving">("idle");
-  const saved = useRef(value);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  const save = async (text: string) => {
-    clearTimeout(timer.current);
-    if (text === saved.current) {
-      setState((current) => (current === "idle" ? "idle" : "saved"));
-      return;
-    }
-    setState("saving");
-    const ok = await persist(text);
-    if (ok) saved.current = text;
-    setState(ok ? "saved" : "pending");
-  };
-
-  useEffect(() => () => clearTimeout(timer.current), []);
-
-  // The text changed elsewhere (a checklist click, another tab, MCP): show it unless there are unsaved edits.
-  useEffect(() => {
-    if (value === saved.current) return;
-    setDraft((current) => {
-      if (current !== saved.current) return current;
-      saved.current = value;
-      return value;
-    });
-  }, [value]);
+  const { draft, state, change, flush } = useAutosave(value, save);
 
   return (
     <div className={styles.field}>
@@ -86,7 +59,7 @@ export function MarkdownField({
             type="button"
             aria-pressed={!editing}
             onClick={() => {
-              void save(draft);
+              flush();
               setEditing(false);
             }}
           >
@@ -99,15 +72,11 @@ export function MarkdownField({
           ref={editorRef}
           label={title}
           value={draft}
+          followValue
           // oxlint-disable-next-line jsx-a11y/no-autofocus -- passes the caller's choice on to the editor
           autoFocus={autoFocus}
-          onChange={(text) => {
-            setDraft(text);
-            setState("pending");
-            clearTimeout(timer.current);
-            timer.current = setTimeout(() => void save(text), SAVE_DELAY_MS);
-          }}
-          onBlur={() => void save(draft)}
+          onChange={change}
+          onBlur={flush}
         />
       ) : draft.trim() ? (
         <MarkdownPreview source={draft} checklist={checklist} />
