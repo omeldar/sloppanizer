@@ -12,7 +12,7 @@ import { join } from "node:path";
 import packageJson from "../package.json" with { type: "json" };
 import { type Clock, systemClock } from "./clock.ts";
 import type { Config } from "./config.ts";
-import { ensureDataDir, DB_FILE, loadSecret } from "./data-dir.ts";
+import { ensureAttachmentsDir, ensureDataDir, DB_FILE, loadSecret } from "./data-dir.ts";
 import { openDb } from "./db/index.ts";
 import { registerErrorHandling } from "./http/errors.ts";
 import { registerSecurity } from "./http/security.ts";
@@ -40,7 +40,13 @@ export async function buildApp(options: BuildOptions) {
   ensureDataDir(config.dataDir);
   const secret = loadSecret(config.dataDir);
   const db = openDb(join(config.dataDir, DB_FILE));
-  const deps: Deps = { db, clock: options.clock ?? systemClock, timeZone: config.timeZone, version: VERSION };
+  const deps: Deps = {
+    db,
+    clock: options.clock ?? systemClock,
+    timeZone: config.timeZone,
+    version: VERSION,
+    attachmentsDir: ensureAttachmentsDir(config.dataDir),
+  };
 
   const app = Fastify({
     logger: options.logger ?? false,

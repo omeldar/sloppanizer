@@ -239,5 +239,7 @@ describe("headers and files", () => {
     const t = await makeApp();
     expect(statSync(t.dataDir).mode & 0o777).toBe(0o700);
     expect(statSync(join(t.dataDir, "secret")).mode & 0o777).toBe(0o600);
+    expect(statSync(join(t.dataDir, "attachments")).mode & 0o777).toBe(0o700);
+    expect(t.deps.attachmentsDir).toBe(join(t.dataDir, "attachments"));
   });
 });

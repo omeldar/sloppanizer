@@ -4,11 +4,20 @@ import { join } from "node:path";
 
 export const DB_FILE = "organizer.db";
 export const SECRET_FILE = "secret";
+export const ATTACHMENTS_DIR = "attachments";
 
 /** Creates the data dir (0700) if needed and tightens its mode. */
 export function ensureDataDir(dataDir: string): void {
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   chmodSync(dataDir, 0o700);
+}
+
+/** Creates <data dir>/attachments (0700) if needed and returns its absolute path. */
+export function ensureAttachmentsDir(dataDir: string): string {
+  const dir = join(dataDir, ATTACHMENTS_DIR);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  return dir;
 }
 
 /** The cookie signing key; generated (0600) on first start. */
