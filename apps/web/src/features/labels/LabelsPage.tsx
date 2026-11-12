@@ -15,6 +15,7 @@ import {
 import { errorMessage } from "../../lib/api.ts";
 import { useCreateLabel, useDeleteLabel, useLabels, useUpdateLabel } from "../../lib/queries.ts";
 import styles from "./Labels.module.css";
+import { PersonTagsSection } from "./PersonTags.tsx";
 
 type Editing = { mode: "create" } | { mode: "edit"; label: Label } | { mode: "delete"; label: Label } | null;
 
@@ -82,6 +83,7 @@ export function LabelsPage() {
         </section>
       ))}
       <LabelDialog editing={editing} onClose={() => setEditing(null)} />
+      <PersonTagsSection />
     </div>
   );
 }

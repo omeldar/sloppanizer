@@ -1,8 +1,11 @@
+import type { Project } from "@organizer/shared";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { type CSSProperties, useState } from "react";
 import { Kbd } from "../components/ui.tsx";
 import { HelpOverlay } from "../features/help/HelpOverlay.tsx";
 import { Palette } from "../features/palette/Palette.tsx";
+import { NewNoteDialog } from "../features/notes/NewNoteDialog.tsx";
+import { NewPersonDialog } from "../features/people/NewPersonDialog.tsx";
 import { NewProjectDialog } from "../features/projects/NewProjectDialog.tsx";
 import { QuickAdd } from "../features/quickadd/QuickAdd.tsx";
 import { type KeyBinding, useActiveBindings, useKeys } from "../keyboard/KeyboardProvider.tsx";
@@ -14,6 +17,7 @@ import { StatusBar } from "./StatusBar.tsx";
 export function Layout() {
   const navigate = useNavigate();
   const commands = useCommands();
+  const projects = useProjects();
   const activeBindings = useActiveBindings();
   const [helpBindings, setHelpBindings] = useState<KeyBinding[]>([]);
 
@@ -32,8 +36,18 @@ export function Layout() {
       label: "New todo",
       group: "Global",
     },
+    {
+      keys: "n",
+      run: () => commands.openNewNote(currentProjectId(projects.data)),
+      label: "New note",
+      group: "Global",
+    },
+    { keys: "/", run: go("/search"), label: "Search page", group: "Global" },
     { keys: "g n", run: go("/"), label: "Go to Next up", group: "Go to" },
     { keys: "g i", run: go("/inbox"), label: "Go to Inbox", group: "Go to" },
+    { keys: "g b", run: go("/board"), label: "Go to Board", group: "Go to" },
+    { keys: "g w", run: go("/week"), label: "Go to Week", group: "Go to" },
+    { keys: "g o", run: go("/notes"), label: "Go to Notes", group: "Go to" },
     { keys: "g l", run: go("/labels"), label: "Go to Labels", group: "Go to" },
     { keys: "g p", run: go("/people"), label: "Go to People", group: "Go to" },
     { keys: "g s", run: go("/settings"), label: "Go to Settings", group: "Go to" },
@@ -65,16 +79,29 @@ export function Layout() {
       </main>
       <StatusBar />
       <QuickAdd />
+      <NewNoteDialog />
+      <NewPersonDialog />
       <Palette />
       <HelpOverlay bindings={helpBindings} />
     </div>
   );
 }
 
+function currentProjectSlug(): string | undefined {
+  const slug = /^\/projects\/([^/]+)/.exec(window.location.pathname)?.[1];
+  return slug ? decodeURIComponent(slug) : undefined;
+}
+
 /** New todos made on a project page start in that project. */
 function currentProjectDefaults() {
-  const slug = /^\/projects\/([^/]+)/.exec(window.location.pathname)?.[1];
-  return slug ? { projectSlug: decodeURIComponent(slug) } : {};
+  const slug = currentProjectSlug();
+  return slug ? { projectSlug: slug } : {};
+}
+
+/** New notes made on a project page start in that project too. */
+function currentProjectId(projects: readonly Project[] | undefined): number | null {
+  const slug = currentProjectSlug();
+  return projects?.find((p) => p.slug === slug)?.id ?? null;
 }
 
 function Sidebar() {
@@ -92,6 +119,9 @@ function Sidebar() {
       <ul className={styles.nav}>
         <NavItem to="/" label="Next up" keys="g n" exact />
         <NavItem to="/inbox" label="Inbox" count={stats.data?.inbox} keys="g i" />
+        <NavItem to="/board" label="Board" keys="g b" />
+        <NavItem to="/week" label="Week" keys="g w" />
+        <NavItem to="/notes" label="Notes" keys="g o" />
       </ul>
       <div className={styles.sectionHead}>
         <span>Projects</span>
@@ -178,7 +208,7 @@ function TopBar() {
             <circle cx="5.5" cy="5.5" r="4.25" fill="none" stroke="currentColor" strokeWidth="1.4" />
             <path d="M8.7 8.7L12 12" stroke="currentColor" strokeWidth="1.4" />
           </svg>
-          <span>Search todos and commands</span>
+          <span>Search and commands</span>
           <Kbd keys="ctrl+k" />
         </button>
         <button
@@ -204,7 +234,13 @@ function Breadcrumb() {
   if (pathname === "/") trail = [{ label: "Next up" }];
   else if (pathname === "/inbox") trail = [{ label: "Inbox" }];
   else if (pathname === "/labels") trail = [{ label: "Labels" }];
+  else if (pathname === "/board") trail = [{ label: "Board" }];
+  else if (pathname === "/week") trail = [{ label: "Week" }];
+  else if (pathname === "/search") trail = [{ label: "Search" }];
+  else if (pathname === "/notes") trail = [{ label: "Notes" }];
+  else if (pathname.startsWith("/notes/")) trail = [{ label: "Notes", to: "/notes" }, { label: "Note" }];
   else if (pathname === "/people") trail = [{ label: "People" }];
+  else if (pathname.startsWith("/people/")) trail = [{ label: "People", to: "/people" }, { label: "Person" }];
   else if (pathname === "/settings") trail = [{ label: "Settings" }];
   else if (pathname.startsWith("/projects/")) {
     const slug = decodeURIComponent(pathname.slice("/projects/".length));

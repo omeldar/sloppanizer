@@ -1,13 +1,16 @@
-import { NextMode } from "@organizer/shared";
+import { NextMode, SearchKind } from "@organizer/shared";
 import { createRootRoute, createRoute, createRouter, Link, lazyRouteComponent } from "@tanstack/react-router";
 import { z } from "zod";
 import { EmptyState, PageHeader } from "../components/ui.tsx";
+import { BoardPage } from "../features/board/BoardPage.tsx";
 import { LabelsPage } from "../features/labels/LabelsPage.tsx";
 import { InboxPage } from "../features/lists/InboxPage.tsx";
 import { NextUpPage } from "../features/next/NextUpPage.tsx";
 import { PeoplePage } from "../features/people/PeoplePage.tsx";
+import { SearchPage } from "../features/search/SearchPage.tsx";
 import { ProjectPage } from "../features/projects/ProjectPage.tsx";
 import { SettingsPage } from "../features/settings/SettingsPage.tsx";
+import { WeekPage } from "../features/week/WeekPage.tsx";
 import { Layout } from "./Layout.tsx";
 
 function NotFound() {
@@ -30,6 +33,52 @@ const NextSearch = z.object({
   label: z.string().optional().catch(undefined),
 });
 
+const BoardSearch = z.object({
+  /** Project slug or "inbox". */
+  project: z.string().optional().catch(undefined),
+  label: z.string().optional().catch(undefined),
+  person: z.coerce.number().int().positive().optional().catch(undefined),
+});
+
+const ProjectSearch = z.object({
+  view: z.enum(["list", "board"]).optional().catch(undefined),
+  label: z.string().optional().catch(undefined),
+  person: z.coerce.number().int().positive().optional().catch(undefined),
+});
+
+const WeekSearch = z.object({ start: z.string().optional().catch(undefined) });
+
+const NotesSearch = z.object({
+  /** Project slug or "none". */
+  project: z.string().optional().catch(undefined),
+  q: z.string().optional().catch(undefined),
+});
+
+const NoteSearch = NotesSearch.extend({
+  /** Just created: open in write mode. */
+  write: z.boolean().optional().catch(undefined),
+});
+
+// Notes, the person page and the todo page hold the editor and the Markdown renderer: loaded on first use.
+const notesPage = lazyRouteComponent(() => import("../features/notes/NotesPage.tsx"), "NotesPage");
+const notePage = lazyRouteComponent(() => import("../features/notes/NotesPage.tsx"), "NotePage");
+const personPage = lazyRouteComponent(() => import("../features/people/PersonPage.tsx"), "PersonPage");
+
+const PeopleSearch = z.object({
+  q: z.string().optional().catch(undefined),
+  /** Comma lists of names: every one must match. */
+  topic: z.string().optional().catch(undefined),
+  team: z.string().optional().catch(undefined),
+  tag: z.string().optional().catch(undefined),
+  kind: z.enum(["requester", "contact"]).optional().catch(undefined),
+  sort: z.enum(["name", "requested", "contact", "recent"]).optional().catch(undefined),
+});
+
+const SearchPageSearch = z.object({
+  q: z.string().optional().catch(undefined),
+  kind: SearchKind.optional().catch(undefined),
+});
+
 const routes = [
   createRoute({
     getParentRoute: () => rootRoute,
@@ -38,15 +87,57 @@ const routes = [
     validateSearch: NextSearch,
   }),
   createRoute({ getParentRoute: () => rootRoute, path: "/inbox", component: InboxPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/projects/$slug", component: ProjectPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/projects/$slug",
+    component: ProjectPage,
+    validateSearch: ProjectSearch,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/board",
+    component: BoardPage,
+    validateSearch: BoardSearch,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/week",
+    component: WeekPage,
+    validateSearch: WeekSearch,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/notes",
+    component: notesPage,
+    validateSearch: NotesSearch,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/notes/$id",
+    component: notePage,
+    validateSearch: NoteSearch,
+  }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: "/todos/$id",
+    validateSearch: z.object({ comment: z.coerce.number().int().positive().optional().catch(undefined) }),
     // The editor and Markdown renderer are most of the bundle; load them with the first todo opened.
     component: lazyRouteComponent(() => import("../features/todos/TodoPage.tsx"), "TodoPage"),
   }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/search",
+    component: SearchPage,
+    validateSearch: SearchPageSearch,
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: "/labels", component: LabelsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/people", component: PeoplePage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/people",
+    component: PeoplePage,
+    validateSearch: PeopleSearch,
+  }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/people/$id", component: personPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage }),
 ] as const;
 

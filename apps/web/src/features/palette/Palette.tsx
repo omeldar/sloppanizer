@@ -1,13 +1,16 @@
+import type { SearchHit } from "@organizer/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
-import { type ReactNode, useDeferredValue, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useCommands } from "../../app/commands.tsx";
 import { Dialog } from "../../components/Dialog.tsx";
 import { Kbd } from "../../components/ui.tsx";
 import { downloadExport } from "../../lib/export.ts";
-import { useProjects, useTodo, useTodos } from "../../lib/queries.ts";
+import { useProjects, useSearch, useTodo } from "../../lib/queries.ts";
 import { toggleTheme } from "../../lib/theme.ts";
+import { useDebounced } from "../../lib/useDebounced.ts";
+import { Highlighted, hitTarget, KIND_NAMES, KIND_ORDER } from "../search/hits.tsx";
 import styles from "./Palette.module.css";
 
 export function Palette() {
@@ -31,26 +34,26 @@ const ID_QUERY = /^#?(\d+)$/;
 function PaletteBody({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const client = useQueryClient();
-  const { openQuickAdd } = useCommands();
+  const { openQuickAdd, openNewNote, openNewPerson } = useCommands();
   const projects = useProjects();
   const [search, setSearch] = useState("");
-  const deferred = useDeferredValue(search.trim());
+  // Searches the server 150 ms after the last key, from two characters on.
+  const query = useDebounced(search.trim(), 150);
   // From the live text, so Enter right after typing "#12" already opens it.
   const idMatch = ID_QUERY.exec(search.trim());
   const typedId = idMatch ? Number(idMatch[1]) : 0;
   // Shows which todo "#12" is before opening it; Enter does not wait for it.
   const idTodo = useTodo(typedId);
   const byId = idTodo.data?.id === typedId ? idTodo.data : undefined;
-  const todos = useTodos(
-    { q: deferred, status: "all", sort: "updated", limit: 8 },
-    deferred.length >= 2 && !idMatch,
-  );
+  const searching = query.length >= 2 && !idMatch;
+  const results = useSearch({ q: query, limit: 5 }, searching);
+  const hits = searching ? (results.data?.items ?? []) : [];
   const [selected, setSelected] = useState("");
-  const firstTodo = todos.data?.items[0];
-  // Search results arrive after the list was built; start the selection on the best todo match.
+  const firstHit = hits[0];
+  // Results arrive after the list was built; start the selection on the best match.
   useEffect(() => {
-    if (firstTodo) setSelected(todoValue(firstTodo));
-  }, [firstTodo]);
+    if (firstHit) setSelected(hitValue(firstHit));
+  }, [firstHit]);
 
   const run = (action: () => void) => () => {
     onClose();
@@ -61,6 +64,10 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const pages: { name: string; to: string; keys?: string; params?: Record<string, string> }[] = [
     { name: "Next up", to: "/", keys: "g n" },
     { name: "Inbox", to: "/inbox", keys: "g i" },
+    { name: "Board", to: "/board", keys: "g b" },
+    { name: "Week", to: "/week", keys: "g w" },
+    { name: "Notes", to: "/notes", keys: "g o" },
+    { name: "Search", to: "/search", keys: "/" },
     ...(projects.data ?? [])
       .filter((p) => p.archivedAt === null)
       .map((p) => ({ name: `Project ${p.name}`, to: "/projects/$slug", params: { slug: p.slug } })),
@@ -82,14 +89,14 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
         className={styles.input}
         value={search}
         onValueChange={setSearch}
-        placeholder="Search todos by title or #id, pages and commands"
+        placeholder="Search todos, notes, comments and people, #id, pages and commands"
         // The palette opens to type.
         // oxlint-disable-next-line jsx-a11y/no-autofocus
         autoFocus
       />
       <Command.List className={styles.list}>
         <Command.Empty className={styles.empty}>
-          Nothing matches. Try a todo title, #id or a page name.
+          Nothing matches. Try other words, a #id or a page name.
         </Command.Empty>
         {idMatch && (
           <Command.Group heading="Todos" className={styles.group}>
@@ -110,22 +117,42 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
             </Item>
           </Command.Group>
         )}
-        {!idMatch && (todos.data?.items.length ?? 0) > 0 && (
-          <Command.Group heading="Todos" className={styles.group}>
-            {todos.data?.items.map((todo) => (
-              <Item
-                key={todo.id}
-                value={todoValue(todo)}
-                keywords={[search]}
-                onSelect={go("/todos/$id", { id: String(todo.id) })}
-              >
-                <span className={styles.mono}>#{todo.id}</span>
-                <span className={styles.text} data-done={todo.status === "done" || undefined}>
-                  {todo.title}
-                </span>
-                <span className={styles.meta}>{todo.project?.name ?? "Inbox"}</span>
-              </Item>
-            ))}
+        {KIND_ORDER.map((kind) => {
+          const group = hits.filter((hit) => hit.kind === kind);
+          if (group.length === 0) return null;
+          return (
+            <Command.Group key={kind} heading={KIND_NAMES[kind]} className={styles.group}>
+              {group.map((hit) => {
+                const target = hitTarget(hit);
+                return (
+                  <Item
+                    key={hitValue(hit)}
+                    value={hitValue(hit)}
+                    keywords={[search]}
+                    onSelect={run(
+                      () => void navigate({ to: target.to, params: target.params, search: target.search }),
+                    )}
+                  >
+                    <HitLine hit={hit} />
+                  </Item>
+                );
+              })}
+            </Command.Group>
+          );
+        })}
+        {searching && results.data && (
+          <Command.Group heading="Search" className={styles.group}>
+            <Item
+              value="show all results"
+              keywords={[search]}
+              onSelect={run(() => void navigate({ to: "/search", search: { q: query } }))}
+              keys="/"
+            >
+              Show all results
+              <span className={styles.meta}>
+                {KIND_ORDER.reduce((sum, kind) => sum + (results.data?.counts[kind] ?? 0), 0)} found
+              </span>
+            </Item>
           </Command.Group>
         )}
         {!idMatch && (
@@ -133,6 +160,12 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
             <Command.Group heading="Actions" className={styles.group}>
               <Item value="new todo" onSelect={run(() => openQuickAdd())} keys="c">
                 New todo
+              </Item>
+              <Item value="new note" onSelect={() => openNewNote()} keys="n">
+                New note
+              </Item>
+              <Item value="new person contact" onSelect={() => openNewPerson()}>
+                New person
               </Item>
               <Item value="switch theme dark light" onSelect={run(toggleTheme)}>
                 Switch theme
@@ -164,8 +197,26 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   );
 }
 
-function todoValue(todo: { id: number; title: string }): string {
-  return `todo ${todo.id} ${todo.title}`;
+function hitValue(hit: SearchHit): string {
+  return `hit ${hit.kind} ${hit.id}`;
+}
+
+/** One result: #id for todos, the title, and the matched snippet or the subtitle. */
+function HitLine({ hit }: { hit: SearchHit }) {
+  return (
+    <>
+      {hit.kind === "todo" && <span className={styles.mono}>#{hit.id}</span>}
+      <span className={styles.text} data-done={hit.status === "done" || undefined}>
+        {hit.title}
+        {hit.snippet && hit.snippet !== hit.title && hit.kind !== "person" && (
+          <span className={styles.snippet}>
+            <Highlighted text={hit.snippet} ranges={hit.highlights} />
+          </span>
+        )}
+      </span>
+      {hit.subtitle && <span className={styles.meta}>{hit.subtitle}</span>}
+    </>
+  );
 }
 
 function Item({

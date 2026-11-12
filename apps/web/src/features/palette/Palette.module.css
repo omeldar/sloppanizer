@@ -87,3 +87,17 @@
   color: var(--text-3);
   font-size: 12px;
 }
+
+.snippet {
+  margin-left: 10px;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+.meta {
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

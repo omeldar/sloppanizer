@@ -113,3 +113,30 @@
   justify-content: flex-end;
   gap: 8px;
 }
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 34px 0 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.sectionTitle {
+  font-size: var(--fs-h1);
+  font-weight: 600;
+}
+
+.count {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.count:hover {
+  color: var(--amber-text);
+  text-decoration: underline;
+}

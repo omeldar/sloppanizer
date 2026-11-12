@@ -26,9 +26,37 @@ function OpenPalette() {
   return <Palette />;
 }
 
+const hit = (kind: string, id: number, title: string, extra: object = {}) => ({
+  kind,
+  id,
+  title,
+  snippet: "",
+  highlights: [],
+  todoId: kind === "todo" ? id : null,
+  status: kind === "todo" ? "open" : null,
+  subtitle: null,
+  ...extra,
+});
+
+const SEARCH = {
+  q: "firewall",
+  items: [
+    hit("todo", 3, "Open the firewall for the NAS"),
+    hit("note", 2, "Network layout", { snippet: "the firewall sits in front", highlights: [[4, 12]] }),
+    hit("comment", 9, "Renew SSL certs", {
+      todoId: 5,
+      snippet: "asked about the firewall",
+      highlights: [[16, 24]],
+    }),
+    hit("person", 4, "Luca Brunner", { subtitle: "Network team, Firewall rules" }),
+  ],
+  counts: { todo: 1, note: 1, comment: 1, person: 1 },
+};
+
 function renderPalette() {
   mockApi(({ path }) => {
     if (path.includes("/projects")) return { body: [] };
+    if (path.startsWith("/api/v1/search")) return { body: SEARCH };
     if (path.endsWith("/todos/42")) return { body: makeTodo({ id: 42, title: "Renew SSL certs" }) };
     if (/\/todos\/\d+$/.test(path))
       return {
@@ -59,5 +87,32 @@ describe("Palette search by #id", () => {
     renderPalette();
     await userEvent.type(await screen.findByRole("combobox"), "#7");
     expect(await screen.findByText("No todo with this number")).toBeTruthy();
+  });
+});
+
+describe("Palette search", () => {
+  it("groups server results by kind with the matches marked", async () => {
+    renderPalette();
+    await userEvent.type(await screen.findByRole("combobox"), "firewall");
+    await screen.findByText("People");
+    for (const heading of ["Todos", "Notes", "Comments"]) expect(screen.getByText(heading)).toBeTruthy();
+    expect(screen.getAllByText("firewall").every((mark) => mark.tagName === "MARK")).toBe(true);
+    expect(screen.getByText("Network team, Firewall rules")).toBeTruthy();
+    expect(screen.getByRole("option", { name: /Show all results/ }).textContent).toContain("4 found");
+  });
+
+  it("opens a comment on its todo, scrolled to the comment", async () => {
+    const { router } = renderPalette();
+    await userEvent.type(await screen.findByRole("combobox"), "firewall");
+    await userEvent.click(await screen.findByRole("option", { name: /asked about the/ }));
+    expect(router.state.location.pathname).toBe("/todos/5");
+    expect(router.state.location.search).toEqual({ comment: 9 });
+  });
+
+  it("does not search for a single character", async () => {
+    renderPalette();
+    await userEvent.type(await screen.findByRole("combobox"), "f");
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(screen.queryByText("Comments")).toBeNull();
   });
 });
