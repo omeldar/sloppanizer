@@ -1,14 +1,28 @@
-import { formatDuration, PRIORITIES, type Todo, TODO_STATUSES, type TodoStatus } from "@organizer/shared";
+import {
+  formatDuration,
+  PRIORITIES,
+  type Todo,
+  TODO_STATUSES,
+  type TodoStatus,
+  STATUS_LABELS,
+} from "@organizer/shared";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Dialog } from "../../components/Dialog.tsx";
 import { LabelPill } from "../../components/LabelPill.tsx";
-import { MarkdownEditor } from "../../components/markdown/MarkdownEditor.tsx";
-import { MarkdownPreview } from "../../components/markdown/MarkdownPreview.tsx";
+import { MarkdownField } from "../../components/markdown/MarkdownField.tsx";
 import { Popover } from "../../components/Popover.tsx";
 import { LabelPicker, PeoplePicker, ProjectPicker } from "../../components/pickers/pickers.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
-import { Button, EmptyState, ErrorState, FieldButton, Kbd, Loading } from "../../components/ui.tsx";
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  FieldButton,
+  Kbd,
+  Loading,
+  TitleInput,
+} from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { ApiError, errorMessage } from "../../lib/api.ts";
 import { absoluteTime, dueText, relativeTime } from "../../lib/format.ts";
@@ -18,13 +32,6 @@ import styles from "./TodoPage.module.css";
 import { useTodoActions } from "./useTodoActions.ts";
 
 const route = getRouteApi("/todos/$id");
-
-export const STATUS_NAMES: Record<TodoStatus, string> = {
-  open: "Open",
-  in_progress: "In progress",
-  blocked: "Blocked",
-  done: "Done",
-};
 
 export function TodoPage() {
   const { id } = route.useParams();
@@ -78,6 +85,8 @@ function TodoDetail({ todo }: { todo: Todo }) {
         <span className={styles.id}>#{todo.id}</span>
         {editingTitle ? (
           <TitleInput
+            className={styles.titleInput}
+            maxLength={300}
             initial={todo.title}
             onDone={(title) => {
               setEditingTitle(false);
@@ -116,7 +125,7 @@ function TodoDetail({ todo }: { todo: Todo }) {
               >
                 {TODO_STATUSES.map((status) => (
                   <option key={status} value={status}>
-                    {STATUS_NAMES[status]}
+                    {STATUS_LABELS[status]}
                   </option>
                 ))}
               </select>
@@ -261,32 +270,6 @@ function MetaRow({ label, instant }: { label: string; instant: string }) {
   );
 }
 
-function TitleInput({ initial, onDone }: { initial: string; onDone: (title: string | null) => void }) {
-  const [value, setValue] = useState(initial);
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") onDone(value.trim());
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      onDone(null);
-    }
-  };
-  return (
-    <input
-      className={styles.titleInput}
-      value={value}
-      maxLength={300}
-      aria-label="Title"
-      // Opened on purpose with e or a click.
-      // oxlint-disable-next-line jsx-a11y/no-autofocus
-      autoFocus
-      onChange={(event) => setValue(event.target.value)}
-      onKeyDown={onKeyDown}
-      onBlur={() => onDone(value.trim())}
-    />
-  );
-}
-
 function DateInput({
   label,
   value,
@@ -322,73 +305,15 @@ function DateInput({
   );
 }
 
-const SAVE_DELAY_MS = 700;
-const SAVE_STATE_TEXT = { idle: "", saved: "Saved", pending: "Not saved yet", saving: "Saving" } as const;
-
 function Description({ todo }: { todo: Todo }) {
   const { patch } = useTodoActions();
-  const [editing, setEditing] = useState(todo.descriptionMd === "");
-  const [draft, setDraft] = useState(todo.descriptionMd);
-  // "idle" until the first change, so an untouched description shows no save state.
-  const [state, setState] = useState<"idle" | "saved" | "pending" | "saving">("idle");
-  const saved = useRef(todo.descriptionMd);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  const save = async (text: string) => {
-    clearTimeout(timer.current);
-    if (text === saved.current) {
-      setState((current) => (current === "idle" ? "idle" : "saved"));
-      return;
-    }
-    setState("saving");
-    const result = await patch(todo.id, { descriptionMd: text });
-    if (result) saved.current = text;
-    setState(result ? "saved" : "pending");
-  };
-
-  useEffect(() => () => clearTimeout(timer.current), []);
-
   return (
-    <>
-      <div className={styles.descHead}>
-        <h2 className={styles.descTitle}>Description</h2>
-        <span className={styles.saveState} aria-live="polite">
-          {editing && SAVE_STATE_TEXT[state]}
-        </span>
-        <div className={styles.toggle} role="group" aria-label="Description view">
-          <button type="button" aria-pressed={editing} onClick={() => setEditing(true)}>
-            Write
-          </button>
-          <button
-            type="button"
-            aria-pressed={!editing}
-            onClick={() => {
-              void save(draft);
-              setEditing(false);
-            }}
-          >
-            Preview
-          </button>
-        </div>
-      </div>
-      {editing ? (
-        <MarkdownEditor
-          label="Description"
-          value={draft}
-          onChange={(text) => {
-            setDraft(text);
-            setState("pending");
-            clearTimeout(timer.current);
-            timer.current = setTimeout(() => void save(text), SAVE_DELAY_MS);
-          }}
-          onBlur={() => void save(draft)}
-        />
-      ) : draft.trim() ? (
-        <MarkdownPreview source={draft} />
-      ) : (
-        <p className={styles.noDesc}>No description yet. Choose Write to add notes.</p>
-      )}
-    </>
+    <MarkdownField
+      title="Description"
+      value={todo.descriptionMd}
+      save={async (descriptionMd) => (await patch(todo.id, { descriptionMd })) !== null}
+      emptyText="No description yet. Choose Write to add notes."
+    />
   );
 }
 

@@ -1,4 +1,11 @@
-import { type ButtonHTMLAttributes, forwardRef, type InputHTMLAttributes, type ReactNode } from "react";
+import {
+  type ButtonHTMLAttributes,
+  forwardRef,
+  type InputHTMLAttributes,
+  type KeyboardEvent,
+  type ReactNode,
+  useState,
+} from "react";
 import { keyCaps } from "../keyboard/keys.ts";
 import { errorMessage } from "../lib/api.ts";
 import styles from "./ui.module.css";
@@ -123,3 +130,39 @@ export const FieldButton = forwardRef<
     />
   );
 });
+
+/** Title editor opened on purpose (key e or a click): Enter or blur saves, Esc cancels (null). */
+export function TitleInput({
+  initial,
+  onDone,
+  maxLength,
+  className,
+}: {
+  initial: string;
+  onDone: (title: string | null) => void;
+  maxLength: number;
+  className?: string;
+}) {
+  const [value, setValue] = useState(initial);
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") onDone(value.trim());
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      onDone(null);
+    }
+  };
+  return (
+    <input
+      className={className}
+      value={value}
+      maxLength={maxLength}
+      aria-label="Title"
+      // oxlint-disable-next-line jsx-a11y/no-autofocus -- opened on purpose to type
+      autoFocus
+      onChange={(event) => setValue(event.target.value)}
+      onKeyDown={onKeyDown}
+      onBlur={() => onDone(value.trim())}
+    />
+  );
+}

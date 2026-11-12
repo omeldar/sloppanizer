@@ -65,56 +65,6 @@
   min-width: 0;
 }
 
-.descHead {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.descTitle {
-  font-size: var(--fs-h2);
-  font-weight: 600;
-}
-
-.saveState {
-  font-family: var(--font-mono);
-  font-size: var(--fs-pill);
-  color: var(--text-3);
-}
-
-.toggle {
-  display: inline-flex;
-  margin-left: auto;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-pill);
-  overflow: hidden;
-}
-
-.toggle button {
-  height: 24px;
-  padding: 0 10px;
-  border: 0;
-  background: transparent;
-  color: var(--text-2);
-  font-size: var(--fs-small);
-  cursor: pointer;
-}
-
-.toggle button + button {
-  border-left: 1px solid var(--line-strong);
-}
-
-.toggle button[aria-pressed="true"] {
-  background: var(--raised);
-  color: var(--text);
-}
-
-.noDesc {
-  padding: 18px 0;
-  color: var(--text-3);
-}
-
 .side {
   position: sticky;
   top: 16px;

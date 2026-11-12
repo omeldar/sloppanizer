@@ -1,0 +1,19 @@
+.content {
+  z-index: 75;
+  padding: 10px 12px;
+  background: var(--raised-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--menu-shadow);
+  font-size: var(--fs-small);
+  color: var(--text);
+  transform-origin: var(--radix-hover-card-content-transform-origin);
+  animation: open var(--t-menu) var(--ease);
+}
+
+@keyframes open {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
