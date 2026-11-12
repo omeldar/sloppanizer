@@ -31,6 +31,7 @@ import { todoRoutes } from "./routes/todos.ts";
 import { tokenRoutes } from "./routes/tokens.ts";
 import { topicRoutes } from "./routes/topics.ts";
 import type { Deps } from "./routes/types.ts";
+import { repairScopeConflicts } from "./services/labels.ts";
 import { rebuildSearchIndex } from "./services/search-index.ts";
 
 export const VERSION = packageJson.version;
@@ -65,6 +66,8 @@ export async function buildApp(options: BuildOptions) {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   app.addHook("onClose", async () => db.$client.close());
+  const repaired = repairScopeConflicts(deps);
+  if (repaired > 0) app.log.warn(`removed duplicate scope labels from ${repaired} todos`);
 
   await app.register(fastifyCookie, { secret });
   registerSecurity(app, { db, clock: deps.clock, allowedHosts: config.allowedHosts });
