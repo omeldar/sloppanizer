@@ -2,6 +2,7 @@ import { z } from "zod";
 import { findScopeConflicts, LabelName } from "./labels.ts";
 import { normalizeTopic } from "./people.ts";
 import { CalendarDate, Color, Id, Slug, Timestamp, TodoStatus, TokenScope } from "./primitives.ts";
+import { RecurrenceRule } from "./recurrence.ts";
 
 const Title = z
   .string()
@@ -68,6 +69,10 @@ export const CreateTodo = z
     requestedBy: PersonRefList.optional(),
     /** People to ask about the todo; same rules as requestedBy. */
     contacts: PersonRefList.optional(),
+    /** Makes it a subtask; without projectId it takes the parent's project (null keeps the Inbox). */
+    parentId: Id.optional(),
+    /** Needs dueOn or plannedOn. */
+    recurrence: RecurrenceRule.nullable().optional(),
   })
   .superRefine((value, ctx) => checkScopes(ctx, value.labels, "labels"));
 export type CreateTodo = z.infer<typeof CreateTodo>;
@@ -90,6 +95,10 @@ export const UpdateTodo = z
     contacts: PersonRefList.optional(),
     addContacts: PersonRefList.optional(),
     removeContacts: PersonRefList.optional(),
+    /** null makes it a top-level todo again. */
+    parentId: Id.nullable().optional(),
+    /** null stops repeating; a rule needs dueOn or plannedOn. */
+    recurrence: RecurrenceRule.nullable().optional(),
   })
   .superRefine((value, ctx) => {
     checkNotEmpty(ctx, value);

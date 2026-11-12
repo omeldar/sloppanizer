@@ -34,6 +34,8 @@ export const TodoListQuery = z
     /** Comma list; a todo must have every label (AND). */
     label: commaList(LabelName).optional(),
     personId: IdParam.optional(),
+    /** Children of this todo, or "none" for top-level todos only. */
+    parentId: z.union([z.literal("none"), IdParam]).optional(),
     /** How personId is linked: requester (default, the step 1 meaning), contact or any. */
     personRole: z.enum([...PersonRole.options, "any"]).default("requester"),
     /** Title substring for now. */

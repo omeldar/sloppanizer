@@ -25,6 +25,9 @@ export const SCORE = {
   idlePerDay: 0.5,
   idleCap: 15,
   inProgress: 10,
+  /** Per active todo this one blocks, up to blocksCap. */
+  blocksPer: 5,
+  blocksCap: 15,
 } as const;
 
 /** The fields scoring needs; the full Todo fits. */
@@ -36,6 +39,28 @@ export interface ScorableTodo {
   dueOn: string | null;
   plannedOn: string | null;
   labels: readonly { name: string }[];
+  /** Links to other todos; the full Todo fits. Leaving them out means no links. */
+  links?: {
+    blocks: readonly LinkedTodo[];
+    blockedBy: readonly LinkedTodo[];
+  };
+}
+
+export interface LinkedTodo {
+  id: number;
+  status: TodoStatus;
+}
+
+/** The blockers that are not done yet: while there is one, the todo waits. */
+export function activeBlockers(todo: Pick<ScorableTodo, "links">): LinkedTodo[] {
+  return (todo.links?.blockedBy ?? []).filter((t) => t.status !== "done");
+}
+
+/** "waiting on #12" (and more ids) for a todo with active blockers, else null. */
+export function waitingReason(todo: Pick<ScorableTodo, "links">): Reason | null {
+  const blockers = activeBlockers(todo);
+  if (blockers.length === 0) return null;
+  return { kind: "waiting", label: `waiting on ${blockers.map((t) => `#${t.id}`).join(", ")}`, points: 0 };
 }
 
 export interface ScoreContext {
@@ -90,6 +115,14 @@ export function scoreTodo(todo: ScorableTodo, ctx: ScoreContext): ScoreResult {
   }
 
   if (todo.status === "in_progress") add(SCORE.inProgress, { kind: "in_progress", label: "in progress" });
+
+  const blocking = (todo.links?.blocks ?? []).filter((t) => t.status !== "done").length;
+  if (blocking > 0) {
+    add(Math.min(SCORE.blocksCap, SCORE.blocksPer * blocking), {
+      kind: "blocks",
+      label: `blocks ${blocking}`,
+    });
+  }
 
   const age = Math.max(0, daysSince(todo.createdAt, ctx.today, ctx.timeZone));
   const agePoints = Math.min(SCORE.ageCap, SCORE.agePerDay * age);
@@ -153,18 +186,21 @@ export interface RankOptions extends ScoreContext {
 
 export interface Ranked<T> {
   items: Scored<T>[];
-  /** Blocked todos, oldest first; they are not ranked. */
+  /** Blocked todos and todos waiting on an active blocker, oldest first; they are not ranked. */
   blocked: T[];
 }
 
-/** Ranks todos for Next up. Done todos are left out, blocked ones go to `blocked`. */
+/**
+ * Ranks todos for Next up. Done todos are left out; blocked ones, and active todos with a blocker
+ * that is not done (waitingReason), go to `blocked`.
+ */
 export function rankTodos<T extends ScorableTodo>(todos: readonly T[], options: RankOptions): Ranked<T> {
   const ctx: ScoreContext = { today: options.today, timeZone: options.timeZone };
   const scored: Scored<T>[] = [];
   const blocked: T[] = [];
   for (const todo of todos) {
     if (todo.status === "done") continue;
-    if (todo.status === "blocked") blocked.push(todo);
+    if (todo.status === "blocked" || activeBlockers(todo).length > 0) blocked.push(todo);
     else scored.push({ todo, ...scoreTodo(todo, ctx) });
   }
   scored.sort(ORDERS[options.mode]);

@@ -167,6 +167,12 @@ describe("Todo output", () => {
     contacts: [],
     commentCount: 0,
     project: null,
+    parent: null,
+    progress: { subtasks: { total: 0, done: 0 }, checklist: { total: 0, done: 0 } },
+    links: { blocks: [], blockedBy: [], relatesTo: [] },
+    recurrence: null,
+    previousOccurrenceId: null,
+    nextOccurrence: null,
   };
 
   it("accepts the documented shape and rejects extra or missing fields", () => {

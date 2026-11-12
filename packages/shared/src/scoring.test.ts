@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildNextUp, rankTodos, type ScorableTodo, scoreTodo } from "./scoring.ts";
+import {
+  activeBlockers,
+  buildNextUp,
+  rankTodos,
+  type ScorableTodo,
+  scoreTodo,
+  waitingReason,
+} from "./scoring.ts";
 
 const TZ = "Europe/Paris";
 const TODAY = "2026-11-11";
@@ -309,5 +316,56 @@ describe("buildNextUp", () => {
     expect(result.generatedAt).toBe("2026-11-11T23:30:00.000Z");
     expect(result.mode).toBe("smart");
     expect(result.items[0]?.reasons[0]).toEqual({ kind: "due_today", label: "due today", points: 28 });
+  });
+});
+
+const linkRef = (id: number, status: "open" | "in_progress" | "blocked" | "done" = "open") => ({
+  id,
+  status,
+});
+
+describe("scoring with links", () => {
+  const base = {
+    status: "open" as const,
+    createdAt: "2026-11-11T08:00:00.000Z",
+    lastActivityAt: "2026-11-11T08:00:00.000Z",
+    dueOn: null,
+    plannedOn: null,
+    labels: [],
+  };
+
+  it("gives 5 points per active todo it blocks, at most 15, and ignores done ones", () => {
+    const plain = scoreTodo({ ...base, id: 1 }, { today: "2026-11-11", timeZone: "Europe/Zurich" }).score;
+    const two = scoreTodo(
+      {
+        ...base,
+        id: 1,
+        links: { blocks: [linkRef(2), linkRef(3, "done"), linkRef(4, "blocked")], blockedBy: [] },
+      },
+      ctx,
+    );
+    expect(two.score).toBe(plain + 10);
+    expect(two.reasons).toContainEqual({ kind: "blocks", label: "blocks 2", points: 10 });
+    const many = scoreTodo(
+      { ...base, id: 1, links: { blocks: [linkRef(2), linkRef(3), linkRef(4), linkRef(5)], blockedBy: [] } },
+      ctx,
+    );
+    expect(many.score).toBe(plain + 15);
+    expect(many.reasons).toContainEqual({ kind: "blocks", label: "blocks 4", points: 15 });
+  });
+
+  it("moves todos with an active blocker to blocked with a waiting reason", () => {
+    const waiting = { ...base, id: 1, links: { blocks: [], blockedBy: [linkRef(12), linkRef(13, "done")] } };
+    const free = { ...base, id: 2, links: { blocks: [], blockedBy: [linkRef(14, "done")] } };
+    const ranked = rankTodos([waiting, free], {
+      mode: "smart",
+      today: "2026-11-11",
+      timeZone: "Europe/Zurich",
+    });
+    expect(ranked.items.map((i) => i.todo.id)).toEqual([2]);
+    expect(ranked.blocked.map((t) => t.id)).toEqual([1]);
+    expect(waitingReason(waiting)).toEqual({ kind: "waiting", label: "waiting on #12", points: 0 });
+    expect(waitingReason(free)).toBeNull();
+    expect(activeBlockers({})).toEqual([]);
   });
 });

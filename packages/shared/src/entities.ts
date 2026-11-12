@@ -10,6 +10,7 @@ import {
   TodoStatus,
   TokenScope,
 } from "./primitives.ts";
+import { RecurrenceRule } from "./recurrence.ts";
 
 export const Health = z.strictObject({ ok: z.literal(true), version: z.string() });
 export type Health = z.infer<typeof Health>;
@@ -122,6 +123,25 @@ export type PersonBrief = z.infer<typeof PersonBrief>;
 export const ProjectRef = z.strictObject({ id: Id, slug: Slug, name: z.string(), color: Color });
 export type ProjectRef = z.infer<typeof ProjectRef>;
 
+/** A small reference to another todo (parent, links, next occurrence). */
+export const TodoRef = z.strictObject({ id: Id, title: z.string(), status: TodoStatus });
+export type TodoRef = z.infer<typeof TodoRef>;
+
+const DoneCount = z.strictObject({
+  total: z.number().int().nonnegative(),
+  done: z.number().int().nonnegative(),
+});
+
+/** Links of a todo, each list by id. */
+export const TodoLinks = z.strictObject({
+  /** Todos this one blocks. */
+  blocks: z.array(TodoRef),
+  /** Todos that block this one. */
+  blockedBy: z.array(TodoRef),
+  relatesTo: z.array(TodoRef),
+});
+export type TodoLinks = z.infer<typeof TodoLinks>;
+
 export const Todo = z.strictObject({
   id: Id,
   projectId: Id.nullable(),
@@ -146,6 +166,17 @@ export const Todo = z.strictObject({
   contacts: z.array(PersonBrief),
   commentCount: z.number().int().nonnegative(),
   project: ProjectRef.nullable(),
+  /** The parent todo when this is a subtask. */
+  parent: TodoRef.nullable(),
+  /** subtasks: direct children; checklist: task list lines in descriptionMd. */
+  progress: z.strictObject({ subtasks: DoneCount, checklist: DoneCount }),
+  links: TodoLinks,
+  /** The repeat rule (stored normalized), or null. */
+  recurrence: RecurrenceRule.nullable(),
+  /** The occurrence this todo was created from. */
+  previousOccurrenceId: Id.nullable(),
+  /** The todo created from this one when it was marked done. */
+  nextOccurrence: TodoRef.nullable(),
 });
 export type Todo = z.infer<typeof Todo>;
 
@@ -345,10 +376,6 @@ export type TopicConflictDetails = z.infer<typeof TopicConflictDetails>;
 /** Body of a 409 when a person tag name is taken. */
 export const PersonTagConflictDetails = z.strictObject({ existing: PersonTag });
 export type PersonTagConflictDetails = z.infer<typeof PersonTagConflictDetails>;
-
-/** A small reference to another todo (parent, links, next occurrence). */
-export const TodoRef = z.strictObject({ id: Id, title: z.string(), status: TodoStatus });
-export type TodoRef = z.infer<typeof TodoRef>;
 
 /** A task list line in a todo's description (`- [ ] text`). */
 export const ChecklistItem = z.strictObject({
