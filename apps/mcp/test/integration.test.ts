@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -117,19 +117,30 @@ describe("MCP server against the real API", () => {
     const { tools } = await mcp.listTools();
     expect(tools.map((t) => t.name).toSorted()).toEqual(
       [
+        "add_comment",
         "bulk_update",
         "create_label",
+        "create_note",
         "create_person",
         "create_project",
         "create_todo",
+        "get_activity",
+        "get_note",
+        "get_person",
         "get_todo",
         "list_labels",
+        "list_notes",
         "list_people",
+        "list_person_tags",
         "list_projects",
         "list_todos",
+        "list_topics",
         "mark_done",
         "next_up",
         "overview",
+        "search",
+        "update_note",
+        "update_person",
         "update_todo",
       ].toSorted(),
     );
@@ -253,11 +264,11 @@ describe("MCP server against the real API", () => {
 
     expect(
       await ok("create_person", { firstName: "Anna", lastName: "Meier", note: "IT", allowDuplicate: true }),
-    ).toMatch(/^Created person \d+ \| Anna Meier \| IT$/);
+    ).toMatch(/^Created person \d+ \| Anna Meier \| note: IT$/);
     const ambiguous = await call("create_todo", { title: "x", requestedBy: ["Anna Meier"] });
     expect(ambiguous.isError).toBe(true);
     expect(ambiguous.text).toContain("Candidates (pass one as a person id):");
-    expect(ambiguous.text).toContain("Anna Meier | IT");
+    expect(ambiguous.text).toContain("Anna Meier | note: IT");
 
     const missing = await call("get_todo", { id: 99_999 });
     expect(missing.isError).toBe(true);
@@ -276,5 +287,217 @@ describe("MCP server against the real API", () => {
     const result = await call("overview", {}, noToken);
     expect(result.isError).toBe(true);
     expect(result.text).toContain(`No API token at ${join(root, "missing")}`);
+  });
+});
+
+// Step 2: contacts, the thread, notes and search. Builds on the data of the tests above (Anna Meier twice,
+// project homelab), so it avoids those names.
+describe("step 2 tools against the real API", () => {
+  let cookie = "";
+  let maxId = 0;
+  let todoId = 0;
+
+  /** A REST call as the browser session or with the MCP token. */
+  async function rest(as: "session" | "token", method: string, path: string, body?: unknown) {
+    const auth =
+      as === "session" ? { cookie } : { authorization: `Bearer ${readFileSync(tokenFile, "utf8").trim()}` };
+    const response = await fetch(`${BASE_URL}/api/v1${path}`, {
+      method,
+      headers: { ...auth, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await response.text();
+    return {
+      status: response.status,
+      json: text ? (JSON.parse(text) as Record<string, unknown>) : undefined,
+    };
+  }
+
+  beforeAll(async () => {
+    // Loading the web app (here the placeholder page) sets the session cookie.
+    const page = await fetch(`${BASE_URL}/`, { headers: { accept: "text/html" } });
+    cookie = String(page.headers.get("set-cookie")).split(";")[0] ?? "";
+    if (!cookie.startsWith("org_session=")) throw new Error(`no session cookie: ${cookie}`);
+  });
+
+  it("finds whom to ask and links them as contacts end to end", async () => {
+    // Person tags are made by the user first (Labels page); the MCP server can only use them.
+    expect(
+      (await rest("session", "POST", "/person-tags", { name: "fast reply", color: "#3E8E7E" })).status,
+    ).toBe(201);
+    const unknownTag = await call("create_person", { firstName: "Tim", lastName: "Roth", tags: ["slow"] });
+    expect(unknownTag.isError).toBe(true);
+    expect(unknownTag.text).toContain("list_person_tags shows the person tags");
+
+    const max = await ok("create_person", {
+      firstName: "Max",
+      lastName: "Muster",
+      note: "Basel",
+      team: "Network team",
+      email: "max.muster@example.com",
+      topics: ["firewall rules", "  VPN "],
+      tags: ["fast reply"],
+    });
+    expect(max).toMatch(
+      /^Created person \d+ \| Max Muster \| Network team \| topics: firewall rules, VPN \| tags: fast reply \| note: Basel$/,
+    );
+    maxId = Number(/person (\d+)/.exec(max)?.[1]);
+    await ok("create_person", {
+      firstName: "Eva",
+      lastName: "Keller",
+      team: "network team",
+      topics: ["SAP access"],
+    });
+
+    const byTopic = await ok("list_people", { topic: ["FIREWALL RULES"] });
+    expect(byTopic.split("\n")).toEqual([
+      expect.stringMatching(new RegExp(`^person ${maxId} \\| Max Muster `)),
+    ]);
+    expect((await ok("list_people", { team: "NETWORK TEAM" })).split("\n")).toHaveLength(2);
+    expect(await ok("list_people", { q: "vpn" })).toContain("Max Muster");
+    expect(await ok("list_people", { tag: ["fast reply"], topic: ["SAP access"] })).toBe(
+      "No people match. Fewer filters, or list_topics, show what is there.",
+    );
+    expect(await ok("list_topics")).toMatch(
+      /^topic \d+ \| firewall rules \| 1 person\ntopic \d+ \| SAP access/,
+    );
+    expect(await ok("list_person_tags")).toBe("fast reply | #3E8E7E | 1 person");
+
+    const created = await ok("create_todo", {
+      title: "Open port 443 for the build server",
+      requestedBy: ["Lea Frei"],
+      contacts: [maxId],
+    });
+    expect(created).toMatch(/\| req: Lea Frei \| contact: Max Muster$/);
+    todoId = idOf(created);
+    expect(await ok("update_todo", { id: todoId, addContacts: ["eva keller"] })).toMatch(
+      /\| contact: Max Muster, Eva Keller$/,
+    );
+
+    expect(await ok("list_todos", { personId: maxId, personRole: "contact" })).toContain(`#${todoId} open`);
+    expect(await ok("list_todos", { personId: maxId })).toBe("No todos match.");
+    expect(await ok("list_people", { kind: "contact", sort: "contact" })).toContain("contact for 1 (1 open)");
+
+    const detail = await ok("get_person", { person: "max muster" });
+    expect(detail).toContain("email: max.muster@example.com");
+    expect(detail).toContain("requested 0 (0 open, 0 done), contact for 1 (1 open)");
+    expect(detail).toMatch(
+      new RegExp(`Open todos they are a contact for \\(1\\):\\n#${todoId} open \\| Open port 443`),
+    );
+
+    const updated = await ok("update_person", {
+      person: maxId,
+      addTopics: ["DNS"],
+      removeTopics: ["vpn"],
+      notes: "Prefers **chat** over mail.",
+    });
+    expect(updated).toContain("topics: DNS, firewall rules");
+    // A topic nobody has any more is gone.
+    expect(await ok("list_topics")).not.toContain("VPN");
+    expect((await ok("get_person", { person: maxId })).endsWith("Prefers **chat** over mail.")).toBe(true);
+
+    expect(await ok("update_todo", { id: todoId, removeContacts: ["Eva Keller"] })).toMatch(
+      /\| contact: Max Muster$/,
+    );
+    const thread = await ok("get_activity", { todo: todoId });
+    expect(thread).toMatch(new RegExp(`^#${todoId} activity \\(3 items\\):`));
+    expect(thread).toMatch(/\d{4}-\d\d-\d\d \d\d:\d\d planner: .*Eva Keller/);
+  });
+
+  it("comments as the token and keeps browser comments out of its reach", async () => {
+    const added = await ok("add_comment", {
+      todo: todoId,
+      text: "Asked Max about the **firewall**.\nWaiting.",
+    });
+    expect(added).toMatch(new RegExp(`^Added comment \\d+ to #${todoId} as ${TOKEN_NAME}\\.$`));
+    const own = Number(/comment (\d+)/.exec(added)?.[1]);
+    const browser = await rest("session", "POST", `/todos/${todoId}/comments`, {
+      bodyMd: "Written in the browser",
+    });
+    expect(browser.status).toBe(201);
+    const browserId = Number(browser.json?.id);
+
+    const lines = (await ok("get_activity", { todo: todoId })).split("\n");
+    expect(lines.slice(-3)).toEqual([
+      expect.stringMatching(
+        new RegExp(
+          `^\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d ${TOKEN_NAME} commented \\(comment ${own}\\): Asked Max about the \\*\\*firewall\\*\\*\\.$`,
+        ),
+      ),
+      "  Waiting.",
+      expect.stringMatching(new RegExp(`you commented \\(comment ${browserId}\\): Written in the browser$`)),
+    ]);
+    expect(await ok("get_activity", { todo: todoId, limit: 1 })).toMatch(
+      /items, the newest 1\):\n.*you commented/,
+    );
+    expect(await ok("get_todo", { id: todoId })).toContain("comments: 2 (get_activity shows the thread)");
+
+    // The token may change its own comment, never one written in the browser session.
+    expect((await rest("token", "PATCH", `/comments/${own}`, { bodyMd: "Asked Max." })).status).toBe(200);
+    const foreign = await rest("token", "PATCH", `/comments/${browserId}`, { bodyMd: "changed" });
+    expect(foreign.status).toBe(403);
+    expect(JSON.stringify(foreign.json)).toContain("written by you");
+    expect((await rest("token", "DELETE", `/comments/${browserId}`)).status).toBe(403);
+    expect(await ok("get_activity", { todo: todoId })).toContain(`(comment ${own}, edited): Asked Max.`);
+
+    const db = new DatabaseSync(join(dataDir, "organizer.db"), { readOnly: true });
+    try {
+      expect(db.prepare("SELECT actor FROM comments ORDER BY id").all()).toEqual([
+        { actor: TOKEN_NAME },
+        { actor: "you" },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("writes, appends to and lists notes", async () => {
+    const log = await ok("create_note", {
+      title: "Firewall change log",
+      body: "- 443 requested\n",
+      project: "homelab",
+      pinned: true,
+    });
+    expect(log).toMatch(/^Created note \d+ \| Firewall change log \| project homelab \| pinned \| updated /);
+    const logId = Number(/note (\d+)/.exec(log)?.[1]);
+    await ok("update_note", { id: logId, appendText: "- 443 opened" });
+    expect((await ok("get_note", { id: logId })).endsWith("- 443 requested\n\n- 443 opened")).toBe(true);
+    const loose = Number(/note (\d+)/.exec(await ok("create_note", { title: "Loose idea" }))?.[1]);
+
+    const all = (await ok("list_notes")).split("\n");
+    expect(all[0]).toBe("2 of 2 notes:");
+    expect(all[1]).toMatch(
+      new RegExp(
+        `^note ${logId} \\| Firewall change log \\| project homelab \\| pinned \\| updated .* \\| 443 requested 443 opened$`,
+      ),
+    );
+    expect(await ok("list_notes", { project: "none" })).toMatch(
+      new RegExp(`^1 of 1 notes:\\nnote ${loose} \\|`),
+    );
+    expect(await ok("list_notes", { pinned: false })).not.toContain(`note ${logId} `);
+    expect(await ok("update_note", { id: logId, project: null, pinned: false })).toMatch(
+      /\| Firewall change log \| no project \| updated /,
+    );
+    const both = await call("update_note", { id: logId, body: "x", appendText: "y" });
+    expect(both.isError).toBe(true);
+  });
+
+  it("searches todos, notes, comments and people", async () => {
+    // The earlier comment was edited down to "Asked Max.", so add one that mentions the word.
+    const logs = idOf(await ok("create_todo", { title: "Check the firewall logs" }));
+    await ok("add_comment", { todo: todoId, text: "The firewall team confirmed." });
+    const text = await ok("search", { q: "firewall" });
+    expect(text).toMatch(/^Found for "firewall": 1 todo, 1 note, 1 comment, 1 person\./);
+    expect(text).toContain(`Todos:\n#${logs} open | Check the firewall logs`);
+    expect(text).toContain("Notes:\nnote ");
+    expect(text).toMatch(new RegExp(`Comments:\\ncomment \\d+ on #${todoId} \\|`));
+    expect(text).toMatch(new RegExp(`People:\\nperson ${maxId} \\| Max Muster`));
+    expect(text).toContain("**");
+    const people = await ok("search", { q: "müster", kinds: ["person"] });
+    expect(people).toMatch(
+      /^Found for "müster": 0 todos, 0 notes, 0 comments, 1 person\.\n\nPeople:\nperson /,
+    );
+    // FTS syntax in the query is just text.
+    expect((await call("search", { q: '"firewall" OR NOT *' })).isError).toBe(false);
   });
 });

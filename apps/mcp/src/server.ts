@@ -10,7 +10,9 @@ export function createServer(config: McpConfig, fetchImpl?: typeof fetch): McpSe
     {
       instructions:
         "organizer holds the user's todos and notes. Todos are shown as #id. Priorities are scoped labels " +
-        "priority::critical|high|medium|low. Start with overview or next_up when helping the user plan.",
+        "priority::critical|high|medium|low. Start with overview or next_up when helping the user plan. " +
+        "People are a small directory of colleagues: list_people with a topic or team answers whom to ask, " +
+        "and contacts on a todo record whom to ask about it. Each todo has a thread (get_activity, add_comment).",
     },
   );
   registerTools(server, { api: createApi(config, fetchImpl), timeZone: config.timeZone });
