@@ -244,6 +244,8 @@ function Breadcrumb() {
   else if (pathname === "/notes") trail = [{ label: "Notes" }];
   else if (pathname.startsWith("/notes/")) trail = [{ label: "Notes", to: "/notes" }, { label: "Note" }];
   else if (pathname === "/people") trail = [{ label: "People" }];
+  else if (pathname === "/people/stats")
+    trail = [{ label: "People", to: "/people" }, { label: "Statistics" }];
   else if (pathname.startsWith("/people/")) trail = [{ label: "People", to: "/people" }, { label: "Person" }];
   else if (pathname === "/settings") trail = [{ label: "Settings" }];
   else if (pathname === "/settings/tokens")

@@ -1,4 +1,4 @@
-import { NextMode, SearchKind } from "@organizer/shared";
+import { CalendarDate, NextMode, PEOPLE_STATS_SORTS, SearchKind } from "@organizer/shared";
 import { createRootRoute, createRoute, createRouter, Link, lazyRouteComponent } from "@tanstack/react-router";
 import { z } from "zod";
 import { EmptyState, PageHeader } from "../components/ui.tsx";
@@ -7,6 +7,8 @@ import { LabelsPage } from "../features/labels/LabelsPage.tsx";
 import { InboxPage } from "../features/lists/InboxPage.tsx";
 import { NextUpPage } from "../features/next/NextUpPage.tsx";
 import { PeoplePage } from "../features/people/PeoplePage.tsx";
+import { PeopleStatsPage } from "../features/people/PeopleStatsPage.tsx";
+import { PERIODS } from "../features/people/stats.ts";
 import { SearchPage } from "../features/search/SearchPage.tsx";
 import { ProjectPage } from "../features/projects/ProjectPage.tsx";
 import { SettingsPage } from "../features/settings/SettingsPage.tsx";
@@ -75,6 +77,24 @@ const PeopleSearch = z.object({
   sort: z.enum(["name", "requested", "contact", "recent"]).optional().catch(undefined),
 });
 
+const PeopleStatsSearch = z.object({
+  period: z
+    .enum(Object.keys(PERIODS) as [keyof typeof PERIODS])
+    .optional()
+    .catch(undefined),
+  from: CalendarDate.optional().catch(undefined),
+  to: CalendarDate.optional().catch(undefined),
+  role: z.enum(["requester", "contact"]).optional().catch(undefined),
+  /** Comma lists of names: every one must match. */
+  topic: z.string().optional().catch(undefined),
+  tag: z.string().optional().catch(undefined),
+  team: z.string().optional().catch(undefined),
+  label: z.string().optional().catch(undefined),
+  /** Project slug or "inbox". */
+  project: z.string().optional().catch(undefined),
+  sort: z.enum(PEOPLE_STATS_SORTS).optional().catch(undefined),
+});
+
 const SearchPageSearch = z.object({
   q: z.string().optional().catch(undefined),
   kind: SearchKind.optional().catch(undefined),
@@ -137,6 +157,12 @@ const routes = [
     path: "/people",
     component: PeoplePage,
     validateSearch: PeopleSearch,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/people/stats",
+    component: PeopleStatsPage,
+    validateSearch: PeopleStatsSearch,
   }),
   createRoute({ getParentRoute: () => rootRoute, path: "/people/$id", component: personPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage }),

@@ -75,6 +75,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
       .map((p) => ({ name: `Project ${p.name}`, to: "/projects/$slug", params: { slug: p.slug } })),
     { name: "Labels", to: "/labels", keys: "g l" },
     { name: "People", to: "/people", keys: "g p" },
+    { name: "People statistics", to: "/people/stats" },
     { name: "Settings", to: "/settings", keys: "g s" },
     ...(session ? [{ name: "API tokens", to: "/settings/tokens" }] : []),
   ];

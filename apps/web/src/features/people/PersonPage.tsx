@@ -45,6 +45,7 @@ import {
 import { PROJECT_COLORS } from "../projects/NewProjectDialog.tsx";
 import { EmailActions } from "./EmailActions.tsx";
 import { InlineText } from "./InlineText.tsx";
+import { PersonStats } from "./PersonStats.tsx";
 import styles from "./People.module.css";
 import { TopicInput } from "./TopicInput.tsx";
 
@@ -197,6 +198,7 @@ function PersonDetail({ person }: { person: Person }) {
               <TagField person={person} open={tagsOpen} onOpenChange={setTagsOpen} save={save} />
             </dd>
           </dl>
+          <PersonStats personId={person.id} />
           <dl className={styles.meta}>
             <div>
               <dt>Added</dt>

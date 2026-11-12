@@ -17,6 +17,7 @@ import {
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { type PeopleParams, usePeople, usePersonTags, useTeams } from "../../lib/queries.ts";
 import styles from "./People.module.css";
+import { PeopleTabs } from "./PeopleTabs.tsx";
 import { TopicInput } from "./TopicInput.tsx";
 
 const route = getRouteApi("/people");
@@ -43,7 +44,7 @@ export function splitList(value: string | undefined): string[] {
   return value ? value.split(",").filter(Boolean) : [];
 }
 
-function joinList(values: readonly string[]): string | undefined {
+export function joinList(values: readonly string[]): string | undefined {
   return values.length > 0 ? values.join(",") : undefined;
 }
 
@@ -104,6 +105,7 @@ export function PeoplePage() {
           </Button>
         }
       />
+      <PeopleTabs current="directory" />
       <div className={styles.toolbar}>
         <div className={styles.tabs} role="group" aria-label="Show">
           {TABS.map((tab) => (
@@ -235,7 +237,13 @@ function PersonRow({
   );
 }
 
-function TeamFilter({ value, onChange }: { value?: string; onChange: (team: string | undefined) => void }) {
+export function TeamFilter({
+  value,
+  onChange,
+}: {
+  value?: string;
+  onChange: (team: string | undefined) => void;
+}) {
   const teams = useTeams();
   return (
     <label className={styles.sort}>
@@ -259,7 +267,7 @@ function TeamFilter({ value, onChange }: { value?: string; onChange: (team: stri
   );
 }
 
-function TagFilter({ value, onChange }: { value: string[]; onChange: (tags: string[]) => void }) {
+export function TagFilter({ value, onChange }: { value: string[]; onChange: (tags: string[]) => void }) {
   const tags = usePersonTags();
   const [open, setOpen] = useState(false);
   const selected = new Set(value.map((v) => v.toLowerCase()));

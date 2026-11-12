@@ -16,7 +16,9 @@ import {
   type NextMode,
   Note,
   NotePage,
+  PeopleStats,
   Person,
+  PersonStatDetail,
   PersonTag,
   Project,
   SearchResult,
@@ -55,7 +57,27 @@ export const keys = {
   note: (id: number) => ["note", id] as const,
   search: (query: SearchParams) => ["search", query] as const,
   tokens: ["tokens"] as const,
+  // Under "stats", so todo changes (invalidateTodoViews) refresh them too.
+  peopleStats: (query: PeopleStatsParams) => ["stats", "people", query] as const,
+  personStats: (id: number, query: PersonStatsParams) => ["stats", "person", id, query] as const,
 };
+
+export interface PersonStatsParams {
+  /** Inclusive created dates (YYYY-MM-DD). */
+  from?: string;
+  to?: string;
+  topic?: readonly string[];
+  tag?: readonly string[];
+  team?: string;
+  label?: readonly string[];
+  projectId?: number | "inbox";
+}
+
+export interface PeopleStatsParams extends PersonStatsParams {
+  role?: "requester" | "contact";
+  sort?: "total" | "open" | "done" | "speed" | "recent" | "name";
+  limit?: number;
+}
 
 export interface PeopleParams {
   q?: string;
@@ -177,6 +199,25 @@ export const useSearch = (params: SearchParams, enabled = true) =>
     placeholderData: (previous) => previous,
     enabled: enabled && params.q.trim().length > 0,
   });
+
+export const usePeopleStats = (params: PeopleStatsParams | undefined) => {
+  const query = compact(params ?? {});
+  return useQuery({
+    queryKey: keys.peopleStats(query),
+    queryFn: () => api(PeopleStats, "/stats/people", { query: { ...query } }),
+    placeholderData: (previous) => previous,
+    enabled: params !== undefined,
+  });
+};
+
+export const usePersonStats = (id: number, params: PersonStatsParams = {}) => {
+  const query = compact(params);
+  return useQuery({
+    queryKey: keys.personStats(id, query),
+    queryFn: () => api(PersonStatDetail, `/stats/people/${id}`, { query: { ...query } }),
+    enabled: Number.isInteger(id) && id > 0,
+  });
+};
 
 export const useTodos = (params: TodoListParams, enabled = true) =>
   useQuery({

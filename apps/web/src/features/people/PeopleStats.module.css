@@ -1,0 +1,397 @@
+/* People statistics: filters, a status-bar-like summary and a strip table with thin open/done bars. */
+.page {
+  max-width: 1320px;
+}
+
+.viewTabs {
+  display: flex;
+  gap: 18px;
+  margin: -4px 0 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.viewTab {
+  margin-bottom: -1px;
+  padding: 6px 2px 7px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-2);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.viewTab:hover {
+  color: var(--text);
+}
+
+.viewTab[aria-current="page"] {
+  border-bottom-color: var(--amber);
+  color: var(--text);
+}
+
+.viewTab:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.segButton {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.segButton:last-child {
+  border-right: 0;
+}
+
+.segButton:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.segButton[aria-pressed="true"] {
+  background: var(--amber-tint);
+  color: var(--amber-text);
+  font-weight: 600;
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.select {
+  height: 28px;
+  max-width: 190px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  font-size: var(--fs-small);
+}
+
+.date {
+  width: 150px;
+  height: 28px;
+}
+
+.topicFilter {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.filterLabel {
+  padding-top: 6px;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+/* Segments like the status bar. */
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--sunken);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-2);
+}
+
+.summary li {
+  padding: 5px 12px;
+  border-right: 1px solid var(--line);
+}
+
+.summary b {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.summary .range {
+  margin-left: auto;
+  border-right: 0;
+  border-left: 1px solid var(--line);
+}
+
+.table {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+}
+
+.table th {
+  height: 28px;
+  padding: 0 10px;
+  background: var(--sunken);
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 400;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table th[data-num],
+.table td[data-num] {
+  text-align: right;
+}
+
+.sortButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sortButton:hover {
+  color: var(--text);
+}
+
+.sortButton[data-on] {
+  color: var(--amber-text);
+  font-weight: 600;
+}
+
+.sortButton:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.table td {
+  height: 42px;
+  padding: 0 10px;
+  border-top: 1px solid var(--line);
+  background: var(--strip);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.row:hover td {
+  background: var(--strip-hover);
+}
+
+.row[data-selected] td {
+  background: var(--strip-selected);
+}
+
+.row[data-selected] td:first-child {
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
+.rank {
+  width: 36px;
+  color: var(--text-3);
+}
+
+.table td.nameCell {
+  max-width: 280px;
+  font-family: var(--font-text);
+  font-size: var(--fs-text);
+}
+
+.name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.name:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--text-3);
+  text-underline-offset: 3px;
+}
+
+.team {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+.when {
+  color: var(--text-2);
+}
+
+/* Thin bar: open (amber) then done (grey), scaled to the biggest total in the list. */
+.bar {
+  display: flex;
+  width: 160px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.barOpen {
+  width: var(--open);
+  background: var(--amber-fill);
+}
+
+.barDone {
+  width: var(--done);
+  background: var(--text-3);
+}
+
+/* Statistics block on the person page (side column). */
+.personStats {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.personStatsTitle {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: var(--fs-h2);
+  font-weight: 600;
+}
+
+.personStatsLink {
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  font-weight: 400;
+}
+
+.personNumbers {
+  display: grid;
+  gap: 3px;
+  margin: 0 0 12px;
+  font-size: var(--fs-small);
+}
+
+.personNumbers > div {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 10px;
+}
+
+.personNumbers dt {
+  color: var(--text-2);
+}
+
+.personNumbers dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.personNumbers dd span {
+  color: var(--text-2);
+}
+
+.months {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.month {
+  display: grid;
+  grid-template-columns: 1fr 4px;
+  grid-template-rows: 48px auto;
+  column-gap: 1px;
+  align-items: end;
+}
+
+.monthRequested {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+}
+
+.monthOpen {
+  height: var(--open);
+  background: var(--amber-fill);
+}
+
+.monthDone {
+  height: var(--done);
+  background: var(--text-3);
+}
+
+.monthContact {
+  height: var(--contact);
+  box-sizing: border-box;
+  border: 1px solid var(--text-2);
+  border-bottom: 0;
+}
+
+.monthName {
+  grid-column: 1 / 3;
+  padding-top: 2px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-align: center;
+}
+
+.monthsLegend {
+  margin-top: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.keyOpen,
+.keyDone,
+.keyContact {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 4px;
+  vertical-align: baseline;
+}
+
+.keyOpen {
+  background: var(--amber-fill);
+}
+
+.keyDone {
+  background: var(--text-3);
+}
+
+.keyContact {
+  border: 1px solid var(--text-2);
+}
