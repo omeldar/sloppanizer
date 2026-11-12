@@ -5,9 +5,11 @@ import {
   priorityOf,
   STATUS_LABELS,
   type Todo,
+  type Topic,
   TopicConflictDetails,
   type UpdatePerson,
 } from "@organizer/shared";
+import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useId, useRef, useState } from "react";
 import { Dialog } from "../../components/Dialog.tsx";
@@ -38,6 +40,7 @@ import {
   usePersonTags,
   useRenameTopic,
   useTeams,
+  topicsQuery,
   useTodos,
   useTopics,
   useUpdatePerson,
@@ -72,6 +75,9 @@ function PersonDetail({ person }: { person: Person }) {
   const toast = useToast();
   const teams = useTeams();
   const teamList = useId();
+  // One query for every chip's count and id; a chip whose topic is not in it looks it up when needed.
+  const allTopics = useTopics("", true, TOPIC_LIST_LIMIT);
+  const topicByName = new Map((allTopics.data ?? []).map((t) => [t.name.toLowerCase(), t]));
   const [editingName, setEditingName] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -188,6 +194,7 @@ function PersonDetail({ person }: { person: Person }) {
                 renderChip={(name) => (
                   <TopicChip
                     name={name}
+                    topic={topicByName.get(name.toLowerCase())}
                     person={person}
                     onRemove={() => void save({ removeTopics: [name] })}
                   />
@@ -276,12 +283,37 @@ function NameForm({
   );
 }
 
+/** The most topics GET /topics returns at once. */
+const TOPIC_LIST_LIMIT = 200;
+
 /** A topic with its menu: show everyone with it, rename or delete it for all, or remove it here. */
-function TopicChip({ name, person, onRemove }: { name: string; person: Person; onRemove: () => void }) {
+function TopicChip({
+  name,
+  topic,
+  person,
+  onRemove,
+}: {
+  name: string;
+  /** From the page's topic list; undefined while it loads or when the topic is past its limit. */
+  topic: Topic | undefined;
+  person: Person;
+  onRemove: () => void;
+}) {
   const navigate = useNavigate();
-  const topics = useTopics(name);
-  const topic = topics.data?.find((t) => t.name.toLowerCase() === name.toLowerCase());
-  const [dialog, setDialog] = useState<"rename" | "delete" | null>(null);
+  const client = useQueryClient();
+  const toast = useToast();
+  const [dialog, setDialog] = useState<{ kind: "rename" | "delete"; topic: Topic } | null>(null);
+  const open = async (kind: "rename" | "delete") => {
+    try {
+      const found =
+        topic ??
+        (await client.fetchQuery(topicsQuery(name))).find((t) => t.name.toLowerCase() === name.toLowerCase());
+      if (found) setDialog({ kind, topic: found });
+      else toast.show({ tone: "error", message: `The topic ${name} does not exist any more.` });
+    } catch (error) {
+      toast.show({ tone: "error", message: `Could not load the topic ${name}. ${errorMessage(error)}` });
+    }
+  };
   return (
     <>
       <Menu
@@ -300,12 +332,16 @@ function TopicChip({ name, person, onRemove }: { name: string; person: Person; o
             run: () => void navigate({ to: "/people", search: { topic: name } }),
           },
           { label: `Remove from ${person.firstName}`, run: onRemove },
-          { label: "Rename topic for everyone", run: () => setDialog("rename") },
-          { label: "Delete topic for everyone", run: () => setDialog("delete"), danger: true },
+          { label: "Rename topic for everyone", run: () => void open("rename") },
+          { label: "Delete topic for everyone", run: () => void open("delete"), danger: true },
         ]}
       />
-      {topic && dialog === "rename" && <RenameTopicDialog topic={topic} onClose={() => setDialog(null)} />}
-      {topic && dialog === "delete" && <DeleteTopicDialog topic={topic} onClose={() => setDialog(null)} />}
+      {dialog?.kind === "rename" && (
+        <RenameTopicDialog topic={dialog.topic} onClose={() => setDialog(null)} />
+      )}
+      {dialog?.kind === "delete" && (
+        <DeleteTopicDialog topic={dialog.topic} onClose={() => setDialog(null)} />
+      )}
     </>
   );
 }

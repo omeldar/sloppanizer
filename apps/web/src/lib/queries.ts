@@ -41,7 +41,7 @@ import {
   type UpdateProject,
   type UpdateTodo,
 } from "@organizer/shared";
-import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { api, apiVoid } from "./api.ts";
 import type { PositionPatch } from "./positions.ts";
@@ -54,7 +54,7 @@ export const keys = {
   labels: ["labels"] as const,
   people: (query: PeopleParams) => ["people", query] as const,
   person: (id: number) => ["person", id] as const,
-  topics: (q: string) => ["topics", q] as const,
+  topics: (q: string, limit: number) => ["topics", q, limit] as const,
   teams: ["teams"] as const,
   personTags: ["personTags"] as const,
   todos: (query: TodoListParams) => ["todos", query] as const,
@@ -173,13 +173,15 @@ export const usePerson = (id: number) =>
     enabled: Number.isInteger(id) && id > 0,
   });
 
-export const useTopics = (q: string, enabled = true) =>
-  useQuery({
-    queryKey: keys.topics(q),
-    queryFn: () => api(z.array(Topic), "/topics", { query: { q: q || undefined, limit: 20 } }),
-    placeholderData: (previous) => previous,
-    enabled,
+/** Topics whose name contains `q` (all topics for an empty `q`, up to `limit`). */
+export const topicsQuery = (q: string, limit = 20) =>
+  queryOptions({
+    queryKey: keys.topics(q, limit),
+    queryFn: () => api(z.array(Topic), "/topics", { query: { q: q || undefined, limit } }),
   });
+
+export const useTopics = (q: string, enabled = true, limit = 20) =>
+  useQuery({ ...topicsQuery(q, limit), placeholderData: (previous) => previous, enabled });
 
 export const useTeams = () => useQuery({ queryKey: keys.teams, queryFn: () => api(z.array(Team), "/teams") });
 
