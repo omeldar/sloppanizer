@@ -1,4 +1,12 @@
-import { DEFAULT_LABEL_COLOR, type Label, labelNameProblem, parseLabelName } from "@organizer/shared";
+import {
+  DEFAULT_LABEL_COLOR,
+  type Label,
+  labelNameProblem,
+  parseLabelName,
+  ScopeConflictDetails,
+  scopeKey,
+  type UpdateLabel,
+} from "@organizer/shared";
 import { type FormEvent, useState } from "react";
 import { Dialog } from "../../components/Dialog.tsx";
 import { LabelPill } from "../../components/LabelPill.tsx";
@@ -12,7 +20,7 @@ import {
   PageHeader,
   TextInput,
 } from "../../components/ui.tsx";
-import { errorMessage } from "../../lib/api.ts";
+import { ApiError, errorMessage } from "../../lib/api.ts";
 import { useCreateLabel, useDeleteLabel, useLabels, useUpdateLabel } from "../../lib/queries.ts";
 import styles from "./Labels.module.css";
 import { PersonTagsSection } from "./PersonTags.tsx";
@@ -121,6 +129,9 @@ function LabelForm({ label, onDone }: { label?: Label; onDone: () => void }) {
   const [color, setColor] = useState(label?.color ?? DEFAULT_LABEL_COLOR);
   const [description, setDescription] = useState(label?.description ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<{ patch: UpdateLabel; details: ScopeConflictDetails } | null>(
+    null,
+  );
   const trimmed = name.trim();
   const problem = trimmed ? labelNameProblem(trimmed) : null;
   const parsed = parseLabelName(trimmed);
@@ -128,9 +139,10 @@ function LabelForm({ label, onDone }: { label?: Label; onDone: () => void }) {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (problem) return;
+    let patch: UpdateLabel = {};
     try {
       if (label) {
-        const patch = {
+        patch = {
           ...(trimmed !== label.name && { name: trimmed }),
           ...(color.toLowerCase() !== label.color.toLowerCase() && { color }),
           ...(description !== label.description && { description }),
@@ -141,9 +153,39 @@ function LabelForm({ label, onDone }: { label?: Label; onDone: () => void }) {
       }
       onDone();
     } catch (failure) {
-      setError(errorMessage(failure));
+      const details =
+        label && failure instanceof ApiError && failure.code === "conflict"
+          ? ScopeConflictDetails.safeParse(failure.details)
+          : null;
+      if (details?.success) setConflict({ patch, details: details.data });
+      else setError(errorMessage(failure));
     }
   };
+
+  if (label && conflict && parsed.scope) {
+    return (
+      <ScopeConflict
+        label={label}
+        newName={trimmed}
+        scope={parsed.scope}
+        details={conflict.details}
+        pending={update.isPending}
+        onKeep={async () => {
+          try {
+            await update.mutateAsync({
+              id: label.id,
+              patch: { ...conflict.patch, onScopeConflict: "replace" },
+            });
+            onDone();
+          } catch (failure) {
+            setConflict(null);
+            setError(errorMessage(failure));
+          }
+        }}
+        onCancel={() => setConflict(null)}
+      />
+    );
+  }
 
   return (
     <form className={styles.form} onSubmit={submit}>
@@ -201,6 +243,65 @@ function LabelForm({ label, onDone }: { label?: Label; onDone: () => void }) {
         </Button>
       </div>
     </form>
+  );
+}
+
+/** A rename into a scope some todos already use: list them and offer to keep the renamed label. */
+export function ScopeConflict({
+  label,
+  newName,
+  scope,
+  details,
+  pending,
+  onKeep,
+  onCancel,
+}: {
+  label: Label;
+  newName: string;
+  scope: string;
+  details: ScopeConflictDetails;
+  pending: boolean;
+  onKeep: () => void;
+  onCancel: () => void;
+}) {
+  const labels = useLabels();
+  const colorOf = (name: string) =>
+    labels.data?.find((l) => l.name.toLowerCase() === name.toLowerCase())?.color ?? DEFAULT_LABEL_COLOR;
+  const n = details.conflicts.length;
+  const inScope = (name: string) => {
+    const other = parseLabelName(name);
+    return other.scope !== null && scopeKey(other.scope) === scopeKey(scope) && name !== label.name;
+  };
+  return (
+    <section className={styles.form} aria-label="Scope conflict">
+      <p className={styles.conflictText}>
+        {n === 1 ? "One todo already has" : `${n} todos already have`} a label of the scope{" "}
+        <span className={styles.mono}>{scope}</span>. A todo keeps one label per scope, so renaming to{" "}
+        <LabelPill name={newName} color={label.color} /> would give {n === 1 ? "it" : "them"} two. Nothing
+        changed yet.
+      </p>
+      <ul className={styles.conflicts} aria-label="Affected todos">
+        {details.conflicts.map((todo) => (
+          <li key={todo.todoId} className={styles.conflictRow}>
+            <span className={styles.conflictId}>#{todo.todoId}</span>
+            <span className={styles.conflictTitle}>{todo.title}</span>
+            <span className={styles.conflictLabels}>
+              <span className={styles.conflictLoses}>loses</span>
+              {todo.labels.filter(inScope).map((name) => (
+                <LabelPill key={name} name={name} color={colorOf(name)} />
+              ))}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className={styles.formActions}>
+        <Button onClick={onCancel}>Cancel</Button>
+        {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the choice the rename asked for; Esc cancels */}
+        <Button variant="primary" disabled={pending} onClick={onKeep} autoFocus>
+          Keep the renamed label on them
+        </Button>
+      </div>
+    </section>
   );
 }
 

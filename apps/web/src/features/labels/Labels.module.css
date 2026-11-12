@@ -140,3 +140,57 @@
   color: var(--amber-text);
   text-decoration: underline;
 }
+
+/* Rename into a scope that todos already use */
+.conflictText {
+  max-width: 60ch;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.conflicts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.conflictRow {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 10px;
+  background: var(--strip);
+}
+
+.conflictId {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-2);
+}
+
+.conflictTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conflictLabels {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.conflictLoses {
+  color: var(--text-3);
+  font-size: 12px;
+}
