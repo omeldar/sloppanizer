@@ -104,6 +104,12 @@ function todo(overrides: Partial<Todo> = {}): Todo {
     contacts: [],
     commentCount: 0,
     project: { id: 3, slug: "homelab", name: "Home lab", color: "#8B95A5" },
+    parent: null,
+    progress: { subtasks: { total: 0, done: 0 }, checklist: { total: 0, done: 0 } },
+    links: { blocks: [], blockedBy: [], relatesTo: [] },
+    recurrence: null,
+    previousOccurrenceId: null,
+    nextOccurrence: null,
     ...overrides,
   };
 }
