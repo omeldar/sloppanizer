@@ -21,9 +21,11 @@ import { exportRoutes } from "./routes/export.ts";
 import { labelRoutes } from "./routes/labels.ts";
 import { metaRoutes } from "./routes/meta.ts";
 import { peopleRoutes } from "./routes/people.ts";
+import { personTagRoutes } from "./routes/person-tags.ts";
 import { projectRoutes } from "./routes/projects.ts";
 import { todoRoutes } from "./routes/todos.ts";
 import { tokenRoutes } from "./routes/tokens.ts";
+import { topicRoutes } from "./routes/topics.ts";
 import type { Deps } from "./routes/types.ts";
 
 export const VERSION = packageJson.version;
@@ -82,6 +84,8 @@ export async function buildApp(options: BuildOptions) {
   projectRoutes(app, deps);
   labelRoutes(app, deps);
   peopleRoutes(app, deps);
+  topicRoutes(app, deps);
+  personTagRoutes(app, deps);
   todoRoutes(app, deps);
   tokenRoutes(app, deps);
   exportRoutes(app, deps);

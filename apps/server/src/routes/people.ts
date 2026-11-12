@@ -10,12 +10,12 @@ export function peopleRoutes(app: App, deps: Deps): void {
     {
       schema: {
         tags,
-        summary: "People, by last name; q searches names and notes",
+        summary: "People with topics, tags and todo counts; filters q, topic, team, tag, kind; sort",
         querystring: PeopleQuery,
         response: { 200: z.array(Person) },
       },
     },
-    async (request) => listPeople(deps.db, request.query.q),
+    async (request) => listPeople(deps.db, request.query),
   );
   app.post(
     `${API_PREFIX}/people`,
@@ -41,7 +41,9 @@ export function peopleRoutes(app: App, deps: Deps): void {
   );
   app.delete(
     `${API_PREFIX}/people/:id`,
-    { schema: { tags, summary: "Delete a person (409 while linked to todos)", params: IdParams } },
+    {
+      schema: { tags, summary: "Delete a person (409 while linked to todos in any role)", params: IdParams },
+    },
     async (request, reply) => {
       deletePerson(deps, request.params.id);
       return reply.status(204).send();

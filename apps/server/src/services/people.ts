@@ -1,18 +1,21 @@
 import {
   ACTIVE_STATUSES,
   type CreatePerson,
+  type PeopleQuery,
   type Person,
   type PersonBrief,
   type PersonCounts,
   type PersonRef,
   type UpdatePerson,
 } from "@organizer/shared";
-import { asc, eq, inArray, sql } from "drizzle-orm";
-import { people, personTopics, todoPeople, todos, topics } from "../db/schema.ts";
+import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
+import { people, personTagLinks, personTopics, todoPeople, todos, topics } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
-import { compareNames, tagsByPerson } from "./person-tags.ts";
-import { chunks } from "./sql.ts";
+import { compareNames, resolvePersonTags, tagsByPerson } from "./person-tags.ts";
+import { indexPerson, removeFromIndex } from "./search-index.ts";
+import { chunks, diffIds, type SetChange } from "./sql.ts";
+import { deleteOrphanTopics, findOrCreateTopics, findTopics } from "./topics.ts";
 
 export type PersonRow = typeof people.$inferSelect;
 
@@ -116,22 +119,74 @@ export function findNamesakes(db: Tx, firstName: string, lastName: string): Pers
     .filter((row) => fold(row.firstName) === first && fold(row.lastName) === last);
 }
 
-export function listPeople(db: Tx, q?: string): Person[] {
-  const rows = db
-    .select()
-    .from(people)
-    .orderBy(sql`lower(${people.lastName})`, sql`lower(${people.firstName})`, asc(people.id))
-    .all();
-  const needle = q ? fold(q) : "";
-  return loadPeople(
-    db,
-    rows.filter(
-      (row) =>
-        needle === "" ||
-        fold(`${row.firstName} ${row.lastName} ${row.note}`).includes(needle) ||
-        fold(`${row.lastName} ${row.firstName}`).includes(needle),
-    ),
+/** Lowercase without diacritics, so "muller" finds "Müller". */
+const searchFold = (text: string): string =>
+  text.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("en");
+
+const lowerAll = (names: readonly string[]): string[] => names.map((n) => n.toLowerCase());
+
+const byName = (a: Person, b: Person): number =>
+  compareNames(a.lastName, b.lastName) || compareNames(a.firstName, b.firstName) || a.id - b.id;
+
+/** Newest todo link per person id. */
+function lastLinkByPerson(db: Tx): Map<number, string> {
+  return new Map(
+    db
+      .select({ personId: todoPeople.personId, at: max(todoPeople.createdAt) })
+      .from(todoPeople)
+      .groupBy(todoPeople.personId)
+      .all()
+      .map((r) => [r.personId, r.at ?? ""]),
   );
+}
+
+/**
+ * People with topics, tags and counts. q matches names (both orders), note, team, email and topic
+ * names without case or diacritics; topic and tag filters need every name (AND).
+ */
+export function listPeople(db: Tx, query: PeopleQuery): Person[] {
+  let list = loadPeople(db, db.select().from(people).all());
+  if (query.q) {
+    const needle = searchFold(query.q);
+    list = list.filter((p) =>
+      [
+        `${p.firstName} ${p.lastName}`,
+        `${p.lastName} ${p.firstName}`,
+        p.note,
+        p.team,
+        p.email,
+        ...p.topics,
+      ].some((text) => searchFold(text).includes(needle)),
+    );
+  }
+  if (query.topic) {
+    const wanted = lowerAll(query.topic);
+    list = list.filter((p) => wanted.every((t) => lowerAll(p.topics).includes(t)));
+  }
+  if (query.tag) {
+    const wanted = lowerAll(query.tag);
+    list = list.filter((p) => wanted.every((t) => lowerAll(p.tags.map((tag) => tag.name)).includes(t)));
+  }
+  if (query.team) {
+    const team = query.team.toLowerCase();
+    list = list.filter((p) => p.team.toLowerCase() === team);
+  }
+  if (query.kind === "requester") list = list.filter((p) => p.counts.requested > 0);
+  if (query.kind === "contact") list = list.filter((p) => p.counts.contact > 0 || p.topics.length > 0);
+  switch (query.sort) {
+    case "name":
+      return list.toSorted(byName);
+    case "requested":
+      return list.toSorted((a, b) => b.counts.requested - a.counts.requested || byName(a, b));
+    case "contact":
+      return list.toSorted((a, b) => b.counts.contact - a.counts.contact || byName(a, b));
+    case "recent": {
+      const last = lastLinkByPerson(db);
+      return list.toSorted(
+        (a, b) => (last.get(b.id) ?? "").localeCompare(last.get(a.id) ?? "") || byName(a, b),
+      );
+    }
+  }
 }
 
 export function getPersonRow(db: Tx, id: number): PersonRow {
@@ -141,53 +196,164 @@ export function getPersonRow(db: Tx, id: number): PersonRow {
 }
 
 function insertPerson(db: Tx, at: string, firstName: string, lastName: string, note = ""): PersonRow {
-  return db
+  const row = db
     .insert(people)
     .values({ firstName: firstName.trim(), lastName: lastName.trim(), note, createdAt: at, updatedAt: at })
     .returning()
     .get();
+  indexPerson(db, row.id);
+  return row;
+}
+
+interface LinkChanges {
+  topics: SetChange<string>;
+  tags: SetChange<string>;
+}
+
+const hasChange = (change: SetChange<string>): boolean =>
+  change.set !== undefined || change.add !== undefined || change.remove !== undefined;
+
+/** Applies topic and tag changes of one person; returns true when anything changed. */
+function applyLinks(tx: Tx, at: string, personId: number, change: LinkChanges): boolean {
+  let changed = false;
+  if (hasChange(change.topics)) {
+    const current = tx
+      .select({ id: personTopics.topicId })
+      .from(personTopics)
+      .where(eq(personTopics.personId, personId))
+      .all()
+      .map((r) => r.id);
+    const ids = (names: readonly string[] | undefined, create: boolean) =>
+      names === undefined
+        ? undefined
+        : (create ? findOrCreateTopics(tx, at, names) : findTopics(tx, names)).map((t) => t.id);
+    const { added, removed } = diffIds(current, {
+      set: ids(change.topics.set, true),
+      add: ids(change.topics.add, true),
+      remove: ids(change.topics.remove, false),
+    });
+    if (removed.length > 0) {
+      tx.delete(personTopics)
+        .where(and(eq(personTopics.personId, personId), inArray(personTopics.topicId, removed)))
+        .run();
+    }
+    if (added.length > 0) {
+      tx.insert(personTopics)
+        .values(added.map((topicId) => ({ personId, topicId, createdAt: at })))
+        .run();
+    }
+    // Topics created for nothing (e.g. added and removed in one request) go too.
+    deleteOrphanTopics(tx);
+    changed ||= added.length > 0 || removed.length > 0;
+  }
+  if (hasChange(change.tags)) {
+    const current = tx
+      .select({ id: personTagLinks.tagId })
+      .from(personTagLinks)
+      .where(eq(personTagLinks.personId, personId))
+      .all()
+      .map((r) => r.id);
+    const ids = (names: readonly string[] | undefined) =>
+      names === undefined ? undefined : resolvePersonTags(tx, names).map((t) => t.id);
+    const { added, removed } = diffIds(current, {
+      set: ids(change.tags.set),
+      add: ids(change.tags.add),
+      remove: ids(change.tags.remove),
+    });
+    if (removed.length > 0) {
+      tx.delete(personTagLinks)
+        .where(and(eq(personTagLinks.personId, personId), inArray(personTagLinks.tagId, removed)))
+        .run();
+    }
+    if (added.length > 0) {
+      tx.insert(personTagLinks)
+        .values(added.map((tagId) => ({ personId, tagId, createdAt: at })))
+        .run();
+    }
+    changed ||= added.length > 0 || removed.length > 0;
+  }
+  return changed;
 }
 
 export function createPerson(ctx: Ctx, input: CreatePerson): Person {
-  if (!input.allowDuplicate) {
-    const existing = findNamesakes(ctx.db, input.firstName, input.lastName)[0];
-    if (existing) {
+  return ctx.db.transaction((tx) => {
+    if (!input.allowDuplicate) {
+      const existing = findNamesakes(tx, input.firstName, input.lastName)[0];
+      if (existing) {
+        throw new ApiError(
+          "conflict",
+          `${existing.firstName} ${existing.lastName} already exists. Use that person, or send allowDuplicate: true with a note that tells them apart.`,
+          { existing: toPerson(tx, existing) },
+        );
+      }
+    }
+    // Check tags before anything is written, so an unknown tag creates nothing.
+    resolvePersonTags(tx, input.tags ?? []);
+    const at = now(ctx);
+    const row = tx
+      .insert(people)
+      .values({
+        firstName: input.firstName,
+        lastName: input.lastName,
+        note: input.note ?? "",
+        team: input.team ?? "",
+        email: input.email ?? "",
+        notesMd: input.notesMd ?? "",
+        createdAt: at,
+        updatedAt: at,
+      })
+      .returning()
+      .get();
+    applyLinks(tx, at, row.id, { topics: { set: input.topics }, tags: { set: input.tags } });
+    indexPerson(tx, row.id);
+    return toPerson(tx, row);
+  });
+}
+
+/** Changes a person. Person edits never touch todos (no events, no last activity). */
+export function updatePerson(ctx: Ctx, id: number, input: UpdatePerson): Person {
+  return ctx.db.transaction((tx) => {
+    const current = getPersonRow(tx, id);
+    const at = now(ctx);
+    const patch: Partial<PersonRow> = {};
+    for (const key of ["firstName", "lastName", "note", "team", "email", "notesMd"] as const) {
+      const value = input[key];
+      if (value !== undefined && value !== current[key]) patch[key] = value;
+    }
+    const linksChanged = applyLinks(tx, at, id, {
+      topics: { set: input.topics, add: input.addTopics, remove: input.removeTopics },
+      tags: { set: input.tags, add: input.addTags, remove: input.removeTags },
+    });
+    if (Object.keys(patch).length === 0 && !linksChanged) return toPerson(tx, current);
+    const row = tx
+      .update(people)
+      .set({ ...patch, updatedAt: at })
+      .where(eq(people.id, id))
+      .returning()
+      .get() as PersonRow;
+    indexPerson(tx, id);
+    return toPerson(tx, row);
+  });
+}
+
+/** Deletes a person; 409 with the number of todos while they are still linked in any role. */
+export function deletePerson(ctx: Ctx, id: number): void {
+  ctx.db.transaction((tx) => {
+    getPersonRow(tx, id);
+    const { n } = tx.get<{ n: number }>(
+      sql`SELECT count(DISTINCT ${todoPeople.todoId}) AS n FROM ${todoPeople} WHERE ${todoPeople.personId} = ${id}`,
+    );
+    if (n > 0) {
       throw new ApiError(
         "conflict",
-        `${existing.firstName} ${existing.lastName} already exists. Use that person, or send allowDuplicate: true with a note that tells them apart.`,
-        { existing: toPerson(ctx.db, existing) },
+        `This person is linked to ${n} todo${n === 1 ? "" : "s"}. Remove them from ${n === 1 ? "it" : "those todos"} first.`,
+        { linkedTodos: n },
       );
     }
-  }
-  return toPerson(ctx.db, insertPerson(ctx.db, now(ctx), input.firstName, input.lastName, input.note ?? ""));
-}
-
-export function updatePerson(ctx: Ctx, id: number, input: UpdatePerson): Person {
-  getPersonRow(ctx.db, id);
-  const patch: Partial<PersonRow> = { updatedAt: now(ctx) };
-  if (input.firstName !== undefined) patch.firstName = input.firstName;
-  if (input.lastName !== undefined) patch.lastName = input.lastName;
-  if (input.note !== undefined) patch.note = input.note;
-  return toPerson(
-    ctx.db,
-    ctx.db.update(people).set(patch).where(eq(people.id, id)).returning().get() as PersonRow,
-  );
-}
-
-/** Deletes a person; 409 with the number of todos while they are still linked. */
-export function deletePerson(ctx: Ctx, id: number): void {
-  getPersonRow(ctx.db, id);
-  const { n } = ctx.db.get<{ n: number }>(
-    sql`SELECT count(*) AS n FROM ${todoPeople} WHERE ${todoPeople.personId} = ${id}`,
-  );
-  if (n > 0) {
-    throw new ApiError(
-      "conflict",
-      `This person is linked to ${n} todo${n === 1 ? "" : "s"}. Remove them from ${n === 1 ? "it" : "those todos"} first.`,
-      { linkedTodos: n },
-    );
-  }
-  ctx.db.delete(people).where(eq(people.id, id)).run();
+    tx.delete(people).where(eq(people.id, id)).run();
+    deleteOrphanTopics(tx);
+    removeFromIndex(tx, "person", id);
+  });
 }
 
 function ambiguous(db: Tx, rows: PersonRow[]): ApiError {

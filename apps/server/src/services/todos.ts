@@ -6,22 +6,26 @@ import {
   type NextQuery,
   type NextUp,
   type PersonBrief,
+  type PersonRef,
+  type PersonRole,
   type ProjectRef,
   sortLabels,
+  startOfLocalDay,
   type Todo,
   type TodoListQuery,
   type TodoPage,
   todoDurationMs,
   type UpdateTodo,
 } from "@organizer/shared";
-import { and, asc, count, desc, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
 import { comments, labels, people, projects, todoLabels, todoPeople, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
 import { type EventInput, recordEvents } from "./events.ts";
 import { resolveLabels, toLabel } from "./labels.ts";
 import { resolvePeople, toPersonBrief } from "./people.ts";
-import { chunks, escapeLike } from "./sql.ts";
+import { indexTodo, removeTodoFromIndex } from "./search-index.ts";
+import { chunks, diffIds, escapeLike, type SetChange } from "./sql.ts";
 
 export type TodoRow = typeof todos.$inferSelect;
 
@@ -118,7 +122,14 @@ function assertProject(db: Tx, projectId: number | null | undefined): void {
   }
 }
 
-const personSummary = (p: { id: number; displayName: string }) => ({ id: p.id, name: p.displayName });
+interface PersonSummary {
+  id: number;
+  name: string;
+}
+const personSummary = (p: { id: number; displayName: string }): PersonSummary => ({
+  id: p.id,
+  name: p.displayName,
+});
 
 export function createTodo(ctx: Ctx, actor: string, input: CreateTodo): Todo {
   return ctx.db.transaction((tx) => {
@@ -126,7 +137,10 @@ export function createTodo(ctx: Ctx, actor: string, input: CreateTodo): Todo {
     assertProject(tx, input.projectId);
     const labelRows = resolveLabels(tx, input.labels ?? []);
     const labelIds = [...new Set(labelRows.map((l) => l.id))];
-    const requesters = resolvePeople(tx, at, input.requestedBy ?? [], true);
+    const linked = [
+      ...resolvePeople(tx, at, input.requestedBy ?? [], true).map((p) => ({ p, role: "requester" as const })),
+      ...resolvePeople(tx, at, input.contacts ?? [], true).map((p) => ({ p, role: "contact" as const })),
+    ];
     const status = input.status ?? "open";
     const row = tx
       .insert(todos)
@@ -148,18 +162,12 @@ export function createTodo(ctx: Ctx, actor: string, input: CreateTodo): Todo {
       tx.insert(todoLabels)
         .values(labelIds.map((labelId) => ({ todoId: row.id, labelId })))
         .run();
-    if (requesters.length > 0) {
+    if (linked.length > 0) {
       tx.insert(todoPeople)
-        .values(
-          requesters.map((p) => ({
-            todoId: row.id,
-            personId: p.id,
-            role: "requester" as const,
-            createdAt: at,
-          })),
-        )
+        .values(linked.map(({ p, role }) => ({ todoId: row.id, personId: p.id, role, createdAt: at })))
         .run();
     }
+    indexTodo(tx, row.id);
     const todo = hydrate(tx, [row])[0] as Todo;
     recordEvents(tx, actor, at, [
       {
@@ -174,6 +182,7 @@ export function createTodo(ctx: Ctx, actor: string, input: CreateTodo): Todo {
             plannedOn: todo.plannedOn,
             labels: todo.labels.map((l) => l.name),
             requestedBy: todo.requestedBy.map(personSummary),
+            contacts: todo.contacts.map(personSummary),
           },
         },
       },
@@ -188,6 +197,60 @@ const normNames = (list: readonly string[]): string =>
     .toSorted()
     .join("\n");
 const sameNames = (a: readonly string[], b: readonly string[]): boolean => normNames(a) === normNames(b);
+
+const ROLE_FIELD = { requester: "requestedBy", contact: "contacts" } as const;
+
+/**
+ * Changes the people of one role on a todo (full set, or add/remove). By name: find-or-create for
+ * set and add; remove never creates. Returns the people_changed event data, or null when the set
+ * stays the same.
+ */
+function applyPeopleChange(
+  tx: Tx,
+  at: string,
+  current: Todo,
+  role: PersonRole,
+  change: SetChange<PersonRef>,
+): { role: PersonRole; from: PersonSummary[]; to: PersonSummary[] } | null {
+  if (change.set === undefined && change.add === undefined && change.remove === undefined) return null;
+  const before = current[ROLE_FIELD[role]];
+  const ids = (refs: readonly PersonRef[] | undefined, create: boolean) =>
+    refs === undefined ? undefined : resolvePeople(tx, at, refs, create).map((p) => p.id);
+  const { next, added, removed } = diffIds(
+    before.map((p) => p.id),
+    { set: ids(change.set, true), add: ids(change.add, true), remove: ids(change.remove, false) },
+  );
+  if (added.length === 0 && removed.length === 0) return null;
+  if (removed.length > 0) {
+    tx.delete(todoPeople)
+      .where(
+        and(
+          eq(todoPeople.todoId, current.id),
+          eq(todoPeople.role, role),
+          inArray(todoPeople.personId, removed),
+        ),
+      )
+      .run();
+  }
+  if (added.length > 0) {
+    tx.insert(todoPeople)
+      .values(added.map((personId) => ({ todoId: current.id, personId, role, createdAt: at })))
+      .run();
+  }
+  const byId = new Map(
+    tx
+      .select()
+      .from(people)
+      .where(inArray(people.id, next.length > 0 ? next : [-1]))
+      .all()
+      .map((p) => [p.id, personSummary(toPersonBrief(p))]),
+  );
+  return {
+    role,
+    from: before.map(personSummary),
+    to: next.map((id) => byId.get(id)).filter((p) => p !== undefined),
+  };
+}
 
 /**
  * Applies one change to a todo inside a transaction: server rules for done_at, last_activity_at,
@@ -251,60 +314,24 @@ function applyChange(tx: Tx, at: string, actor: string, current: Todo, change: U
     }
   }
 
-  if (
-    change.requestedBy !== undefined ||
-    change.addRequestedBy !== undefined ||
-    change.removeRequestedBy !== undefined
-  ) {
-    const currentIds = current.requestedBy.map((p) => p.id);
-    let nextIds: number[];
-    if (change.requestedBy !== undefined) {
-      nextIds = resolvePeople(tx, at, change.requestedBy, true).map((p) => p.id);
-    } else {
-      const added = resolvePeople(tx, at, change.addRequestedBy ?? [], true).map((p) => p.id);
-      const removed = new Set(resolvePeople(tx, at, change.removeRequestedBy ?? [], false).map((p) => p.id));
-      nextIds = [...new Set([...currentIds, ...added])].filter((id) => !removed.has(id));
-    }
-    const removedIds = currentIds.filter((id) => !nextIds.includes(id));
-    const addedIds = nextIds.filter((id) => !currentIds.includes(id));
-    if (removedIds.length > 0 || addedIds.length > 0) {
-      if (removedIds.length > 0) {
-        tx.delete(todoPeople)
-          .where(and(eq(todoPeople.todoId, current.id), inArray(todoPeople.personId, removedIds)))
-          .run();
-      }
-      if (addedIds.length > 0) {
-        tx.insert(todoPeople)
-          .values(
-            addedIds.map((personId) => ({
-              todoId: current.id,
-              personId,
-              role: "requester" as const,
-              createdAt: at,
-            })),
-          )
-          .run();
-      }
-      const after = tx
-        .select()
-        .from(people)
-        .where(inArray(people.id, nextIds.length > 0 ? nextIds : [-1]))
-        .all();
-      const byId = new Map(after.map((p) => [p.id, toPersonBrief(p)]));
-      event("people_changed", {
-        from: current.requestedBy.map(personSummary),
-        to: nextIds
-          .map((id) => byId.get(id))
-          .filter((p) => p !== undefined)
-          .map(personSummary),
-      });
-    }
-  }
+  const requesters = applyPeopleChange(tx, at, current, "requester", {
+    set: change.requestedBy,
+    add: change.addRequestedBy,
+    remove: change.removeRequestedBy,
+  });
+  if (requesters) event("people_changed", requesters);
+  const contacts = applyPeopleChange(tx, at, current, "contact", {
+    set: change.contacts,
+    add: change.addContacts,
+    remove: change.removeContacts,
+  });
+  if (contacts) event("people_changed", contacts);
 
   if (evts.length === 0 && Object.keys(set).length === 0) return;
   set.updatedAt = at;
   if (evts.length > 0) set.lastActivityAt = at;
   tx.update(todos).set(set).where(eq(todos.id, current.id)).run();
+  if (set.title !== undefined || set.descriptionMd !== undefined) indexTodo(tx, current.id);
   recordEvents(tx, actor, at, evts);
 }
 
@@ -351,9 +378,13 @@ export function bulkUpdate(ctx: Ctx, actor: string, ids: readonly number[], chan
   });
 }
 
+/** Deletes a todo with its comments, links and history (cascade), and its search rows. */
 export function deleteTodo(ctx: Ctx, id: number): void {
-  const result = ctx.db.delete(todos).where(eq(todos.id, id)).run();
-  if (result.changes === 0) throw notFound("Todo", id);
+  ctx.db.transaction((tx) => {
+    const result = tx.delete(todos).where(eq(todos.id, id)).run();
+    if (result.changes === 0) throw notFound("Todo", id);
+    removeTodoFromIndex(tx, id);
+  });
 }
 
 /**
@@ -377,19 +408,28 @@ function projectCondition(projectId: number | "inbox" | undefined): SQL | undefi
   return projectId === "inbox" ? isNull(todos.projectId) : eq(todos.projectId, projectId);
 }
 
-function listConditions(query: TodoListQuery): SQL | undefined {
+function listConditions(query: TodoListQuery, timeZone: string): SQL | undefined {
   const conditions: (SQL | undefined)[] = [];
   if (query.status !== "all") conditions.push(inArray(todos.status, query.status));
   conditions.push(projectCondition(query.projectId));
   for (const name of query.label ?? []) conditions.push(hasLabel(name));
   if (query.personId !== undefined) {
+    const role = query.personRole === "any" ? sql`` : sql` AND tp.role = ${query.personRole}`;
     conditions.push(
-      sql`EXISTS (SELECT 1 FROM ${todoPeople} tp WHERE tp.todo_id = "todos"."id" AND tp.person_id = ${query.personId})`,
+      sql`EXISTS (SELECT 1 FROM ${todoPeople} tp WHERE tp.todo_id = "todos"."id" AND tp.person_id = ${query.personId}${role})`,
     );
   }
   if (query.q) conditions.push(sql`${todos.title} LIKE ${`%${escapeLike(query.q)}%`} ESCAPE '\\'`);
   if (query.dueBefore !== undefined) conditions.push(sql`${todos.dueOn} < ${query.dueBefore}`);
   if (query.plannedOn !== undefined) conditions.push(eq(todos.plannedOn, query.plannedOn));
+  if (query.plannedFrom !== undefined) conditions.push(sql`${todos.plannedOn} >= ${query.plannedFrom}`);
+  if (query.plannedTo !== undefined) conditions.push(sql`${todos.plannedOn} <= ${query.plannedTo}`);
+  if (query.unplanned === true) conditions.push(isNull(todos.plannedOn));
+  if (query.unplanned === false) conditions.push(isNotNull(todos.plannedOn));
+  if (query.doneAfter !== undefined) {
+    const start = startOfLocalDay(query.doneAfter, timeZone).toISOString();
+    conditions.push(sql`(${todos.status} <> 'done' OR ${todos.doneAt} >= ${start})`);
+  }
   return and(...conditions);
 }
 
@@ -397,8 +437,9 @@ function listConditions(query: TodoListQuery): SQL | undefined {
  * Filtered, sorted page of todos. sort=due puts todos without a due date last in both orders;
  * sort=priority with order=desc lists critical first.
  */
-export function listTodos(db: Tx, query: TodoListQuery): TodoPage {
-  const where = listConditions(query);
+export function listTodos(ctx: Pick<Ctx, "db" | "timeZone">, query: TodoListQuery): TodoPage {
+  const { db } = ctx;
+  const where = listConditions(query, ctx.timeZone);
   const dir = query.order === "asc" ? asc : desc;
   const orderBy: SQL[] = [];
   switch (query.sort) {

@@ -36,7 +36,7 @@ export function todoRoutes(app: App, deps: Deps): void {
         response: { 200: TodoPage },
       },
     },
-    async (request) => listTodos(deps.db, request.query),
+    async (request) => listTodos(deps, request.query),
   );
   app.post(
     `${API_PREFIX}/todos`,
