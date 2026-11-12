@@ -13,7 +13,7 @@ export function exportRoutes(app: App, deps: Deps): void {
       },
     },
     async (_request, reply) => {
-      const { fileName, zip } = buildExport(deps, {
+      const { fileName, stream } = buildExport(deps, {
         attachmentsDir: deps.attachmentsDir,
         appVersion: deps.version,
       });
@@ -21,7 +21,7 @@ export function exportRoutes(app: App, deps: Deps): void {
         .header("Content-Type", "application/zip")
         .header("Content-Disposition", `attachment; filename="${fileName}"`)
         .header("Cache-Control", "no-store")
-        .send(Buffer.from(zip.buffer, zip.byteOffset, zip.byteLength));
+        .send(stream);
     },
   );
 }

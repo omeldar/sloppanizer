@@ -1,5 +1,7 @@
-import { readFileSync } from "node:fs";
+import { createReadStream, statSync } from "node:fs";
 import { join } from "node:path";
+import { once } from "node:events";
+import { PassThrough, type Readable } from "node:stream";
 import {
   formatDuration,
   INLINE_IMAGE_TYPES,
@@ -8,7 +10,7 @@ import {
   todoDurationMs,
 } from "@organizer/shared";
 import { asc } from "drizzle-orm";
-import { strToU8, zipSync } from "fflate";
+import { strToU8, Zip, ZipDeflate, ZipPassThrough } from "fflate";
 import { stringify } from "yaml";
 import { schemaVersion } from "../db/index.ts";
 import { todos } from "../db/schema.ts";
@@ -87,7 +89,7 @@ function localClock(date: Date, timeZone: string): { hour: number; minute: numbe
 }
 
 /** Local wall-clock stamp for the file name, e.g. 20261111-153000. */
-function fileStamp(date: Date, timeZone: string): string {
+export function fileStamp(date: Date, timeZone: string): string {
   const { hour, minute, second } = localClock(date, timeZone);
   return `${toLocalDate(date, timeZone).replaceAll("-", "")}-${pad(hour)}${pad(minute)}${pad(second)}`;
 }
@@ -198,12 +200,20 @@ export interface ExportOptions {
   appVersion: string;
 }
 
+/** One file of the zip: bytes built in memory, or an uploaded file read as a stream. */
+type ZipEntry = { path: string; stored: boolean } & ({ content: Uint8Array } | { file: string });
+
 export interface ExportResult {
   fileName: string;
-  zip: Uint8Array;
+  /** The zip, produced while it is read; errors (a file gone missing) destroy the stream. */
+  stream: Readable;
 }
 
-/** Builds the export zip (format 2) and stores settings.lastExportAt. */
+/**
+ * Builds the export (format 2) and stores settings.lastExportAt. The database is read in one
+ * snapshot right away; the zip is streamed, and uploaded files are read from disk while it streams,
+ * so memory stays small even with many files.
+ */
 export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
   const exportedAt = ctx.clock();
   const exportedAtIso = exportedAt.toISOString();
@@ -220,34 +230,34 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
       data[table] = rows;
       counts[table] = rows.length;
     }
-    return hydrate(ctx.db, ctx.db.select().from(todos).orderBy(asc(todos.id)).all());
+    return { todos: hydrate(ctx.db, ctx.db.select().from(todos).orderBy(asc(todos.id)).all()) };
   });
-  const allTodos = readAll();
+  const snapshot = readAll();
+  const allTodos = snapshot.todos;
   const rows = <T>(table: (typeof EXPORT_TABLES)[number]) => (data[table] ?? []) as T[];
 
   // Attachments first: the Markdown links point at the files that made it into the zip.
-  // Path -> content; files listed in `stored` are put in the zip without compression.
-  const files: Record<string, Uint8Array> = {};
-  const stored = new Set<string>();
+  const entries: ZipEntry[] = [];
   const attachmentFiles = new Map<number, string>();
   const missing: number[] = [];
   let bytes = 0;
   for (const attachment of rows<AttachmentRow>("attachments")) {
-    let content: Buffer;
+    const file = join(options.attachmentsDir, String(attachment.id));
+    let size: number;
     try {
-      content = readFileSync(join(options.attachmentsDir, String(attachment.id)));
+      size = statSync(file).size;
     } catch {
       missing.push(attachment.id);
       continue;
     }
     const name = attachmentFileName(attachment);
     attachmentFiles.set(attachment.id, name);
-    bytes += content.byteLength;
-    const path = `attachments/${name}`;
-    files[path] = new Uint8Array(content.buffer, content.byteOffset, content.byteLength);
-    if (STORED_TYPES.has(attachment.mime_type)) stored.add(path);
+    bytes += size;
+    entries.push({ path: `attachments/${name}`, file, stored: STORED_TYPES.has(attachment.mime_type) });
   }
-  const md = (text: string) => rewriteAttachmentLinks(text, attachmentFiles);
+  const text = (path: string, content: string) =>
+    entries.push({ path, content: strToU8(content), stored: false });
+  const md = (body: string) => rewriteAttachmentLinks(body, attachmentFiles);
 
   const commentsByTodo = groupBy(
     rows<CommentRow>("comments").toSorted((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id),
@@ -263,8 +273,9 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
       })),
       tz,
     );
-    const body = [md(todo.descriptionMd).replace(/\s+$/, ""), comments].filter((s) => s !== "").join("\n\n");
-    files[markdownPath("todos", todo.id, todo.title, "todo")] = strToU8(
+    const body = [md(todo.descriptionMd).replace(/\s+$/, ""), comments].filter((x) => x !== "").join("\n\n");
+    text(
+      markdownPath("todos", todo.id, todo.title, "todo"),
       markdownDocument(
         {
           id: todo.id,
@@ -287,7 +298,8 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
 
   const projectSlugs = new Map(rows<{ id: number; slug: string }>("projects").map((p) => [p.id, p.slug]));
   for (const note of rows<NoteRow>("notes")) {
-    files[markdownPath("notes", note.id, note.title, "note")] = strToU8(
+    text(
+      markdownPath("notes", note.id, note.title, "note"),
       markdownDocument(
         {
           id: note.id,
@@ -325,7 +337,8 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
         .map((l) => l.todo_id)
         .toSorted((a, b) => a - b);
     const name = `${person.first_name} ${person.last_name}`;
-    files[markdownPath("people", person.id, name, "person")] = strToU8(
+    text(
+      markdownPath("people", person.id, name, "person"),
       markdownDocument(
         {
           id: person.id,
@@ -357,18 +370,57 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
     counts,
     attachments: { count: attachmentFiles.size, bytes, missing },
   };
-  files["manifest.json"] = strToU8(`${JSON.stringify(manifest, null, 2)}\n`);
-  files["data.json"] = strToU8(`${JSON.stringify(data, null, 2)}\n`);
-  files["README.md"] = strToU8(README);
+  text("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
+  text("data.json", `${JSON.stringify(data, null, 2)}\n`);
+  text("README.md", README);
 
-  const mtime = exportedAt;
-  const zip = zipSync(
-    Object.fromEntries(
-      Object.entries(files).map(([path, content]) => [
-        path,
-        [content, { mtime, level: stored.has(path) ? 0 : 6 }] as const,
-      ]),
-    ),
-  );
-  return { fileName: `organizer-export-${fileStamp(exportedAt, tz)}.zip`, zip };
+  return {
+    fileName: `organizer-export-${fileStamp(exportedAt, tz)}.zip`,
+    stream: zipStream(entries, exportedAt),
+  };
+}
+
+/** Streams the entries as one zip; uploaded files are read in chunks, with backpressure. */
+function zipStream(entries: readonly ZipEntry[], mtime: Date): Readable {
+  const out = new PassThrough();
+  const zip = new Zip((error, chunk, final) => {
+    if (error) {
+      out.destroy(error);
+      return;
+    }
+    out.write(chunk);
+    if (final) out.end();
+  });
+  const write = async () => {
+    for (const entry of entries) {
+      const file = entry.stored ? new ZipPassThrough(entry.path) : new ZipDeflate(entry.path, { level: 6 });
+      file.mtime = mtime;
+      zip.add(file);
+      if ("content" in entry) {
+        file.push(entry.content, true);
+      } else {
+        for await (const chunk of createReadStream(entry.file)) {
+          file.push(chunk as Uint8Array);
+          // oxlint-disable-next-line no-await-in-loop -- wait for the reader before reading more
+          if (out.writableNeedDrain) await once(out, "drain");
+        }
+        file.push(new Uint8Array(0), true);
+      }
+      // oxlint-disable-next-line no-await-in-loop -- one entry after the other keeps memory small
+      if (out.writableNeedDrain) await once(out, "drain");
+    }
+    zip.end();
+  };
+  write().catch((error: unknown) => {
+    zip.terminate();
+    out.destroy(error as Error);
+  });
+  return out;
+}
+
+/** Collects a stream into one buffer (tests, small zips). */
+export async function streamToBuffer(stream: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks);
 }
