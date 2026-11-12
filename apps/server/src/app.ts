@@ -26,10 +26,12 @@ import { noteRoutes } from "./routes/notes.ts";
 import { peopleRoutes } from "./routes/people.ts";
 import { personTagRoutes } from "./routes/person-tags.ts";
 import { projectRoutes } from "./routes/projects.ts";
+import { searchRoutes } from "./routes/search.ts";
 import { todoRoutes } from "./routes/todos.ts";
 import { tokenRoutes } from "./routes/tokens.ts";
 import { topicRoutes } from "./routes/topics.ts";
 import type { Deps } from "./routes/types.ts";
+import { rebuildSearchIndex } from "./services/search-index.ts";
 
 export const VERSION = packageJson.version;
 
@@ -45,6 +47,8 @@ export async function buildApp(options: BuildOptions) {
   ensureDataDir(config.dataDir);
   const secret = loadSecret(config.dataDir);
   const db = openDb(join(config.dataDir, DB_FILE));
+  // The index is derived data: rebuilding at every start heals it (and covers a restore).
+  rebuildSearchIndex(db);
   const deps: Deps = {
     db,
     clock: options.clock ?? systemClock,
@@ -93,6 +97,7 @@ export async function buildApp(options: BuildOptions) {
   commentRoutes(app, deps);
   noteRoutes(app, deps);
   attachmentRoutes(app, deps);
+  searchRoutes(app, deps);
   tokenRoutes(app, deps);
   exportRoutes(app, deps);
   await registerWeb(app, config.webDir);
