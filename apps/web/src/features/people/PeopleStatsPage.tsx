@@ -43,6 +43,12 @@ export function PeopleStatsPage() {
   );
   const stats = usePeopleStats(params);
   const items = stats.data?.items ?? [];
+  // A project slug in the URL that no project has (renamed, deleted, mistyped): the query cannot run.
+  const unknownProject =
+    search.project !== undefined &&
+    search.project !== "inbox" &&
+    projects.data !== undefined &&
+    !projects.data.some((p) => p.slug === search.project);
   const set = (patch: Partial<StatsSearch>) =>
     void navigate({ to: "/people/stats", search: { ...search, ...patch }, replace: true });
   const filtered = Boolean(
@@ -141,10 +147,10 @@ export function PeopleStatsPage() {
           <option value="">All projects</option>
           <option value="inbox">Inbox only</option>
           {(projects.data ?? [])
-            .filter((p) => p.archivedAt === null)
+            .filter((p) => p.archivedAt === null || p.slug === search.project)
             .map((p) => (
               <option key={p.id} value={p.slug}>
-                {p.name}
+                {p.archivedAt === null ? p.name : `${p.name} (archived)`}
               </option>
             ))}
         </select>
@@ -196,7 +202,19 @@ export function PeopleStatsPage() {
         </ul>
       )}
 
-      {stats.isPending && <Loading />}
+      {unknownProject && (
+        <EmptyState>
+          There is no project "{search.project}".{" "}
+          <Link to="/people/stats" search={{ ...search, project: undefined }}>
+            Show all projects
+          </Link>
+          .
+        </EmptyState>
+      )}
+      {projects.isError && !params && (
+        <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />
+      )}
+      {stats.isPending && !unknownProject && !(projects.isError && !params) && <Loading />}
       {stats.isError && <ErrorState error={stats.error} onRetry={() => void stats.refetch()} />}
       {stats.data && items.length === 0 && (
         <EmptyState>

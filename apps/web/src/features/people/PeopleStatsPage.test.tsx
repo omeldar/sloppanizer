@@ -56,6 +56,19 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+const T = "2026-11-01T09:00:00.000Z";
+const oldSite = {
+  id: 4,
+  slug: "old-site",
+  name: "Old site",
+  description: "",
+  color: "#4C9AFF",
+  archivedAt: T,
+  createdAt: T,
+  updatedAt: T,
+  openCount: 0,
+};
+
 function renderAt(path: string, items: PersonStat[] = [anna, luca]) {
   const calls = mockApi(({ path: url }) => {
     if (url.startsWith("/api/v1/stats/people")) {
@@ -68,7 +81,7 @@ function renderAt(path: string, items: PersonStat[] = [anna, luca]) {
       };
       return { body };
     }
-    if (url === "/api/v1/projects") return { body: [] };
+    if (url === "/api/v1/projects") return { body: [oldSite] };
     if (url === "/api/v1/labels") return { body: [] };
     if (
       url.startsWith("/api/v1/teams") ||
@@ -157,5 +170,23 @@ describe("people statistics", () => {
     renderAt("/people/stats?period=30d&topic=dns", []);
     expect(await screen.findByText(/Pick a longer period or All time/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "clear every filter" })).toBeTruthy();
+  });
+
+  it("says so instead of loading forever when the URL names a project that does not exist", async () => {
+    const { router, statsCalls } = renderAt("/people/stats?period=all&project=gone");
+    const notice = await screen.findByText(/There is no project "gone"/);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(statsCalls()).toHaveLength(0);
+    fireEvent.click(within(notice).getByRole("link", { name: "Show all projects" }));
+    await screen.findByRole("table");
+    expect(router.state.location.search).toEqual({ period: "all" });
+  });
+
+  it("filters by an archived project and shows it as the chosen one", async () => {
+    const { statsCalls } = renderAt("/people/stats?period=all&project=old-site");
+    await screen.findByRole("table");
+    expect(statsCalls()[0]?.get("projectId")).toBe("4");
+    const select = screen.getByRole<HTMLSelectElement>("combobox", { name: "Project filter" });
+    expect(select.selectedOptions[0]?.textContent).toBe("Old site (archived)");
   });
 });
