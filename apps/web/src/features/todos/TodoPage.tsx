@@ -1,4 +1,6 @@
 import {
+  type ChecklistItem,
+  countChecklist,
   formatDuration,
   type PersonRole,
   PRIORITIES,
@@ -8,6 +10,7 @@ import {
   STATUS_LABELS,
 } from "@organizer/shared";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Dialog } from "../../components/Dialog.tsx";
 import { LabelPill } from "../../components/LabelPill.tsx";
@@ -28,7 +31,7 @@ import {
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { ApiError, errorMessage } from "../../lib/api.ts";
 import { absoluteTime, dueText, relativeTime } from "../../lib/format.ts";
-import { useDeleteTodo, useTodo } from "../../lib/queries.ts";
+import { invalidateTodoViews, useDeleteTodo, useTodo, useToggleChecklist } from "../../lib/queries.ts";
 import { PersonChip } from "../people/PersonChip.tsx";
 import { Activity } from "./Activity.tsx";
 import { chosen, type PickerKind, togglePersonPatch } from "./TodoPickerDialog.tsx";
@@ -352,12 +355,36 @@ function DateInput({
 
 function Description({ todo }: { todo: Todo }) {
   const { patch } = useTodoActions();
+  const toggle = useToggleChecklist(todo.id);
+  const client = useQueryClient();
+  const toast = useToast();
+  const count = countChecklist(todo.descriptionMd);
+  const checklist = {
+    busy: toggle.isPending,
+    onToggle: (item: ChecklistItem, checked: boolean) =>
+      toggle.mutate(
+        { index: item.index, checked, text: item.text },
+        {
+          onError: (error) => {
+            if (error instanceof ApiError && error.status === 409) {
+              // Someone changed the text: show the current one, the user clicks again.
+              void invalidateTodoViews(client);
+              toast.show({ tone: "error", message: "The checklist changed. Try again." });
+            } else {
+              toast.show({ tone: "error", message: `Could not save the checklist. ${errorMessage(error)}` });
+            }
+          },
+        },
+      ),
+  };
   return (
     <MarkdownField
       title="Description"
+      meta={count.total > 0 ? `Checklist ${count.done} of ${count.total}` : undefined}
       value={todo.descriptionMd}
       save={async (descriptionMd) => (await patch(todo.id, { descriptionMd })) !== null}
       emptyText="No description yet. Choose Write to add notes."
+      checklist={checklist}
     />
   );
 }

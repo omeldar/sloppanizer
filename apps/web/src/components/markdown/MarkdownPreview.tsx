@@ -1,6 +1,6 @@
-import { STATUS_LABELS } from "@organizer/shared";
+import { type ChecklistItem, parseChecklist, STATUS_LABELS } from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
-import { type ComponentProps, type ReactNode, useState } from "react";
+import { type ComponentProps, createContext, type ReactNode, useContext, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
@@ -19,21 +19,72 @@ export function isAttachmentSrc(src: unknown): src is string {
 const remarkPlugins = [remarkGfm, remarkTodoLinks];
 const rehypePlugins = [rehypeSanitize];
 
+/** Clickable task list checkboxes; only the todo description passes this. */
+export interface ChecklistControl {
+  onToggle: (item: ChecklistItem, checked: boolean) => void;
+  /** A click is on its way: the boxes wait. */
+  busy?: boolean;
+}
+
+const ChecklistContext = createContext<(ChecklistControl & { items: ChecklistItem[] }) | null>(null);
+/** The checklist item of the nearest task list line. */
+const ItemContext = createContext<ChecklistItem | null>(null);
+
+const baseComponents = { a: Anchor, img: Image };
+const checklistComponents = { ...baseComponents, li: ListItem, input: Checkbox };
+
 /**
  * Stored Markdown is untrusted text: it renders through rehype-sanitize. Outside links open in a new tab,
- * "#123" opens the todo inside the app, and only the app's own attachments show as images.
+ * "#123" opens the todo inside the app, and only the app's own attachments show as images. With
+ * `checklist`, task list boxes can be clicked; each box is matched to its item by source line.
  */
-export function MarkdownPreview({ source }: { source: string }) {
+export function MarkdownPreview({ source, checklist }: { source: string; checklist?: ChecklistControl }) {
+  const items = useMemo(() => (checklist ? parseChecklist(source) : []), [checklist, source]);
+  const context = useMemo(() => (checklist ? { ...checklist, items } : null), [checklist, items]);
   return (
     <div className={styles.preview}>
-      <ReactMarkdown
-        remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
-        components={{ a: Anchor, img: Image }}
-      >
-        {source}
-      </ReactMarkdown>
+      <ChecklistContext.Provider value={context}>
+        <ReactMarkdown
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypePlugins}
+          components={checklist ? checklistComponents : baseComponents}
+        >
+          {source}
+        </ReactMarkdown>
+      </ChecklistContext.Provider>
     </div>
+  );
+}
+
+interface PositionedNode {
+  position?: { start: { line: number } };
+}
+
+function ListItem({ node, children, ...props }: ComponentProps<"li"> & { node?: PositionedNode }) {
+  const checklist = useContext(ChecklistContext);
+  const line = node?.position ? node.position.start.line - 1 : -1;
+  const isTask = String(props.className ?? "").includes("task-list-item");
+  const item = (isTask && checklist?.items.find((i) => i.line === line)) || null;
+  return (
+    <li {...props}>
+      <ItemContext.Provider value={item}>{children}</ItemContext.Provider>
+    </li>
+  );
+}
+
+function Checkbox({ node: _node, ...props }: ComponentProps<"input"> & { node?: unknown }) {
+  const checklist = useContext(ChecklistContext);
+  const item = useContext(ItemContext);
+  if (!checklist || !item || props.type !== "checkbox") return <input {...props} />;
+  return (
+    <input
+      type="checkbox"
+      className={styles.taskBox}
+      checked={item.checked}
+      disabled={checklist.busy}
+      aria-label={item.text.trim() || `Item ${item.index + 1}`}
+      onChange={(event) => checklist.onToggle(item, event.target.checked)}
+    />
   );
 }
 

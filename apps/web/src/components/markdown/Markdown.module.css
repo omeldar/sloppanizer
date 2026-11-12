@@ -192,3 +192,37 @@
   padding: 18px 0;
   color: var(--text-3);
 }
+
+/* Clickable task list boxes (todo description only). */
+.preview .taskBox {
+  accent-color: var(--amber);
+  cursor: pointer;
+}
+
+.preview .taskBox:disabled {
+  cursor: progress;
+}
+
+.preview .taskBox:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.fieldMeta {
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+/* Task list lines show their box instead of a bullet, like GitHub and GitLab. */
+.preview :global(.task-list-item) {
+  list-style: none;
+}
+
+.preview :global(.contains-task-list) {
+  padding-left: 4px;
+}
+
+.preview :global(.contains-task-list) :global(.contains-task-list) {
+  padding-left: 24px;
+}

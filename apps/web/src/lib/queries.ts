@@ -281,6 +281,19 @@ export function useUpdateTodo() {
   });
 }
 
+/** Ticks one task list line; `text` is what the user saw, so a changed checklist answers 409. */
+export function useToggleChecklist(todoId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { index: number; checked: boolean; text: string }) =>
+      api(Todo, `/todos/${todoId}/checklist`, { method: "POST", body: input }),
+    onSuccess: (todo) => {
+      client.setQueryData(keys.todo(todo.id), todo);
+      return invalidateTodoViews(client);
+    },
+  });
+}
+
 export function useDeleteTodo() {
   const client = useQueryClient();
   return useMutation({
