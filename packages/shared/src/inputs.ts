@@ -303,9 +303,22 @@ export const UpdateNote = z
     projectId: Id.nullable().optional(),
     /** true pins (keeps an earlier pin time), false unpins. */
     pinned: z.boolean().optional(),
+    /** Text added at the end on the server (after a blank line), so parallel edits are not lost. */
+    appendMd: NoteBody.refine((text) => text.trim().length > 0, "Write something to append.").optional(),
   })
-  .superRefine((value, ctx) => checkNotEmpty(ctx, value));
+  .superRefine((value, ctx) => {
+    checkNotEmpty(ctx, value);
+    checkNotBoth(ctx, value, "bodyMd", ["appendMd"]);
+  });
 export type UpdateNote = z.infer<typeof UpdateNote>;
+
+/** The note body with `text` added after a blank line (trailing whitespace of the body dropped). */
+export function appendNoteText(body: string, text: string): string {
+  const base = body.replace(/\s+$/, "");
+  return base === "" ? text : `${base}\n\n${text}`;
+}
+
+export const MAX_NOTE_CHARS = 200_000;
 
 /** The actor name of the browser session; no token may use it. */
 export const SESSION_ACTOR = "you";

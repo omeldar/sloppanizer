@@ -47,6 +47,28 @@ describe("notes", () => {
     expect((await t.call("DELETE", `/api/v1/notes/${created.id}`)).statusCode).toBe(404);
   });
 
+  it("appends text on the server after a blank line, also when the body changed in between", async () => {
+    const t = await makeApp();
+    const log = await t.create<Note>("/api/v1/notes", { title: "Log", bodyMd: "First line\n\n" });
+    // Another client saves the body; the append still lands after its text.
+    await t.call("PATCH", `/api/v1/notes/${log.id}`, { bodyMd: "Edited by the editor  " });
+    const res = await t.call("PATCH", `/api/v1/notes/${log.id}`, { appendMd: "Added by MCP" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().bodyMd).toBe("Edited by the editor\n\nAdded by MCP");
+    const empty = await t.create<Note>("/api/v1/notes", { title: "Empty" });
+    expect(json<Note>(await t.call("PATCH", `/api/v1/notes/${empty.id}`, { appendMd: "Only" })).bodyMd).toBe(
+      "Only",
+    );
+    expect(
+      (await t.call("PATCH", `/api/v1/notes/${log.id}`, { appendMd: "x", bodyMd: "y" })).statusCode,
+    ).toBe(422);
+    expect((await t.call("PATCH", `/api/v1/notes/${log.id}`, { appendMd: "  " })).statusCode).toBe(422);
+    const long = await t.create<Note>("/api/v1/notes", { title: "Long", bodyMd: "a".repeat(199_990) });
+    expect((await t.call("PATCH", `/api/v1/notes/${long.id}`, { appendMd: "b".repeat(20) })).statusCode).toBe(
+      422,
+    );
+  });
+
   it("validates input and the project", async () => {
     const t = await makeApp();
     expect((await t.call("POST", "/api/v1/notes", { title: "" })).statusCode).toBe(422);

@@ -1,7 +1,16 @@
-import type { CreateNote, Note, NoteListQuery, NotePage, NoteSummary, UpdateNote } from "@organizer/shared";
+import {
+  appendNoteText,
+  type CreateNote,
+  MAX_NOTE_CHARS,
+  type Note,
+  type NoteListQuery,
+  type NotePage,
+  type NoteSummary,
+  type UpdateNote,
+} from "@organizer/shared";
 import { and, desc, eq, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
 import { notes } from "../db/schema.ts";
-import { notFound } from "../http/errors.ts";
+import { ApiError, notFound } from "../http/errors.ts";
 import { plainText } from "./text.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
 import { assertProjectExists, projectRefs } from "./projects.ts";
@@ -97,6 +106,13 @@ export function updateNote(ctx: Ctx, id: number, input: UpdateNote): Note {
     const patch: Partial<NoteRow> = {};
     if (input.title !== undefined && input.title !== current.title) patch.title = input.title;
     if (input.bodyMd !== undefined && input.bodyMd !== current.bodyMd) patch.bodyMd = input.bodyMd;
+    if (input.appendMd !== undefined) {
+      // Appended inside the transaction: an autosave of the web editor in between is not overwritten.
+      patch.bodyMd = appendNoteText(current.bodyMd, input.appendMd);
+      if (patch.bodyMd.length > MAX_NOTE_CHARS) {
+        throw new ApiError("validation_failed", `Keep the note under ${MAX_NOTE_CHARS} characters.`);
+      }
+    }
     if (input.projectId !== undefined && input.projectId !== current.projectId) {
       assertProjectExists(tx, input.projectId);
       patch.projectId = input.projectId;

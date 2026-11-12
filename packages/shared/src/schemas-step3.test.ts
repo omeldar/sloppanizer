@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ApplyRestore,
+  appendNoteText,
   CreateLinks,
   CreateSubtasks,
   PeopleStatsQuery,
@@ -9,6 +10,7 @@ import {
   Settings,
   ToggleChecklist,
   UpdateLabel,
+  UpdateNote,
 } from "./index.ts";
 
 const ok = (schema: { safeParse: (v: unknown) => { success: boolean } }, value: unknown) =>
@@ -70,5 +72,14 @@ describe("step 3 queries and outputs", () => {
     };
     expect(ok(Settings, settings)).toBe(true);
     expect(ok(Settings, { ...settings, https: null })).toBe(false);
+  });
+});
+
+describe("note append", () => {
+  it("joins with one blank line and refuses appendMd together with bodyMd", () => {
+    expect(appendNoteText("a\n\n\n", "b")).toBe("a\n\nb");
+    expect(appendNoteText("   ", "b")).toBe("b");
+    expect(ok(UpdateNote, { appendMd: "x" })).toBe(true);
+    expect(ok(UpdateNote, { appendMd: "x", bodyMd: "y" })).toBe(false);
   });
 });
