@@ -60,7 +60,7 @@ describe("checklist on the todo page", () => {
     }));
     expect(await screen.findByText("Checklist 1 of 2", {}, LAZY_PAGE)).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox", { name: "Order cables" }));
-    await screen.findByText("Checklist 2 of 2");
+    await screen.findByText("Checklist 2 of 2", {}, LAZY_PAGE);
     const post = calls.find((c) => c.method === "POST");
     expect(post?.body).toEqual({ index: 0, checked: true, text: "Order cables" });
     expect((screen.getByRole("checkbox", { name: "Order cables" }) as HTMLInputElement).checked).toBe(true);
@@ -83,7 +83,7 @@ describe("checklist on the todo page", () => {
     const loads = () => calls.filter((c) => c.method === "GET" && c.path === "/api/v1/todos/1").length;
     const before = loads();
     fireEvent.click(screen.getByRole("checkbox", { name: "Order cables" }));
-    await screen.findByText("The checklist changed. Try again.");
+    await screen.findByText("The checklist changed. Try again.", {}, LAZY_PAGE);
     await waitFor(() => expect(loads()).toBeGreaterThan(before));
   });
 });
