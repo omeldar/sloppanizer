@@ -33,6 +33,9 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+// The notes page is a lazy chunk with the editor; its first import can take over a second on a busy machine.
+const LAZY_PAGE = { timeout: 5000 };
+
 function renderAt(path: string) {
   mockApi(({ path: url }) => {
     if (url === "/api/v1/projects") return { body: [homeLab] };
@@ -57,7 +60,7 @@ function renderAt(path: string) {
 describe("new note from the notes list", () => {
   it("starts in the project the list is filtered to when n is pressed", async () => {
     renderAt("/notes?project=home-lab");
-    await screen.findByText("No note matches. Clear the filter or pick another project.");
+    await screen.findByText("No note matches. Clear the filter or pick another project.", {}, LAZY_PAGE);
     fireEvent.keyDown(window, { key: "n" });
     const dialog = await screen.findByRole("dialog", { name: "New note" });
     expect(within(dialog).getByRole("button", { name: "Home lab" })).toBeTruthy();
@@ -65,7 +68,7 @@ describe("new note from the notes list", () => {
 
   it("starts without a project on the unfiltered list", async () => {
     renderAt("/notes");
-    await screen.findByText("No notes yet. Press n to write one.");
+    await screen.findByText("No notes yet. Press n to write one.", {}, LAZY_PAGE);
     fireEvent.keyDown(window, { key: "n" });
     const dialog = await screen.findByRole("dialog", { name: "New note" });
     expect(within(dialog).getByRole("button", { name: "No project" })).toBeTruthy();
