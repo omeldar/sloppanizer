@@ -12,7 +12,8 @@ import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
 import { people, personTagLinks, personTopics, todoPeople, todos, topics } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
-import { compareNames, resolvePersonTags, tagsByPerson } from "./person-tags.ts";
+import { resolvePersonTags, tagsByPerson } from "./person-tags.ts";
+import { compareNames, foldCase, foldDiacritics } from "./text.ts";
 import { indexPerson, removeFromIndex } from "./search-index.ts";
 import { chunks, diffIds, type SetChange } from "./sql.ts";
 import { deleteOrphanTopics, findOrCreateTopics, findTopics } from "./topics.ts";
@@ -105,23 +106,17 @@ export function getPerson(db: Tx, id: number): Person {
   return toPerson(db, getPersonRow(db, id));
 }
 
-const fold = (text: string): string => text.trim().toLocaleLowerCase("en");
-
 /** People with exactly this first and last name, ignoring case (works for non-ASCII letters too). */
 export function findNamesakes(db: Tx, firstName: string, lastName: string): PersonRow[] {
-  const first = fold(firstName);
-  const last = fold(lastName);
+  const first = foldCase(firstName);
+  const last = foldCase(lastName);
   return db
     .select()
     .from(people)
     .orderBy(asc(people.id))
     .all()
-    .filter((row) => fold(row.firstName) === first && fold(row.lastName) === last);
+    .filter((row) => foldCase(row.firstName) === first && foldCase(row.lastName) === last);
 }
-
-/** Lowercase without diacritics, so "muller" finds "Müller". */
-const searchFold = (text: string): string =>
-  text.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("en");
 
 const lowerAll = (names: readonly string[]): string[] => names.map((n) => n.toLowerCase());
 
@@ -173,7 +168,7 @@ export function filterPeople(list: readonly Person[], filters: PersonFilters): P
 export function listPeople(db: Tx, query: PeopleQuery): Person[] {
   let list = filterPeople(loadPeople(db, db.select().from(people).all()), query);
   if (query.q) {
-    const needle = searchFold(query.q);
+    const needle = foldDiacritics(query.q);
     list = list.filter((p) =>
       [
         `${p.firstName} ${p.lastName}`,
@@ -182,7 +177,7 @@ export function listPeople(db: Tx, query: PeopleQuery): Person[] {
         p.team,
         p.email,
         ...p.topics,
-      ].some((text) => searchFold(text).includes(needle)),
+      ].some((text) => foldDiacritics(text).includes(needle)),
     );
   }
   if (query.kind === "requester") list = list.filter((p) => p.counts.requested > 0);

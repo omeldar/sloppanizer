@@ -3,7 +3,7 @@ import { count, eq, inArray, sql } from "drizzle-orm";
 import { people, personTopics, topics } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, type Tx } from "./context.ts";
-import { compareNames } from "./person-tags.ts";
+import { compareNames } from "./text.ts";
 import { reindexPeople } from "./search-index.ts";
 import { escapeLike } from "./sql.ts";
 

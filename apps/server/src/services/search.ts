@@ -10,7 +10,7 @@ import {
 import { inArray, type SQL, sql } from "drizzle-orm";
 import { comments, notes, people, todos } from "../db/schema.ts";
 import type { Ctx, Tx } from "./context.ts";
-import { plainText } from "./notes.ts";
+import { foldChars, plainText } from "./text.ts";
 import { projectRefs } from "./projects.ts";
 import { escapeLike } from "./sql.ts";
 
@@ -30,17 +30,6 @@ interface IndexRow {
 
 /** One FTS5 phrase per term: quoted, inner quotes doubled, so no query syntax gets through. */
 export const ftsPhrase = (term: string): string => `"${term.replaceAll('"', '""')}"`;
-
-/** Lowercase and without diacritics, one output character per input character (positions stay). */
-function foldChars(text: string): string {
-  let out = "";
-  for (const c of text) {
-    const folded = c.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
-    const first = folded.length > 0 ? String.fromCodePoint(folded.codePointAt(0) as number) : c;
-    out += first.length === c.length ? first : c;
-  }
-  return out;
-}
 
 /** Character ranges where any term occurs (case and diacritics folded), merged and sorted. */
 export function findRanges(text: string, terms: readonly string[]): [number, number][] {

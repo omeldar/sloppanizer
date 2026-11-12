@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { API_PREFIX, errorBody, type TokenScope } from "@organizer/shared";
+import { API_PREFIX, errorBody } from "@organizer/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Clock } from "../clock.ts";
 import type { Db } from "../db/index.ts";
+import type { Auth } from "../services/context.ts";
 import { verifyToken } from "../services/tokens.ts";
 
 export const SESSION_COOKIE = "org_session";
@@ -30,11 +31,7 @@ export const CSP = [
  */
 export type Access = "public" | "auto" | "write" | "session";
 
-export interface Auth {
-  actor: string;
-  via: "session" | "token";
-  scope: TokenScope;
-}
+export type { Auth };
 
 declare module "fastify" {
   interface FastifyContextConfig {

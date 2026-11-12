@@ -1,9 +1,8 @@
 import type { Comment } from "@organizer/shared";
 import { asc, eq } from "drizzle-orm";
 import { comments, todos } from "../db/schema.ts";
-import type { Auth } from "../http/security.ts";
 import { ApiError, notFound } from "../http/errors.ts";
-import { type Ctx, now, type Tx } from "./context.ts";
+import { type Auth, type Ctx, now, type Tx } from "./context.ts";
 import { indexComment, removeFromIndex } from "./search-index.ts";
 
 export type CommentRow = typeof comments.$inferSelect;

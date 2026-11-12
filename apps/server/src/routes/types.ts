@@ -7,8 +7,7 @@ import type {
 } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { ApiError } from "../http/errors.ts";
-import type { Auth } from "../http/security.ts";
-import type { Ctx } from "../services/context.ts";
+import type { Auth, Ctx } from "../services/context.ts";
 
 export type App = FastifyInstance<
   RawServerDefault,

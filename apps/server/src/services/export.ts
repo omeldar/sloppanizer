@@ -16,6 +16,7 @@ import type { Ctx } from "./context.ts";
 import { slugify } from "./projects.ts";
 import { setSetting } from "./settings.ts";
 import { LAST_EXPORT_AT } from "./stats.ts";
+import { compareNames } from "./text.ts";
 import { hydrate } from "./todos.ts";
 
 export const EXPORT_FORMAT = 2;
@@ -181,8 +182,6 @@ interface AttachmentRow {
 /** Files that are compressed already; zipping them again only costs time. */
 const STORED_TYPES = new Set<string>([...INLINE_IMAGE_TYPES, "application/pdf"]);
 
-const byName = (a: string, b: string): number => a.localeCompare(b, "en", { sensitivity: "base" });
-
 function groupBy<T, K>(rows: readonly T[], key: (row: T) => K): Map<K, T[]> {
   const map = new Map<K, T[]>();
   for (const row of rows) {
@@ -336,8 +335,10 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
           note: person.note,
           topics: (topicsByPerson.get(person.id) ?? [])
             .map((r) => topicNames.get(r.topic_id) ?? "")
-            .toSorted(byName),
-          tags: (tagsByPerson.get(person.id) ?? []).map((r) => tagNames.get(r.tag_id) ?? "").toSorted(byName),
+            .toSorted(compareNames),
+          tags: (tagsByPerson.get(person.id) ?? [])
+            .map((r) => tagNames.get(r.tag_id) ?? "")
+            .toSorted(compareNames),
           requested: todoIds("requester"),
           contact_for: todoIds("contact"),
           created: person.created_at,

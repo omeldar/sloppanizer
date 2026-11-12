@@ -1,6 +1,6 @@
 import type { Note, NotePage } from "@organizer/shared";
 import { describe, expect, it } from "vitest";
-import { plainText } from "../src/services/notes.ts";
+import { plainText } from "../src/services/text.ts";
 import { json, makeApp, type TestApp } from "./helpers.ts";
 
 const MIN = 60_000;

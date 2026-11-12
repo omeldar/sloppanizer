@@ -9,6 +9,7 @@ import { personTagLinks, personTags } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
 import { chunks } from "./sql.ts";
+import { compareNames } from "./text.ts";
 
 export type PersonTagRow = typeof personTags.$inferSelect;
 
@@ -63,12 +64,6 @@ export function tagsByPerson(db: Tx, personIds: readonly number[]): Map<number, 
   }
   for (const list of out.values()) list.sort((a, b) => compareNames(a.name, b.name));
   return out;
-}
-
-/** Case-insensitive name order, stable for equal names. */
-export function compareNames(a: string, b: string): number {
-  const lower = a.toLowerCase().localeCompare(b.toLowerCase(), "en");
-  return lower !== 0 ? lower : a.localeCompare(b, "en");
 }
 
 function withCount(db: Tx, row: PersonTagRow): PersonTag {

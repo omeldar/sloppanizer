@@ -2,6 +2,7 @@ import type { CreateNote, Note, NoteListQuery, NotePage, NoteSummary, UpdateNote
 import { and, desc, eq, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
 import { notes } from "../db/schema.ts";
 import { notFound } from "../http/errors.ts";
+import { plainText } from "./text.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
 import { assertProjectExists, projectRefs } from "./projects.ts";
 import { indexNote, removeFromIndex } from "./search-index.ts";
@@ -10,18 +11,6 @@ import { escapeLike } from "./sql.ts";
 export type NoteRow = typeof notes.$inferSelect;
 
 const EXCERPT_LENGTH = 200;
-
-/** Markdown turned into plain text, roughly: enough for a one-line excerpt in lists. */
-export function plainText(markdown: string): string {
-  return markdown
-    .replace(/```[^\n]*\n?/g, " ")
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+)/gm, "")
-    .replace(/[*_~`]+/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 export const noteExcerpt = (bodyMd: string): string => plainText(bodyMd).slice(0, EXCERPT_LENGTH);
 
