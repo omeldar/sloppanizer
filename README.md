@@ -1,9 +1,17 @@
 # organizer
 
 A personal todo and notes app that runs on your own machine. Todos live in projects or the Inbox, carry
-labels (scoped ones like `priority::high` work like GitLab's: one per scope) and remember who asked for them.
-**Next up** ranks the open todos by priority, due dates, plans, age and how long they sat untouched, and
-tells you why each one is where it is.
+labels (scoped ones like `priority::high` work like GitLab's: one per scope) and remember who asked for them
+and whom to ask about them. **Next up** ranks the open todos by priority, due dates, plans, age and how long
+they sat untouched, and tells you why each one is where it is.
+
+- Every todo has a thread: comments in Markdown and a line for each change.
+- Notes: Markdown pages, alone or in a project, pinned ones first.
+- Paste or drop images and files into any Markdown field; images show inline, other files are downloads.
+- Board (Open, In progress, Blocked, Done) and a week planner, both with drag and drop and keys.
+- Search over todos, notes, comments and people (ignores case and accents), in the palette and on its own page.
+- People and contacts: a small directory of colleagues with team, email, the topics they help with and your own
+  tags, so "whom do I ask about firewall rules?" has an answer.
 
 - Web app at <http://organizer.localhost:4711>, keyboard first.
 - REST API under `/api/v1` with generated docs.
@@ -66,15 +74,29 @@ Settings (environment of the service, all optional): `ORGANIZER_PORT` (4711), `O
 
   With `--out` the raw token goes into that file (0600) and is not printed. Tokens are managed under
   `/api/v1/tokens` from the browser session only.
+- Uploads: `POST /api/v1/attachments?name=<file name>` with the raw file as the body (any type, up to 25 MB).
+  The type is read from the file itself; PNG, JPEG, GIF and WebP show inline, everything else is served as a
+  download. Files live in `~/.local/share/organizer/attachments/` and are part of the export.
+- Search: `GET /api/v1/search?q=...` over todos, notes, comments and people.
 
 ## MCP server
 
 A stdio MCP server for MCP clients, installed at `~/.local/lib/organizer/current/mcp/index.js`. It talks to the
 running organizer through the REST API with the token from a file, so the token never sits in the client config.
 
-Tools: `next_up`, `overview`, `list_todos`, `get_todo`, `create_todo`, `update_todo`, `bulk_update`,
-`mark_done`, `list_projects`, `create_project`, `list_labels`, `create_label`, `list_people`, `create_person`.
-They answer in compact text, one line per todo, or with `format: "json"` in full.
+Tools:
+
+- Todos: `next_up`, `overview`, `list_todos`, `get_todo`, `create_todo`, `update_todo`, `bulk_update`,
+  `mark_done`. Todos take requesters and contacts (people to ask) by id or by name.
+- Thread: `get_activity` (changes and comments, one line each), `add_comment` (signed with the token's name).
+- Notes: `list_notes`, `get_note`, `create_note`, `update_note` (with `appendText` to add to the end).
+- People and contacts: `list_people` (filter by topic, team, tag or text: "whom do I ask about X"),
+  `get_person`, `create_person`, `update_person`, `list_topics`, `list_person_tags`.
+- Search: `search` over todos, notes, comments and people.
+- Setup: `list_projects`, `create_project`, `list_labels`, `create_label`.
+
+They answer in compact text, one line per item, or with `format: "json"` in full. A token can edit or delete
+only the comments it wrote itself; person tags are created in the app (Labels page) and only used by the tools.
 
 Client config (most clients use this shape; use the absolute node path that `install.sh` prints at the end):
 
@@ -102,9 +124,19 @@ old token with `DELETE /api/v1/tokens/{id}` (API docs, browser session).
 ## Export
 
 Settings, **Download export**, or `GET /api/v1/export.zip` with a write token. The zip
-(`organizer-export-YYYYMMDD-HHmmss.zip`) holds `manifest.json`, `data.json` (every table with its ids, no tokens,
-no secret), one Markdown file per todo with YAML front matter, and a README. The status bar turns amber when the
-last export is older than 7 days.
+(`organizer-export-YYYYMMDD-HHmmss.zip`, format 2) holds:
+
+- `manifest.json`: format, versions, row counts per table, and the attachments (count, bytes, ids of files that
+  were missing on disk; a missing file does not stop the export).
+- `data.json`: every table with its ids (no tokens, no secret, no search index), text exactly as stored. This is
+  what a restore reads.
+- `attachments/<id>-<name>`: every uploaded file.
+- `todos/`, `notes/`, `people/`: one Markdown file each with YAML front matter. Todos end with their comments,
+  people list their topics, tags and the todos they requested or are a contact for. Links to uploads point into
+  `attachments/`, so images show in any Markdown viewer.
+- `README.md` explaining the layout.
+
+The status bar turns amber when the last export is older than 7 days.
 
 ## Keyboard shortcuts
 
@@ -112,7 +144,7 @@ Off while typing in a field; the status bar then shows `insert`. Press `?` in th
 
 | Keys | Action |
 | --- | --- |
-| `ctrl+k` | Command palette: pages, todos by #id or title, actions |
+| `ctrl+k` | Command palette: pages, actions, todos by #id, and search over todos, notes, comments and people |
 | `c` | New todo |
 | `j` / `k` | Move down / up |
 | `Enter` | Open the selected todo |
@@ -121,6 +153,15 @@ Off while typing in a field; the status bar then shows `insert`. Press `?` in th
 | `l` / `p` / `r` | Labels / project / requested by |
 | `1` to `4` | Priority critical, high, medium, low |
 | `g n` / `g i` / `g l` / `g p` / `g s` | Go to Next up, Inbox, Labels, People, Settings |
+| `g b` / `g w` / `g o` | Go to Board, Week, Notes |
+| `n` | New note |
+| `/` | Search page |
+| `o` / `m` | On a todo: contacts / write a comment (`ctrl+Enter` sends) |
+| `h` / `l`, `j` / `k` | Board and week: between columns, inside a column |
+| `shift+h` / `shift+l` | Board: move the todo one column left / right. Week: plan it a day earlier / later |
+| `Backspace` | Week: unplan the selected todo |
+| `[` / `]` / `t` | Week: previous, next, this week |
+| `e` / `t` / `l` | On a person: edit name, topics, tags |
 | `?` | Help |
 | `Esc` | Close |
 
@@ -141,7 +182,7 @@ to that server. Use a port other than 4711 and a separate data dir so the instal
 | `pnpm format` | Formats the code (oxfmt) |
 | `pnpm --filter @organizer/<server\|web\|mcp\|shared> <script>` | One package |
 | `pnpm --filter @organizer/server db:generate` | New migration after editing `apps/server/src/db/schema.ts` |
-| `pnpm --filter @organizer/web test:e2e` | Browser test of the core flow on the built app, against a throwaway server on port 4804 (run `pnpm build` first; `npx playwright install chromium` once). `E2E_BASE_URL=http://organizer.localhost:4711` runs it against the installed service; it deletes what it creates |
+| `pnpm --filter @organizer/web test:e2e` | Browser tests of the main flows (todos, thread, notes, board, week, contacts, search, export) on the built app, against a throwaway server on port 4804 (run `pnpm build` first; `npx playwright install chromium` once). `E2E_BASE_URL=http://organizer.localhost:4711` runs it against the installed service; it deletes what it creates, except uploaded files (no delete for them yet) |
 | `bash deploy/test-install.sh` | Tests `install.sh` in a temp HOME with stand-ins for pnpm and systemctl |
 
 Layout: `packages/shared` (API contract as zod schemas, Next up scoring), `apps/server` (Fastify, SQLite with
