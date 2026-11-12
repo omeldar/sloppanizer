@@ -14,3 +14,6 @@ export function setSetting(db: Tx, key: string, value: unknown): void {
     .onConflictDoUpdate({ target: settings.key, set: { value: json } })
     .run();
 }
+
+/** Settings of this device: never exported, and kept when a restore replaces the data. */
+export const LOCAL_SETTING_KEYS = ["lastFolderExport", "restoreInProgress"] as const;

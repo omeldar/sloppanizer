@@ -1,8 +1,6 @@
 import type Database from "better-sqlite3";
 import { EXPORT_TABLES } from "./export.ts";
-
-/** Settings of this device: never exported, and kept when a restore replaces the data. */
-export const LOCAL_SETTING_KEYS = ["lastFolderExport", "restoreInProgress"] as const;
+import { LOCAL_SETTING_KEYS } from "./settings.ts";
 
 /** Tables with AUTOINCREMENT ids that appear in Markdown (#123, attachment links). */
 export const SEQUENCE_TABLES = ["todos", "attachments"] as const;

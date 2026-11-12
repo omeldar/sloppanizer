@@ -16,12 +16,12 @@ import { schemaVersion } from "../db/index.ts";
 import { todos } from "../db/schema.ts";
 import type { Ctx } from "./context.ts";
 import { slugify } from "./projects.ts";
-import { setSetting } from "./settings.ts";
+import { LOCAL_SETTING_KEYS, setSetting } from "./settings.ts";
 import { LAST_EXPORT_AT } from "./stats.ts";
 import { compareNames } from "./text.ts";
 import { hydrate } from "./todos.ts";
 
-export const EXPORT_FORMAT = 2;
+export const EXPORT_FORMAT = 3;
 
 /** Tables in the export, in restore order (parents before children). Never api_tokens, search_fts or the secret. */
 export const EXPORT_TABLES = [
@@ -35,6 +35,7 @@ export const EXPORT_TABLES = [
   "todos",
   "todo_labels",
   "todo_people",
+  "todo_links",
   "notes",
   "comments",
   "attachments",
@@ -44,11 +45,12 @@ export const EXPORT_TABLES = [
 
 const README = `# organizer export
 
-This archive is a complete copy of your organizer data (API tokens and the secret are left out).
-Export format 2.
+This archive is a complete copy of your organizer data (API tokens, the secret and settings of
+this device are left out). Export format 3.
 
 - manifest.json: app, export format, time of export, app and schema version, row counts per table,
-  and the attachments (count, bytes, ids of files that were missing on disk).
+  the attachments (count, bytes, ids of files that were missing on disk) and the id sequences of
+  todos and attachments (so a restore never gives out an old id again).
 - data.json: every row of every table with its original id (column names as in the database).
   This is the file a restore reads. Text is kept exactly as stored, links included.
 - attachments/: every uploaded file as <id>-<name>.
@@ -61,9 +63,9 @@ Export format 2.
 In the Markdown files, links to uploaded files point into attachments/, so images show up in any
 Markdown viewer. The Markdown files are for reading and searching; a restore does not need them.
 
-Restore: a restore comes in a later version of organizer and reads data.json and attachments/
-(format 1 archives, without notes, comments, attachments and contacts, stay restorable too).
-Until then keep the zip; it holds everything needed to rebuild the database with the same ids.
+Restore: in organizer open Settings, Restore, and pick this zip. It reads data.json and
+attachments/ and replaces all data, after saving a safety copy of the current data. Formats 1 to 3
+can be restored.
 `;
 
 // ---------- Markdown helpers ----------
@@ -198,6 +200,8 @@ export interface ExportOptions {
   /** Where the uploaded files live (<data dir>/attachments). */
   attachmentsDir: string;
   appVersion: string;
+  /** false: leave lastExportAt alone (the safety copy before a restore). Default true. */
+  recordExport?: boolean;
 }
 
 /** One file of the zip: bytes built in memory, or an uploaded file read as a stream. */
@@ -220,7 +224,7 @@ function sequences(ctx: Ctx): { todos: number; attachments: number } {
 }
 
 /**
- * Builds the export (format 2) and stores settings.lastExportAt. The database is read in one
+ * Builds the export (format 3) and stores settings.lastExportAt. The database is read in one
  * snapshot right away; the zip is streamed, and uploaded files are read from disk while it streams,
  * so memory stays small even with many files.
  */
@@ -229,14 +233,21 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
   const exportedAtIso = exportedAt.toISOString();
   const tz = ctx.timeZone;
   // Store the export time first so the copy includes it, like a backup taken right now.
-  setSetting(ctx.db, LAST_EXPORT_AT, exportedAtIso);
+  if (options.recordExport !== false) setSetting(ctx.db, LAST_EXPORT_AT, exportedAtIso);
 
   const sqlite = ctx.db.$client;
   const data: Record<string, unknown[]> = {};
   const counts: Record<string, number> = {};
   const readAll = sqlite.transaction(() => {
     for (const table of EXPORT_TABLES) {
-      const rows = sqlite.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();
+      const rows =
+        table === "settings"
+          ? sqlite
+              .prepare(
+                `SELECT * FROM settings WHERE key NOT IN (${LOCAL_SETTING_KEYS.map(() => "?").join(", ")}) ORDER BY rowid`,
+              )
+              .all(...LOCAL_SETTING_KEYS)
+          : sqlite.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();
       data[table] = rows;
       counts[table] = rows.length;
     }

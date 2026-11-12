@@ -30,7 +30,10 @@ export async function fillEveryTable(t: TestApp) {
     contacts: [{ firstName: "Bo", lastName: "Li" }],
     descriptionMd: `- [ ] cables ![shot](${file.url})`,
   });
-  await t.call("POST", `/api/v1/todos/${todo.id}/subtasks`, { titles: ["Child"] });
+  const [child] = (
+    await t.call("POST", `/api/v1/todos/${todo.id}/subtasks`, { titles: ["Child"] })
+  ).json() as Todo[];
+  await t.call("POST", `/api/v1/todos/${todo.id}/links`, { links: [{ kind: "blocks", todoId: child?.id }] });
   await t.call("POST", `/api/v1/todos/${todo.id}/comments`, { bodyMd: "First comment" });
   await t.create<Note>("/api/v1/notes", {
     title: "Plan",
