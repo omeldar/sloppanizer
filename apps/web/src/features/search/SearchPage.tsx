@@ -5,6 +5,7 @@ import { EmptyState, ErrorState, Loading, PageHeader } from "../../components/ui
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { useSearch } from "../../lib/queries.ts";
 import { useDebounced } from "../../lib/useDebounced.ts";
+import { useOnChange } from "../../lib/useOnChange.ts";
 import { Highlighted, hitTarget, KIND_NAMES, KIND_ORDER, KIND_SINGULAR } from "./hits.tsx";
 import styles from "./Search.module.css";
 
@@ -36,7 +37,7 @@ export function SearchPage() {
   useEffect(() => input.current?.focus(), []);
 
   const [selected, setSelected] = useState(-1);
-  useEffect(() => setSelected(-1), [q, search.kind]);
+  useOnChange(`${search.kind ?? ""}:${q}`, () => setSelected(-1));
   const open = (hit: SearchHit) => {
     const target = hitTarget(hit);
     void navigate({ to: target.to, params: target.params, search: target.search });

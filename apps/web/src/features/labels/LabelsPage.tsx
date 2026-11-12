@@ -198,11 +198,11 @@ function LabelForm({ label, onDone }: { label?: Label; onDone: () => void }) {
             : "Use scope::value for a scoped label.")
         }
       >
-        {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog opens to type a name */}
         <TextInput
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="area::backend or homelab"
+          // oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog opens to type a name
           autoFocus
           maxLength={100}
         />

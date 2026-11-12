@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "oxc", "unicorn", "promise", "import", "vitest"],
+  "plugins": ["typescript", "oxc", "unicorn", "promise", "import", "vitest", "react", "jsx-a11y"],
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -12,12 +12,17 @@
   "ignorePatterns": ["**/dist/**", "**/node_modules/**", "**/*.d.ts", "tmp/**", "**/coverage/**"],
   "rules": {
     "typescript/no-explicit-any": "error",
-    "no-console": "off"
+    "no-console": "off",
+    "react/react-in-jsx-scope": "off",
+    // Our own components take a `role` prop (requester or contact); only DOM roles are ARIA roles.
+    "jsx-a11y/aria-role": ["error", { "ignoreNonDOM": true }],
+    // We use valid ARIA on purpose: role="group" for rows of toggle buttons, role="status" for live
+    // messages, a listbox for the topic combobox. The native tags would bring form or widget behaviour.
+    "jsx-a11y/prefer-tag-over-role": "off"
   },
   "overrides": [
     {
       "files": ["apps/web/**"],
-      "plugins": ["typescript", "oxc", "unicorn", "promise", "import", "vitest", "react", "jsx-a11y"],
       "env": { "browser": true }
     },
     {

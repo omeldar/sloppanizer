@@ -195,6 +195,7 @@ function CommentBlock({
             onChange={setDraft}
             onSubmit={() => void save()}
             compact
+            // oxlint-disable-next-line jsx-a11y/no-autofocus -- Edit opens the box to type
             autoFocus
           />
           <div className={styles.composerActions}>
@@ -304,6 +305,7 @@ function Composer({ todoId, editorRef }: { todoId: number; editorRef?: Ref<Markd
         onChange={setDraft}
         onSubmit={() => void send()}
         compact
+        // oxlint-disable-next-line jsx-a11y/no-autofocus -- after sending, the next comment can be typed right away
         autoFocus={round > 0}
       />
       <div className={styles.composerActions}>

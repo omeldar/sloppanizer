@@ -52,11 +52,11 @@ function NewProjectForm({ onDone }: { onDone: () => void }) {
   return (
     <form className={styles.form} onSubmit={submit}>
       <Field label="Name">
-        {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog opens to type a name */}
         <TextInput
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Home lab"
+          // oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog opens to type a name
           autoFocus
           required
           maxLength={100}

@@ -111,11 +111,13 @@ export function TopicInput({ topics, onAdd, onRemove, renderChip, inputRef, plac
           onBlur={() => setFocused(false)}
         />
         {open && (
+          // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role -- the combobox popup list (ARIA combobox pattern)
           <ul id={listId} role="listbox" className={styles.suggestions} aria-label="Matching topics">
             {options.map((name, i) => (
               <li
                 key={name}
                 id={`${listId}-${i}`}
+                // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role -- an option of the combobox list (ARIA combobox pattern)
                 role="option"
                 aria-selected={i === active}
                 className={styles.suggestion}

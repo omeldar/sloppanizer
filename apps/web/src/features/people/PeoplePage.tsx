@@ -211,6 +211,7 @@ function PersonRow({
   }, [selected]);
   const { counts } = person;
   return (
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- a click moves the list cursor (j/k do the same by keyboard)
     <li ref={ref} className={styles.row} data-selected={selected || undefined} onMouseDown={onSelect}>
       <span className={styles.nameCell}>
         <Link to="/people/$id" params={{ id: String(person.id) }} className={styles.name}>

@@ -90,6 +90,7 @@ function QuickAddForm({ projectSlug, onDone }: { projectSlug?: string; onDone: (
   };
 
   return (
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- ctrl+Enter anywhere in the form submits it
     <form
       className={styles.form}
       onSubmit={submit}

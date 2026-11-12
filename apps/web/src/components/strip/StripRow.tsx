@@ -2,6 +2,7 @@ import { formatDuration, priorityOf, type Reason, type Todo } from "@organizer/s
 import { Link } from "@tanstack/react-router";
 import { type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { dueState, dueText, shortAge } from "../../lib/format.ts";
+import { useOnChange } from "../../lib/useOnChange.ts";
 import { LabelPill } from "../LabelPill.tsx";
 import styles from "./Strip.module.css";
 import { hasFacts, TodoFacts } from "./TodoFacts.tsx";
@@ -53,7 +54,7 @@ export function StripRow({
   }, [selected]);
 
   // A row that comes back (undo) shows again.
-  useEffect(() => setCollapsing(false), [todo.status]);
+  useOnChange(todo.status, () => setCollapsing(false));
 
   // Fires once per collapse, even when the parent re-renders with a new callback meanwhile.
   const latest = useRef({ todo, onToggleDone });
@@ -72,6 +73,7 @@ export function StripRow({
   };
 
   return (
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- a click moves the list cursor (j/k do the same by keyboard)
     <li
       ref={rowRef}
       className={styles.row}

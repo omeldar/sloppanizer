@@ -16,6 +16,7 @@ import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { errorMessage } from "../../lib/api.ts";
 import { absoluteTime, relativeTime } from "../../lib/format.ts";
 import { createToken, useRevokeToken, useTokens } from "../../lib/queries.ts";
+import { useNow } from "../../lib/useNow.ts";
 import { SessionOnly } from "./SessionOnly.tsx";
 import styles from "./Tokens.module.css";
 
@@ -67,7 +68,7 @@ function TokensView() {
   const [revoking, setRevoking] = useState<ApiToken | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  const now = new Date();
+  const now = new Date(useNow());
   const all = tokens.data ?? [];
   const active = all.filter((t) => isActive(t, now));
   const inactive = all.filter((t) => !isActive(t, now));
@@ -244,6 +245,7 @@ function TokenRow({
       ? `Revoked ${absoluteTime(token.revokedAt)}`
       : `Expired ${absoluteTime(token.expiresAt ?? token.createdAt)}`;
   return (
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- a click moves the list cursor (j/k do the same by keyboard)
     <li ref={ref} className={styles.row} data-selected={selected || undefined} onMouseDown={onSelect}>
       <span className={styles.name}>{token.name}</span>
       <span className={styles.mono}>{token.prefix}</span>

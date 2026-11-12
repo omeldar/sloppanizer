@@ -87,6 +87,7 @@ function NewPersonForm({ onDone }: { onDone: () => void }) {
       </div>
       <datalist id={teamList}>
         {(teams.data ?? []).map((team) => (
+          // oxlint-disable-next-line jsx-a11y/control-has-associated-label -- a datalist suggestion; its value is the text
           <option key={team.name} value={team.name} />
         ))}
       </datalist>

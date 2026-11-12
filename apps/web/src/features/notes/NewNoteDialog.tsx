@@ -50,11 +50,11 @@ function NewNoteForm({ projectId: startProject, onDone }: { projectId: number | 
   return (
     <form className={styles.newForm} onSubmit={submit}>
       <Field label="Title">
-        {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog opens to type a title */}
         <TextInput
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Meeting notes, how-to, ideas"
+          // oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog opens to type a title
           autoFocus
           maxLength={200}
         />

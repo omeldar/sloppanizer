@@ -103,6 +103,7 @@ export function RestoreSection() {
       </p>
 
       {(state.step === "idle" || state.step === "problems") && (
+        // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- drop target of the file input it labels; the input works by keyboard
         <label
           className={styles.drop}
           data-dragging={dragging || undefined}

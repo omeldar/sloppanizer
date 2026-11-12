@@ -171,7 +171,6 @@ function CustomForm({
     <form className={styles.form} onSubmit={submit} aria-label="Custom repeat">
       <div className={styles.row}>
         <span>Every</span>
-        {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the form opens to type */}
         <input
           type="number"
           min={1}
@@ -179,6 +178,7 @@ function CustomForm({
           className={styles.number}
           aria-label="Interval"
           value={draft.interval}
+          // oxlint-disable-next-line jsx-a11y/no-autofocus -- the form opens to type
           autoFocus
           onChange={(e) => set({ interval: Number(e.target.value) })}
         />

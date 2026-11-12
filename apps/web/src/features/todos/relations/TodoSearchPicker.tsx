@@ -10,11 +10,12 @@ export interface PickedTodo {
 }
 
 const ID_QUERY = /^#?(\d+)$/;
+const NO_IDS: readonly number[] = [];
 
 /** Finds a todo by "#id" or by words in its title or text; `exclude` hides ids that cannot be picked. */
 export function TodoSearchPicker({
   label,
-  exclude = [],
+  exclude = NO_IDS,
   onPick,
 }: {
   label: string;

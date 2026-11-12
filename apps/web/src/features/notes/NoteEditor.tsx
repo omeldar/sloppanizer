@@ -113,6 +113,7 @@ function NoteBody({ note, write }: { note: Note; write: boolean }) {
         title="Text"
         value={note.bodyMd}
         startWriting={write}
+        // oxlint-disable-next-line jsx-a11y/no-autofocus -- a new note opens ready to type
         autoFocus={write}
         save={(bodyMd) => save({ bodyMd })}
         emptyText="Nothing written yet. Choose Write to start."

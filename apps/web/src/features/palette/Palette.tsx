@@ -2,7 +2,7 @@ import type { SearchHit } from "@organizer/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useCommands } from "../../app/commands.tsx";
 import { Dialog } from "../../components/Dialog.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
@@ -14,6 +14,7 @@ import { useProjects, useSearch, useTodo, writeFolderExport } from "../../lib/qu
 import { useIsSession } from "../settings/SessionOnly.tsx";
 import { toggleTheme } from "../../lib/theme.ts";
 import { useDebounced } from "../../lib/useDebounced.ts";
+import { useOnChange } from "../../lib/useOnChange.ts";
 import { Highlighted, hitTarget, KIND_NAMES, KIND_ORDER } from "../search/hits.tsx";
 import styles from "./Palette.module.css";
 
@@ -57,9 +58,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const [selected, setSelected] = useState("");
   const firstHit = hits[0];
   // Results arrive after the list was built; start the selection on the best match.
-  useEffect(() => {
-    if (firstHit) setSelected(hitValue(firstHit));
-  }, [firstHit]);
+  useOnChange(firstHit, (hit) => hit && setSelected(hitValue(hit)));
 
   const run = (action: () => void) => () => {
     onClose();

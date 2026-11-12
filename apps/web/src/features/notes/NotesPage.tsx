@@ -6,6 +6,7 @@ import { Button, EmptyState, ErrorState, Kbd, Loading, TextInput } from "../../c
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { absoluteTime, relativeTime } from "../../lib/format.ts";
 import { type NoteListParams, useNotes, useProjects } from "../../lib/queries.ts";
+import { useOnChange } from "../../lib/useOnChange.ts";
 import { NoteEditor } from "./NoteEditor.tsx";
 import styles from "./Notes.module.css";
 
@@ -61,7 +62,7 @@ function NotesLayout({
       : void navigate({ to: "/notes/$id", params: { id: String(noteId) }, search: next, replace: true });
 
   const [selectedId, setSelectedId] = useState<number | null>(noteId);
-  useEffect(() => setSelectedId(noteId), [noteId]);
+  useOnChange(noteId, setSelectedId);
   const filterRef = useRef<HTMLInputElement>(null);
   const index = ordered.findIndex((n) => n.id === selectedId);
   const move = (delta: number) => {

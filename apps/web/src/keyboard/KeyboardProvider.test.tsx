@@ -32,8 +32,10 @@ function setup(children: React.ReactNode) {
       <Mode />
       <input aria-label="title" />
       <textarea aria-label="notes" />
+      {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- stands in for a contentEditable editor */}
       <div aria-label="editable" contentEditable suppressContentEditableWarning tabIndex={0} />
       <div className="cm-editor">
+        {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- stands in for the focusable CodeMirror content */}
         <div aria-label="code" tabIndex={0} />
       </div>
       <input type="checkbox" aria-label="done" />

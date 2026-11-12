@@ -144,11 +144,11 @@ function TagForm({ tag, onDone }: { tag?: PersonTag; onDone: () => void }) {
   return (
     <form className={styles.form} onSubmit={submit}>
       <Field label="Name" hint={problem ?? "Shown as a pill on people, like a plain label."}>
-        {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog opens to type a name */}
         <TextInput
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="fast reply"
+          // oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog opens to type a name
           autoFocus
           maxLength={60}
         />

@@ -99,6 +99,7 @@ export function MarkdownField({
           ref={editorRef}
           label={title}
           value={draft}
+          // oxlint-disable-next-line jsx-a11y/no-autofocus -- passes the caller's choice on to the editor
           autoFocus={autoFocus}
           onChange={(text) => {
             setDraft(text);

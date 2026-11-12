@@ -378,6 +378,8 @@ function StatRow({
       <td>
         <span
           className={styles.bar}
+          role="img"
+          aria-label={`${numbers.open} open, ${numbers.done} done`}
           title={`${numbers.open} open, ${numbers.done} done`}
           style={{ "--open": `${bar.open}%`, "--done": `${bar.done}%` } as CSSProperties}
         >

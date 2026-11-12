@@ -219,6 +219,7 @@ function WeekBoard({ days, today: now }: { days: string[]; today: string }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     setDragging(null);
+    // oxlint-disable-next-line react/purity -- runs in the drag end handler, not during render
     lastDrag.current = Date.now();
     const found = locate(Number(active.id));
     if (!found || !over) return;

@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useKeyMode } from "../keyboard/KeyboardProvider.tsx";
 import { relativeTime } from "../lib/format.ts";
 import { useStats } from "../lib/queries.ts";
+import { useNow } from "../lib/useNow.ts";
 import pkg from "../../package.json" with { type: "json" };
 import styles from "./Layout.module.css";
 
@@ -13,8 +14,8 @@ export function StatusBar() {
   const stats = useStats();
   const s = stats.data;
   const exportAt = s?.lastExportAt ?? null;
-  const exportStale =
-    s !== undefined && (exportAt === null || Date.now() - Date.parse(exportAt) > EXPORT_STALE_MS);
+  const now = useNow();
+  const exportStale = s !== undefined && (exportAt === null || now - Date.parse(exportAt) > EXPORT_STALE_MS);
 
   return (
     <footer className={styles.statusbar} aria-label="Status">

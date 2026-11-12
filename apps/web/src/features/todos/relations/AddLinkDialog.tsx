@@ -26,11 +26,13 @@ export function linkProblem(error: unknown): string {
 }
 
 /** "Add link": pick the kind, then the other todo by #id or title. */
+const NO_IDS: readonly number[] = [];
+
 export function AddLinkDialog({
   todoId,
   open,
   onOpenChange,
-  exclude = [],
+  exclude = NO_IDS,
 }: {
   todoId: number;
   open: boolean;

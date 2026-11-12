@@ -161,6 +161,7 @@ function PersonDetail({ person }: { person: Person }) {
               />
               <datalist id={teamList}>
                 {(teams.data ?? []).map((team) => (
+                  // oxlint-disable-next-line jsx-a11y/control-has-associated-label -- a datalist suggestion; its value is the text
                   <option key={team.name} value={team.name} />
                 ))}
               </datalist>
@@ -239,6 +240,7 @@ function NameForm({
     onDone(changed ? names : null);
   };
   return (
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Esc anywhere in the form cancels the rename
     <form
       className={styles.nameForm}
       onSubmit={submit}
@@ -250,12 +252,12 @@ function NameForm({
         }
       }}
     >
-      {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- opened on purpose with e */}
       <TextInput
         aria-label="First name"
         value={firstName}
         onChange={(e) => setFirstName(e.target.value)}
         maxLength={100}
+        // oxlint-disable-next-line jsx-a11y/no-autofocus -- opened on purpose with e
         autoFocus
       />
       <TextInput
