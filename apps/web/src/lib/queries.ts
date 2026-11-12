@@ -44,6 +44,7 @@ import {
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { api, apiVoid } from "./api.ts";
+import type { PositionPatch } from "./positions.ts";
 
 /** Query keys. Every todo change invalidates the derived lists through `invalidateTodoViews`. */
 export const keys = {
@@ -306,6 +307,23 @@ export const childrenParams = (parentId: number): TodoListParams => ({
   order: "asc",
   limit: 200,
 });
+
+/**
+ * Saves new positions after a reorder: one PATCH per todo (the bulk patch has no position), then one
+ * refresh of the todo views instead of one per todo.
+ */
+export function useSavePositions() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (moves: readonly PositionPatch[]) =>
+      Promise.all(
+        moves.map((move) =>
+          api(Todo, `/todos/${move.id}`, { method: "PATCH", body: { position: move.position } }),
+        ),
+      ),
+    onSettled: () => invalidateTodoViews(client),
+  });
+}
 
 /** One patch for many todos (all or nothing). */
 export function useBulkUpdate() {

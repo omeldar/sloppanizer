@@ -29,7 +29,7 @@ import { today } from "../../lib/format.ts";
 import { type TodoListParams, useTodos } from "../../lib/queries.ts";
 import { useTodoActions } from "../todos/useTodoActions.ts";
 import styles from "./Board.module.css";
-import { planMove } from "./positions.ts";
+import { planMove } from "../../lib/positions.ts";
 
 export const BOARD_COLUMNS: readonly TodoStatus[] = ["open", "in_progress", "blocked", "done"];
 const DONE_DAYS = 14;

@@ -1,7 +1,7 @@
 import type { Todo } from "@organizer/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandsProvider } from "../../../app/commands.tsx";
@@ -73,6 +73,47 @@ function renderParent(overrides: Partial<Todo> = {}) {
   return calls;
 }
 
+/** Holds every PATCH until `open()`, so a test can look at the page before the server answered. */
+const gate = {
+  open: () => {},
+};
+
+/** The parent page with these children; the list answers with the patched positions once they are saved. */
+function mockChildren(children: Todo[]) {
+  const positions = new Map(children.map((c) => [c.id, c.position]));
+  let opened!: () => void;
+  const opening = new Promise<void>((resolve) => {
+    opened = resolve;
+  });
+  gate.open = opened;
+  const calls = renderParent();
+  const answer = globalThis.fetch;
+  vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+    if (init?.method === "PATCH") {
+      calls.push({ method: "PATCH", path: input, body: JSON.parse(String(init.body)) });
+      await opening;
+      const id = Number(input.split("/").pop());
+      const { position } = JSON.parse(String(init.body)) as { position: number };
+      positions.set(id, position);
+      const child = children.find((c) => c.id === id);
+      return new Response(JSON.stringify({ ...child, position }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (input.startsWith("/api/v1/todos?") && input.includes("parentId=1")) {
+      calls.push({ method: "GET", path: input, body: undefined });
+      const items = children
+        .map((c) => ({ ...c, position: positions.get(c.id) ?? c.position }))
+        .toSorted((a, b) => a.position - b.position || a.id - b.id);
+      return new Response(JSON.stringify({ items, total: items.length, limit: 200, offset: 0 }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return answer(input, init);
+  });
+  return calls;
+}
+
 describe("subtasks and links on the todo page", () => {
   it("shows the open blocker, the progress and the children in order", async () => {
     renderParent();
@@ -82,9 +123,12 @@ describe("subtasks and links on the todo page", () => {
     const rows = await screen.findByRole("list", { name: "Subtasks in order" });
     expect(
       within(rows)
-        .getAllByRole("listitem")
-        .map((r) => r.getAttribute("aria-label")),
-    ).toEqual(["#2 Measure the corner", "#3 Book the van"]);
+        .getAllByRole("link")
+        .map((r) => r.textContent),
+    ).toEqual(["Measure the corner", "Book the van"]);
+    // The row has no label of its own that would hide its checkbox and link from screen readers.
+    expect(within(rows).getAllByRole("listitem")[0]?.hasAttribute("aria-label")).toBe(false);
+    expect(within(rows).getByRole("checkbox", { name: "Mark #2 done" })).toBeTruthy();
   });
 
   it("adds a subtask with Enter and several from pasted lines after a confirm", async () => {
@@ -108,13 +152,38 @@ describe("subtasks and links on the todo page", () => {
   it("moves the focused subtask down with alt+j", async () => {
     const calls = renderParent();
     const rows = await screen.findByRole("list", { name: "Subtasks in order" }, LAZY_PAGE);
-    const firstRow = within(rows).getAllByRole("listitem")[0] as HTMLElement;
-    fireEvent.focus(firstRow);
+    act(() => within(rows).getByRole("checkbox", { name: "Mark #2 done" }).focus());
     fireEvent.keyDown(window, { key: "j", altKey: true });
     await waitFor(() =>
       expect(calls.some((c) => c.method === "PATCH" && c.path === "/api/v1/todos/2")).toBe(true),
     );
     expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ position: 2 });
+  });
+
+  it("shows the new order at once and refreshes the list once for a move that patches two rows", async () => {
+    // Every todo starts at position 0, so moving #2 below #3 also moves #3 up: two patches.
+    const flat = [2, 3, 4].map((id) =>
+      makeTodo({ id, title: `Step ${id}`, parentId: 1, position: 0, status: "open" }),
+    );
+    const calls = mockChildren(flat);
+    const rows = await screen.findByRole("list", { name: "Subtasks in order" }, LAZY_PAGE);
+    const titles = () =>
+      within(rows)
+        .getAllByRole("link")
+        .map((r) => r.textContent);
+    await waitFor(() => expect(titles()).toEqual(["Step 2", "Step 3", "Step 4"]));
+    const listReads = () => calls.filter((c) => c.method === "GET" && c.path.includes("parentId=1")).length;
+    const readsBefore = listReads();
+
+    act(() => within(rows).getByRole("checkbox", { name: "Mark #2 done" }).focus());
+    fireEvent.keyDown(window, { key: "j", altKey: true });
+
+    // Before the server answered.
+    expect(titles()).toEqual(["Step 3", "Step 2", "Step 4"]);
+    gate.open();
+    await waitFor(() => expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(2));
+    await waitFor(() => expect(listReads()).toBe(readsBefore + 1));
+    expect(titles()).toEqual(["Step 3", "Step 2", "Step 4"]);
   });
 
   it("asks before done when subtasks are open and closes them together on Yes", async () => {
