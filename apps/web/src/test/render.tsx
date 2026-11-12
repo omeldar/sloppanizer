@@ -124,6 +124,12 @@ export function makeTodo(overrides: Partial<Todo> = {}): Todo {
     contacts: [],
     commentCount: 0,
     project: null,
+    parent: null,
+    progress: { subtasks: { total: 0, done: 0 }, checklist: { total: 0, done: 0 } },
+    links: { blocks: [], blockedBy: [], relatesTo: [] },
+    recurrence: null,
+    previousOccurrenceId: null,
+    nextOccurrence: null,
     ...overrides,
   };
 }
