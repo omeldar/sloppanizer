@@ -1,5 +1,6 @@
 import type { ActivityEvent } from "./entities.ts";
 import { STATUS_LABELS, TODO_STATUSES, type TodoStatus } from "./primitives.ts";
+import { describeRecurrence, RecurrenceRule } from "./recurrence.ts";
 
 interface PersonSummary {
   id: number;
@@ -64,6 +65,60 @@ function describeDates(from: Record<string, unknown>, to: Record<string, unknown
   return parts.length > 0 ? parts.join(" and ") : "changed the dates";
 }
 
+interface TodoSummary {
+  id: number;
+}
+
+const todoRef = (value: unknown): TodoSummary | null =>
+  isRecord(value) && typeof value.id === "number" ? { id: value.id } : null;
+
+const todoList = (value: unknown): TodoSummary[] =>
+  Array.isArray(value) ? value.map(todoRef).filter((t): t is TodoSummary => t !== null) : [];
+
+const ids = (list: readonly TodoSummary[]): string[] => list.map((t) => `#${t.id}`);
+
+function describeParent(from: unknown, to: unknown): string {
+  const next = todoRef(to);
+  if (next) return `made this a subtask of #${next.id}`;
+  const previous = todoRef(from);
+  return previous ? `moved out of #${previous.id}` : "changed the parent";
+}
+
+const LINK_WORDS: Record<string, string> = {
+  blocks: "blocks",
+  blocked_by: "blocked by",
+  relates: "relates to",
+};
+
+/** "linked: blocks #12", "removed link: blocks #12 and #13". */
+function describeLinks(kind: unknown, added: TodoSummary[], removed: TodoSummary[]): string {
+  const words = LINK_WORDS[String(kind)] ?? "relates to";
+  const parts: string[] = [];
+  if (added.length > 0) parts.push(`linked: ${words} ${joinWords(ids(added))}`);
+  if (removed.length > 0) parts.push(`removed link: ${words} ${joinWords(ids(removed))}`);
+  return parts.length > 0 ? parts.join(" and ") : "changed the links";
+}
+
+function ruleText(value: unknown): string | null {
+  const rule = RecurrenceRule.safeParse(value);
+  return rule.success ? describeRecurrence(rule.data) : null;
+}
+
+function describeRecurrenceChange(from: unknown, to: unknown): string {
+  if (to === null || to === undefined) return "stopped repeating";
+  const text = ruleText(to);
+  if (text === null) return "changed the repeat";
+  return from === null || from === undefined ? `set it to repeat ${text}` : `changed the repeat to ${text}`;
+}
+
+function describeRecurred(next: unknown): string {
+  if (!isRecord(next) || typeof next.id !== "number") return "created the next one";
+  const date = typeof next.dueOn === "string" ? next.dueOn : next.plannedOn;
+  return typeof date === "string"
+    ? `created the next one, #${next.id}, for ${date}`
+    : `created the next one, #${next.id}`;
+}
+
 /**
  * One plain sentence for a history event, without the actor: "changed status from Open to Done",
  * "added contact Max Muster", "edited the description". `people` maps person ids to their current
@@ -108,5 +163,17 @@ export function describeEvent(event: ActivityEvent, people?: ReadonlyMap<number,
       return describeProject(data.to);
     case "dates_changed":
       return describeDates(isRecord(data.from) ? data.from : {}, isRecord(data.to) ? data.to : {});
+    case "parent_changed":
+      return describeParent(data.from, data.to);
+    case "subtasks_changed":
+      return addedRemoved("subtask", ids(todoList(data.added)), ids(todoList(data.removed)));
+    case "links_changed":
+      return describeLinks(data.kind, todoList(data.added), todoList(data.removed));
+    case "checklist_changed":
+      return `${data.checked === true ? "checked" : "unchecked"} "${String(data.text ?? "")}"`;
+    case "recurrence_changed":
+      return describeRecurrenceChange(data.from, data.to);
+    case "recurred":
+      return describeRecurred(data.next);
   }
 }

@@ -164,8 +164,13 @@ export const UpdateLabel = z
     color: Color.optional(),
     description: Description.optional(),
     rank: z.number().int().min(0).nullable().optional(),
+    /**
+     * When a rename moves the label into a scope that todos already have another label of: "fail"
+     * (default) answers 409 with the todos, "replace" keeps this label and removes the others.
+     */
+    onScopeConflict: z.enum(["fail", "replace"]).optional(),
   })
-  .superRefine((value, ctx) => checkNotEmpty(ctx, value));
+  .superRefine((value, ctx) => checkNotEmpty(ctx, { ...value, onScopeConflict: undefined }));
 export type UpdateLabel = z.infer<typeof UpdateLabel>;
 
 const Team = z.string().trim().max(100, "Keep the team at 100 characters or fewer.");
@@ -308,3 +313,34 @@ export const CreateToken = z.strictObject({
   expiresAt: Timestamp.nullable().optional(),
 });
 export type CreateToken = z.infer<typeof CreateToken>;
+
+/** How two todos are linked: "blocks" (this one blocks the other), "blocked_by", or "relates". */
+export const LINK_KINDS = ["blocks", "blocked_by", "relates"] as const;
+export const LinkKind = z.enum(LINK_KINDS);
+export type LinkKind = z.infer<typeof LinkKind>;
+
+export const CreateLinks = z.strictObject({
+  links: z
+    .array(z.strictObject({ kind: LinkKind, todoId: Id }))
+    .min(1, "Send at least one link.")
+    .max(50, "Add at most 50 links at once."),
+});
+export type CreateLinks = z.infer<typeof CreateLinks>;
+
+export const CreateSubtasks = z.strictObject({
+  titles: z.array(Title).min(1, "Send at least one title.").max(50, "Add at most 50 subtasks at once."),
+});
+export type CreateSubtasks = z.infer<typeof CreateSubtasks>;
+
+export const ToggleChecklist = z.strictObject({
+  index: z.number().int().min(0),
+  checked: z.boolean(),
+  /** The item text the client saw; a different text means the checklist changed (409). */
+  text: z.string().max(10_000).optional(),
+});
+export type ToggleChecklist = z.infer<typeof ToggleChecklist>;
+
+export const ApplyRestore = z.strictObject({
+  confirm: z.literal("replace", { error: 'Type "replace" to confirm.' }),
+});
+export type ApplyRestore = z.infer<typeof ApplyRestore>;

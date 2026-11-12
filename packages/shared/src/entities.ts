@@ -170,6 +170,8 @@ export const REASON_KINDS = [
   "age",
   "idle",
   "in_progress",
+  "blocks",
+  "waiting",
 ] as const;
 export const ReasonKind = z.enum(REASON_KINDS);
 export type ReasonKind = z.infer<typeof ReasonKind>;
@@ -339,3 +341,132 @@ export type TopicConflictDetails = z.infer<typeof TopicConflictDetails>;
 /** Body of a 409 when a person tag name is taken. */
 export const PersonTagConflictDetails = z.strictObject({ existing: PersonTag });
 export type PersonTagConflictDetails = z.infer<typeof PersonTagConflictDetails>;
+
+/** A small reference to another todo (parent, links, next occurrence). */
+export const TodoRef = z.strictObject({ id: Id, title: z.string(), status: TodoStatus });
+export type TodoRef = z.infer<typeof TodoRef>;
+
+/** A task list line in a todo's description (`- [ ] text`). */
+export const ChecklistItem = z.strictObject({
+  /** 0-based position among the items. */
+  index: z.number().int().nonnegative(),
+  text: z.string(),
+  checked: z.boolean(),
+  /** 0-based line number in descriptionMd. */
+  line: z.number().int().nonnegative(),
+});
+export type ChecklistItem = z.infer<typeof ChecklistItem>;
+
+/** Body of the 409 when a label rename would give todos two labels of one scope. */
+export const ScopeConflictDetails = z.strictObject({
+  conflicts: z.array(z.strictObject({ todoId: Id, title: z.string(), labels: z.array(z.string()) })),
+});
+export type ScopeConflictDetails = z.infer<typeof ScopeConflictDetails>;
+
+/** Body of the 409 when a checklist toggle is based on an old text. */
+export const ChecklistStaleDetails = z.strictObject({ items: z.array(ChecklistItem) });
+export type ChecklistStaleDetails = z.infer<typeof ChecklistStaleDetails>;
+
+const Count = z.number().int().nonnegative();
+const Millis = z.number().int().nonnegative();
+
+/**
+ * Numbers of one person in the filtered todo set. "open" = active statuses; speed (median, p90) is
+ * doneAt minus createdAt of the done todos.
+ */
+export const PersonStat = z.strictObject({
+  person: PersonBrief,
+  requested: z.strictObject({
+    total: Count,
+    open: Count,
+    done: Count,
+    medianDoneMs: Millis.nullable(),
+    p90DoneMs: Millis.nullable(),
+    /** Days since the oldest open requested todo was created. */
+    oldestOpenDays: Count.nullable(),
+    /** Newest time this person was linked as requester to a todo in the set. */
+    lastAt: Timestamp.nullable(),
+  }),
+  contact: z.strictObject({ total: Count, open: Count, done: Count }),
+});
+export type PersonStat = z.infer<typeof PersonStat>;
+
+export const PeopleStats = z.strictObject({
+  from: CalendarDate.nullable(),
+  to: CalendarDate.nullable(),
+  role: z.enum(["requester", "contact"]),
+  /** Distinct todos linked to the listed people in the chosen role. */
+  totals: z.strictObject({ todos: Count, open: Count, done: Count, medianDoneMs: Millis.nullable() }),
+  items: z.array(PersonStat),
+});
+export type PeopleStats = z.infer<typeof PeopleStats>;
+
+export const PersonStatMonth = z.strictObject({
+  /** "YYYY-MM" in the server's time zone. */
+  month: z.string(),
+  /** Todos created that month with this person as requester. */
+  requested: Count,
+  /** Requested todos done that month. */
+  done: Count,
+  /** Todos created that month with this person as contact. */
+  contact: Count,
+});
+export type PersonStatMonth = z.infer<typeof PersonStatMonth>;
+
+/** One person's numbers plus the last 12 months (oldest first, months without todos included). */
+export const PersonStatDetail = z.strictObject({ stat: PersonStat, months: z.array(PersonStatMonth) });
+export type PersonStatDetail = z.infer<typeof PersonStatDetail>;
+
+/** An export zip written to the export folder. */
+export const FolderExport = z.strictObject({
+  at: Timestamp,
+  /** Full path of the zip inside WSL. */
+  path: z.string(),
+  fileName: z.string(),
+  bytes: Count,
+});
+export type FolderExport = z.infer<typeof FolderExport>;
+
+export const Settings = z.strictObject({
+  /** Fixed folder for "Write to folder": <data dir>/exports. */
+  exportDir: z.string(),
+  /** How many zips the export folder keeps (older ones are deleted after a write). */
+  folderExportKeep: z.number().int().positive(),
+  dataDir: z.string(),
+  lastExportAt: Timestamp.nullable(),
+  lastFolderExport: FolderExport.nullable(),
+  version: z.string(),
+});
+export type Settings = z.infer<typeof Settings>;
+
+/** A safety copy written before a restore. */
+export const BackupFile = z.strictObject({ fileName: z.string(), createdAt: Timestamp, bytes: Count });
+export type BackupFile = z.infer<typeof BackupFile>;
+
+/** What a staged export zip holds, next to what the database holds now. */
+export const RestorePreview = z.strictObject({
+  uploadId: z.string(),
+  fileName: z.string(),
+  format: z.number().int().positive(),
+  exportedAt: Timestamp,
+  appVersion: z.string(),
+  schemaVersion: z.number().int().nonnegative(),
+  /** Rows per table. */
+  inFile: z.record(z.string(), Count),
+  now: z.record(z.string(), Count),
+  attachments: z.strictObject({ count: Count, bytes: Count, missing: z.array(Id) }),
+  warnings: z.array(z.string()),
+  expiresAt: Timestamp,
+});
+export type RestorePreview = z.infer<typeof RestorePreview>;
+
+export const RestoreResult = z.strictObject({
+  restoredAt: Timestamp,
+  counts: z.record(z.string(), Count),
+  safetyCopy: BackupFile,
+});
+export type RestoreResult = z.infer<typeof RestoreResult>;
+
+/** Body of the 422 when an export zip cannot be restored (the first 20 problems). */
+export const RestoreProblemDetails = z.strictObject({ problems: z.array(z.string()) });
+export type RestoreProblemDetails = z.infer<typeof RestoreProblemDetails>;

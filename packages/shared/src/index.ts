@@ -9,3 +9,5 @@ export * from "./duration.ts";
 export * from "./dates.ts";
 export * from "./people.ts";
 export * from "./activity.ts";
+export * from "./recurrence.ts";
+export * from "./checklist.ts";

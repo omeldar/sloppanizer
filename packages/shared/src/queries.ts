@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { LabelName } from "./labels.ts";
 import { NextMode } from "./entities.ts";
-import { PersonTagName, TopicName } from "./inputs.ts";
+import { LinkKind, PersonTagName, TopicName } from "./inputs.ts";
 import {
   ACTIVE_STATUSES,
   CalendarDate,
@@ -131,3 +131,62 @@ export type AttachmentUploadQuery = z.infer<typeof AttachmentUploadQuery>;
 /** /attachments/:id/:name; the name is only there for readable links and is ignored. */
 export const AttachmentFileParams = z.strictObject({ id: IdParam, name: z.string() });
 export type AttachmentFileParams = z.infer<typeof AttachmentFileParams>;
+
+export const PEOPLE_STATS_SORTS = ["total", "open", "done", "speed", "recent", "name"] as const;
+
+/** Filters of the people statistics; from/to are inclusive and apply to the todo's local created date. */
+const peopleStatsFilters = {
+  from: CalendarDate.optional(),
+  to: CalendarDate.optional(),
+  /** Comma lists of names (AND); they choose the people. */
+  topic: commaList(TopicName).optional(),
+  tag: commaList(PersonTagName).optional(),
+  /** Exact team, case-insensitive. */
+  team: z.string().trim().max(100).optional(),
+  /** Todo labels (AND); they narrow the todos. */
+  label: commaList(LabelName).optional(),
+  projectId: ProjectFilter.optional(),
+};
+
+function checkPeriod(value: { from?: string | undefined; to?: string | undefined }, ctx: z.RefinementCtx) {
+  if (value.from !== undefined && value.to !== undefined && value.from > value.to) {
+    ctx.addIssue({ code: "custom", path: ["to"], message: "The end of the period is before its start." });
+  }
+}
+
+export const PeopleStatsQuery = z
+  .strictObject({
+    ...peopleStatsFilters,
+    /** Who is listed and what total/open/done sort on. */
+    role: PersonRole.default("requester"),
+    /** speed = median took, fastest first, people without done todos last. */
+    sort: z.enum(PEOPLE_STATS_SORTS).default("total"),
+    limit: z.coerce.number().int().min(1).max(500).default(50),
+  })
+  .superRefine(checkPeriod);
+export type PeopleStatsQuery = z.infer<typeof PeopleStatsQuery>;
+
+/** GET /stats/people/:id: the same filters without role and sort. */
+export const PersonStatsQuery = z.strictObject(peopleStatsFilters).superRefine(checkPeriod);
+export type PersonStatsQuery = z.infer<typeof PersonStatsQuery>;
+
+/** DELETE /todos/:id/links/:otherId. */
+export const LinkParams = z.strictObject({ id: IdParam, otherId: IdParam });
+export type LinkParams = z.infer<typeof LinkParams>;
+
+export const LinkDeleteQuery = z.strictObject({ kind: LinkKind });
+export type LinkDeleteQuery = z.infer<typeof LinkDeleteQuery>;
+
+export const RestoreUploadQuery = z.strictObject({
+  /** Original file name, shown in the preview. */
+  name: z.string().max(1000).optional(),
+});
+export type RestoreUploadQuery = z.infer<typeof RestoreUploadQuery>;
+
+export const RestoreParams = z.strictObject({
+  uploadId: z.string().regex(/^[0-9a-f]{32}$/, "Unknown upload id."),
+});
+export type RestoreParams = z.infer<typeof RestoreParams>;
+
+export const BackupParams = z.strictObject({ fileName: z.string().max(200) });
+export type BackupParams = z.infer<typeof BackupParams>;

@@ -103,3 +103,68 @@ describe("describeEvent", () => {
     expect(describeEvent(event("dates_changed", {}))).toBe("changed the dates");
   });
 });
+
+const ref = (id: number, title: string | null = "x") => ({ id, title });
+const links = (kind: string, added: object[], removed: object[] = []) =>
+  describeEvent(event("links_changed", { kind, added, removed }));
+
+describe("describeEvent for step 3 kinds", () => {
+  it("describes parent and subtask changes, also for deleted todos", () => {
+    expect(describeEvent(event("parent_changed", { from: null, to: ref(42) }))).toBe(
+      "made this a subtask of #42",
+    );
+    expect(describeEvent(event("parent_changed", { from: ref(42, null), to: null }))).toBe(
+      "moved out of #42",
+    );
+    expect(describeEvent(event("parent_changed", { from: ref(41), to: ref(42) }))).toBe(
+      "made this a subtask of #42",
+    );
+    expect(describeEvent(event("subtasks_changed", { added: [ref(43)], removed: [] }))).toBe(
+      "added subtask #43",
+    );
+    expect(describeEvent(event("subtasks_changed", { added: [], removed: [ref(43, null)] }))).toBe(
+      "removed subtask #43",
+    );
+    expect(describeEvent(event("subtasks_changed", { added: [ref(43), ref(44)], removed: [ref(45)] }))).toBe(
+      "added subtasks #43 and #44 and removed subtask #45",
+    );
+  });
+
+  it("describes links of each kind", () => {
+    expect(links("blocks", [ref(12)])).toBe("linked: blocks #12");
+    expect(links("blocked_by", [ref(12)])).toBe("linked: blocked by #12");
+    expect(links("relates", [ref(9)])).toBe("linked: relates to #9");
+    expect(links("blocks", [], [ref(12, null)])).toBe("removed link: blocks #12");
+    expect(links("relates", [ref(9), ref(10)])).toBe("linked: relates to #9 and #10");
+  });
+
+  it("describes checklist clicks", () => {
+    expect(describeEvent(event("checklist_changed", { text: "Order cables", checked: true }))).toBe(
+      'checked "Order cables"',
+    );
+    expect(describeEvent(event("checklist_changed", { text: "Order cables", checked: false }))).toBe(
+      'unchecked "Order cables"',
+    );
+  });
+
+  it("describes repeat changes and the next occurrence", () => {
+    const weekly = { every: "week", interval: 1, weekdays: ["mon"], basis: "schedule" };
+    expect(describeEvent(event("recurrence_changed", { from: null, to: weekly }))).toBe(
+      "set it to repeat every week on Mon",
+    );
+    expect(
+      describeEvent(event("recurrence_changed", { from: weekly, to: { every: "week", interval: 2 } })),
+    ).toBe("changed the repeat to every 2 weeks");
+    expect(describeEvent(event("recurrence_changed", { from: weekly, to: null }))).toBe("stopped repeating");
+    expect(
+      describeEvent(
+        event("recurred", { next: { id: 143, title: "x", dueOn: "2026-11-19", plannedOn: null } }),
+      ),
+    ).toBe("created the next one, #143, for 2026-11-19");
+    expect(
+      describeEvent(
+        event("recurred", { next: { id: 143, title: null, dueOn: null, plannedOn: "2026-11-20" } }),
+      ),
+    ).toBe("created the next one, #143, for 2026-11-20");
+  });
+});
