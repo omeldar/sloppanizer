@@ -76,7 +76,7 @@ export function todoRoutes(app: App, deps: Deps): void {
     async (request) => updateTodo(deps, actorOf(request), request.params.id, request.body),
   );
   app.delete(`${API_PREFIX}/todos/:id`, { schema: { tags, params: IdParams } }, async (request, reply) => {
-    deleteTodo(deps, request.params.id);
+    deleteTodo(deps, actorOf(request), request.params.id);
     return reply.status(204).send();
   });
   app.get(

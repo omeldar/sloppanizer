@@ -113,64 +113,89 @@ const personSummary = (p: { id: number; displayName: string }): PersonSummary =>
   name: p.displayName,
 });
 
-export function createTodo(ctx: Ctx, actor: string, input: CreateTodo): Todo {
-  return ctx.db.transaction((tx) => {
-    const at = now(ctx);
-    assertProjectExists(tx, input.projectId);
-    const labelRows = resolveLabels(tx, input.labels ?? []);
-    const labelIds = [...new Set(labelRows.map((l) => l.id))];
-    const linked = [
-      ...resolvePeople(tx, at, input.requestedBy ?? [], true).map((p) => ({ p, role: "requester" as const })),
-      ...resolvePeople(tx, at, input.contacts ?? [], true).map((p) => ({ p, role: "contact" as const })),
-    ];
-    const status = input.status ?? "open";
-    const row = tx
-      .insert(todos)
-      .values({
-        title: input.title,
-        descriptionMd: input.descriptionMd ?? "",
-        status,
-        projectId: input.projectId ?? null,
-        dueOn: input.dueOn ?? null,
-        plannedOn: input.plannedOn ?? null,
-        createdAt: at,
-        updatedAt: at,
-        doneAt: status === "done" ? at : null,
-        lastActivityAt: at,
-      })
-      .returning()
-      .get();
-    if (labelIds.length > 0)
-      tx.insert(todoLabels)
-        .values(labelIds.map((labelId) => ({ todoId: row.id, labelId })))
-        .run();
-    if (linked.length > 0) {
-      tx.insert(todoPeople)
-        .values(linked.map(({ p, role }) => ({ todoId: row.id, personId: p.id, role, createdAt: at })))
-        .run();
-    }
-    indexTodo(tx, row.id);
-    const todo = hydrate(tx, [row])[0] as Todo;
-    recordEvents(tx, actor, at, [
-      {
-        todoId: row.id,
-        kind: "created",
-        data: {
-          to: {
-            title: todo.title,
-            status: todo.status,
-            projectId: todo.projectId,
-            dueOn: todo.dueOn,
-            plannedOn: todo.plannedOn,
-            labels: todo.labels.map((l) => l.name),
-            requestedBy: todo.requestedBy.map(personSummary),
-            contacts: todo.contacts.map(personSummary),
-          },
+/** Fields a new todo can get beyond CreateTodo (subtasks, repeats). */
+export interface NewTodoExtra {
+  parentId?: number | null;
+  position?: number;
+  recurrence?: string | null;
+  recurrencePrevId?: number | null;
+}
+
+/**
+ * Inserts a todo with labels, people, search row and the created event, inside a transaction.
+ * Callers check the parent and project first.
+ */
+export function insertTodo(
+  tx: Tx,
+  at: string,
+  actor: string,
+  input: CreateTodo,
+  extra: NewTodoExtra = {},
+): Todo {
+  assertProjectExists(tx, input.projectId);
+  const labelRows = resolveLabels(tx, input.labels ?? []);
+  const labelIds = [...new Set(labelRows.map((l) => l.id))];
+  const linked = [
+    ...resolvePeople(tx, at, input.requestedBy ?? [], true).map((p) => ({ p, role: "requester" as const })),
+    ...resolvePeople(tx, at, input.contacts ?? [], true).map((p) => ({ p, role: "contact" as const })),
+  ];
+  const status = input.status ?? "open";
+  const row = tx
+    .insert(todos)
+    .values({
+      title: input.title,
+      descriptionMd: input.descriptionMd ?? "",
+      status,
+      projectId: input.projectId ?? null,
+      parentId: extra.parentId ?? null,
+      dueOn: input.dueOn ?? null,
+      plannedOn: input.plannedOn ?? null,
+      position: extra.position ?? 0,
+      createdAt: at,
+      updatedAt: at,
+      doneAt: status === "done" ? at : null,
+      lastActivityAt: at,
+      recurrence: extra.recurrence ?? null,
+      recurrencePrevId: extra.recurrencePrevId ?? null,
+    })
+    .returning()
+    .get();
+  if (labelIds.length > 0)
+    tx.insert(todoLabels)
+      .values(labelIds.map((labelId) => ({ todoId: row.id, labelId })))
+      .run();
+  if (linked.length > 0) {
+    tx.insert(todoPeople)
+      .values(linked.map(({ p, role }) => ({ todoId: row.id, personId: p.id, role, createdAt: at })))
+      .run();
+  }
+  indexTodo(tx, row.id);
+  const todo = hydrate(tx, [row])[0] as Todo;
+  recordEvents(tx, actor, at, [
+    {
+      todoId: row.id,
+      kind: "created",
+      data: {
+        to: {
+          title: todo.title,
+          status: todo.status,
+          projectId: todo.projectId,
+          dueOn: todo.dueOn,
+          plannedOn: todo.plannedOn,
+          labels: todo.labels.map((l) => l.name),
+          requestedBy: todo.requestedBy.map(personSummary),
+          contacts: todo.contacts.map(personSummary),
+          ...(row.parentId === null ? {} : { parentId: row.parentId }),
+          ...(row.recurrencePrevId === null ? {} : { previousOccurrenceId: row.recurrencePrevId }),
         },
       },
-    ]);
-    return todo;
-  });
+    },
+  ]);
+  return todo;
+}
+
+export function createTodo(ctx: Ctx, actor: string, input: CreateTodo): Todo {
+  return ctx.db.transaction((tx) => insertTodo(tx, now(ctx), actor, input));
 }
 
 const normNames = (list: readonly string[]): string =>
@@ -396,12 +421,35 @@ export function bulkUpdate(ctx: Ctx, actor: string, ids: readonly number[], chan
   });
 }
 
-/** Deletes a todo with its comments, links and history (cascade), and its search rows. */
-export function deleteTodo(ctx: Ctx, id: number): void {
+/**
+ * Deletes a todo with its comments, links and history (cascade), and its search rows. Its subtasks
+ * become top-level todos (parent_changed each) and its parent records subtasks_changed.
+ */
+export function deleteTodo(ctx: Ctx, actor: string, id: number): void {
   ctx.db.transaction((tx) => {
-    const result = tx.delete(todos).where(eq(todos.id, id)).run();
-    if (result.changes === 0) throw notFound("Todo", id);
+    const row = tx.select().from(todos).where(eq(todos.id, id)).get();
+    if (!row) throw notFound("Todo", id);
+    const at = now(ctx);
+    const children = tx.select({ id: todos.id }).from(todos).where(eq(todos.parentId, id)).all();
+    const self = { id: row.id, title: row.title };
+    tx.delete(todos).where(eq(todos.id, id)).run();
     removeTodoFromIndex(tx, id);
+    const touched = [...children.map((c) => c.id), ...(row.parentId === null ? [] : [row.parentId])];
+    if (touched.length > 0) {
+      tx.update(todos).set({ updatedAt: at, lastActivityAt: at }).where(inArray(todos.id, touched)).run();
+    }
+    recordEvents(tx, actor, at, [
+      ...children.map((c) => ({
+        todoId: c.id,
+        kind: "parent_changed" as const,
+        data: { from: self, to: null },
+      })),
+      ...(row.parentId === null
+        ? []
+        : [
+            { todoId: row.parentId, kind: "subtasks_changed" as const, data: { added: [], removed: [self] } },
+          ]),
+    ]);
   });
 }
 

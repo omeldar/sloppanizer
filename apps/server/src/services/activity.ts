@@ -1,5 +1,5 @@
 import type { Activity, ActivityEvent, ActivityItem } from "@organizer/shared";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { events, todos } from "../db/schema.ts";
 import { notFound } from "../http/errors.ts";
 import { commentRows, toComment } from "./comments.ts";
@@ -16,6 +16,27 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const projectId = (value: unknown): number | null => (typeof value === "number" ? value : null);
 
+/** Event kinds whose data names other todos, and the fields that hold them. */
+const TODO_REF_FIELDS: Partial<Record<string, readonly string[]>> = {
+  parent_changed: ["from", "to"],
+  subtasks_changed: ["added", "removed"],
+  links_changed: ["added", "removed"],
+  recurred: ["next"],
+};
+
+const refIds = (value: unknown): number[] => {
+  if (Array.isArray(value)) return value.flatMap(refIds);
+  return isRecord(value) && typeof value.id === "number" ? [value.id] : [];
+};
+
+/** Replaces the stored title of every todo reference with the current one (null = deleted). */
+function withCurrentTitles(value: unknown, titles: ReadonlyMap<number, string>): unknown {
+  if (Array.isArray(value)) return value.map((v) => withCurrentTitles(v, titles));
+  if (isRecord(value) && typeof value.id === "number")
+    return { ...value, title: titles.get(value.id) ?? null };
+  return value;
+}
+
 /**
  * Event data as clients see it: description texts become their lengths, project ids become
  * { id, name|null } (null name = deleted project), people_changed always has a role.
@@ -26,6 +47,23 @@ function normalize(rows: readonly EventRow[], db: Tx): ActivityEvent[] {
     .filter(({ row }) => row.kind === "project_changed")
     .flatMap(({ data }) => (isRecord(data) ? [projectId(data.from), projectId(data.to)] : []));
   const projects = projectRefs(db, ids);
+  const todoIds = [
+    ...new Set(
+      parsed.flatMap(({ row, data }) =>
+        isRecord(data) ? (TODO_REF_FIELDS[row.kind] ?? []).flatMap((field) => refIds(data[field])) : [],
+      ),
+    ),
+  ];
+  const titles = new Map(
+    todoIds.length === 0
+      ? []
+      : db
+          .select({ id: todos.id, title: todos.title })
+          .from(todos)
+          .where(inArray(todos.id, todoIds))
+          .all()
+          .map((t) => [t.id, t.title] as const),
+  );
   const ref = (value: unknown) => {
     const id = projectId(value);
     return id === null ? null : { id, name: projects.get(id)?.name ?? null };
@@ -41,6 +79,14 @@ function normalize(rows: readonly EventRow[], db: Tx): ActivityEvent[] {
       data = { from: ref(data.from), to: ref(data.to) };
     } else if (row.kind === "people_changed") {
       data = { role: "requester", ...data };
+    } else if (TODO_REF_FIELDS[row.kind]) {
+      const fields = TODO_REF_FIELDS[row.kind] ?? [];
+      data = Object.fromEntries(
+        Object.entries(data).map(([key, value]) => [
+          key,
+          fields.includes(key) ? withCurrentTitles(value, titles) : value,
+        ]),
+      );
     }
     return {
       id: row.id,

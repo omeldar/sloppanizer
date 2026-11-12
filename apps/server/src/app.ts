@@ -27,6 +27,7 @@ import { peopleRoutes } from "./routes/people.ts";
 import { personTagRoutes } from "./routes/person-tags.ts";
 import { projectRoutes } from "./routes/projects.ts";
 import { searchRoutes } from "./routes/search.ts";
+import { todoRelationRoutes } from "./routes/todo-relations.ts";
 import { todoRoutes } from "./routes/todos.ts";
 import { tokenRoutes } from "./routes/tokens.ts";
 import { topicRoutes } from "./routes/topics.ts";
@@ -97,6 +98,7 @@ export async function buildApp(options: BuildOptions) {
   topicRoutes(app, deps);
   personTagRoutes(app, deps);
   todoRoutes(app, deps);
+  todoRelationRoutes(app, deps);
   commentRoutes(app, deps);
   noteRoutes(app, deps);
   attachmentRoutes(app, deps);
