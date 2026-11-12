@@ -209,6 +209,16 @@ export interface ExportResult {
   stream: Readable;
 }
 
+/** Reads the sequences of the AUTOINCREMENT tables, so a restore never hands out an id again. */
+function sequences(ctx: Ctx): { todos: number; attachments: number } {
+  const rows = ctx.db.$client.prepare("SELECT name, seq FROM sqlite_sequence").all() as {
+    name: string;
+    seq: number;
+  }[];
+  const seq = (name: string) => rows.find((r) => r.name === name)?.seq ?? 0;
+  return { todos: seq("todos"), attachments: seq("attachments") };
+}
+
 /**
  * Builds the export (format 2) and stores settings.lastExportAt. The database is read in one
  * snapshot right away; the zip is streamed, and uploaded files are read from disk while it streams,
@@ -230,7 +240,10 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
       data[table] = rows;
       counts[table] = rows.length;
     }
-    return { todos: hydrate(ctx.db, ctx.db.select().from(todos).orderBy(asc(todos.id)).all()) };
+    return {
+      todos: hydrate(ctx.db, ctx.db.select().from(todos).orderBy(asc(todos.id)).all()),
+      sequences: sequences(ctx),
+    };
   });
   const snapshot = readAll();
   const allTodos = snapshot.todos;
@@ -369,6 +382,7 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
     schemaVersion: schemaVersion(ctx.db),
     counts,
     attachments: { count: attachmentFiles.size, bytes, missing },
+    sequences: snapshot.sequences,
   };
   text("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
   text("data.json", `${JSON.stringify(data, null, 2)}\n`);
@@ -399,6 +413,7 @@ function zipStream(entries: readonly ZipEntry[], mtime: Date): Readable {
       if ("content" in entry) {
         file.push(entry.content, true);
       } else {
+        // oxlint-disable-next-line no-await-in-loop -- files are read one after the other
         for await (const chunk of createReadStream(entry.file)) {
           file.push(chunk as Uint8Array);
           // oxlint-disable-next-line no-await-in-loop -- wait for the reader before reading more
