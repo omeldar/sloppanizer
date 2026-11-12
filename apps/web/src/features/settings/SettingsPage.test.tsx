@@ -171,7 +171,7 @@ describe("settings: restore", () => {
     expect(calls.some((c) => c.path.startsWith("/api/v1/restore?"))).toBe(false);
   });
 
-  it("replaces the data only after the typed confirm, then clears the cache and goes to Next up", async () => {
+  it("replaces the data only after the typed confirm, then resets the cache and goes to Next up", async () => {
     const user = userEvent.setup();
     const { calls, client, router } = setup("session", ({ method, path }) =>
       method === "POST" && path === `/api/v1/restore/${UPLOAD}/apply`
@@ -193,6 +193,9 @@ describe("settings: restore", () => {
     pickFile(exportZip());
     const shown = await screen.findByRole("group", { name: "Restore preview" });
     await user.click(within(shown).getByRole("button", { name: "Replace all data" }));
+    // Queries on screen (like the sidebar and status bar) must ask again, not keep the old answers.
+    const settingsReads = () => calls.filter((c) => c.path === "/api/v1/settings").length;
+    const readsBefore = settingsReads();
 
     const dialog = await screen.findByRole("dialog", { name: "Replace all data?" });
     expect(within(dialog).getByText(/A safety copy of your current data is saved first/)).toBeTruthy();
@@ -210,5 +213,6 @@ describe("settings: restore", () => {
     expect(apply?.body).toEqual({ confirm: "replace" });
     expect(client.getQueryData(["todos", {}])).toBeUndefined();
     await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    await waitFor(() => expect(settingsReads()).toBe(readsBefore + 1));
   });
 });

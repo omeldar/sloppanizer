@@ -284,8 +284,10 @@ function ConfirmForm({ preview, onCancel }: { preview: RestorePreview; onCancel:
     setError(null);
     try {
       const result = await applyRestore(preview.uploadId);
-      // Every cached answer belongs to the old data.
-      client.clear();
+      // Every cached answer belongs to the old data: drop the unused ones and let the ones on screen
+      // (sidebar, status bar, this page) ask again. clear() would leave those showing the old data.
+      client.removeQueries({ type: "inactive" });
+      void client.resetQueries();
       void navigate({ to: "/" });
       toast.show({
         message: `${restoredSummary(result)} Safety copy: ${result.safetyCopy.fileName}`,
