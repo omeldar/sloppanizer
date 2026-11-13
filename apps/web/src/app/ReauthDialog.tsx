@@ -8,6 +8,8 @@ import { errorMessage, setReauthHandler } from "../lib/api.ts";
 import { passkeysSupported } from "../lib/webauthn.ts";
 import styles from "../features/auth/Auth.module.css";
 
+const ignore = (): void => undefined;
+
 /**
  * "Confirm it is you": sensitive actions (new password, passkeys, tokens, restore, admin changes) need a
  * sign-in from the last 10 minutes. When the server asks for one, this dialog opens; once confirmed, the
@@ -19,7 +21,7 @@ export function ReauthProvider({ children }: { children: ReactNode }) {
 
   const ask = useCallback(() => {
     if (!waiting.current) {
-      let resolve: (ok: boolean) => void = () => undefined;
+      let resolve: (ok: boolean) => void = ignore;
       const promise = new Promise<boolean>((done) => (resolve = done));
       waiting.current = { promise, resolve };
       setOpen(true);

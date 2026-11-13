@@ -11,7 +11,7 @@ export type Entry =
   | { kind: "auth"; page: AuthPage }
   | { kind: "redirect"; to: string };
 
-const AUTH_PAGES: readonly AuthPage[] = ["login", "signup", "setup", "reset"];
+const AUTH_PAGES: ReadonlySet<string> = new Set<AuthPage>(["login", "signup", "setup", "reset"]);
 
 export const accountBase = (username: string) => `/u/${username}`;
 
@@ -24,7 +24,7 @@ export function loginFor(username: string, next?: string): string {
 
 export function resolveEntry(pathname: string, search: string, store: AccountStore): Entry {
   const page = /^\/(login|signup|setup|reset)\/?$/.exec(pathname)?.[1] as AuthPage | undefined;
-  if (page && AUTH_PAGES.includes(page)) return { kind: "auth", page };
+  if (page && AUTH_PAGES.has(page)) return { kind: "auth", page };
 
   const match = /^\/u\/([^/]+)(\/.*)?$/.exec(pathname);
   const username = match?.[1] ? safeDecode(match[1]) : "";

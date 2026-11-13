@@ -20,7 +20,7 @@ export class ApiError extends ToolError {
 }
 
 export function notReachableMessage(url: string): string {
-  return `organizer is not reachable at ${url}. Start it: systemctl --user start organizer`;
+  return `Sloppanizer is not reachable at ${url}. Check the URL and your network.`;
 }
 
 const TIMEOUT_MS = 15_000;
@@ -40,13 +40,12 @@ function readToken(file: string): string {
     raw = readFileSync(file, "utf8").trim();
   } catch {
     throw new ToolError(
-      `No API token at ${file}. Run deploy/install.sh (it writes this file), or create one with: ` +
-        `pnpm --filter @organizer/server token:create --name assistant --scope write --out ${file}`,
+      `No API token at ${file}. Create one in Sloppanizer under Settings, API tokens, and save it in this file.`,
     );
   }
   if (!TOKEN_PATTERN.test(raw)) {
     throw new ToolError(
-      `The file ${file} does not hold an organizer token (org_ plus 40 letters and digits).`,
+      `The file ${file} does not hold a Sloppanizer token (spz_ plus 40 letters and digits).`,
     );
   }
   return raw;
@@ -95,14 +94,14 @@ export function createApi(config: McpConfig, fetchImpl: typeof fetch = fetch): A
       throw new ApiError(
         401,
         "unauthorized",
-        `The token in ${config.tokenFile} was not accepted (revoked or unknown). Rerun deploy/install.sh after deleting that file, or write a new token into it.`,
+        `The token in ${config.tokenFile} was not accepted: it was revoked or has expired, or its account is disabled. Create a new one in Sloppanizer under Settings, API tokens.`,
       );
     }
     if (!parsed.success) {
       throw new ApiError(
         response.status,
         "internal",
-        `${config.url} answered ${response.status} without an organizer error body. Is ORGANIZER_URL pointing at organizer?`,
+        `${config.url} answered ${response.status} without a Sloppanizer error body. Is SLOPPANIZER_URL pointing at the Sloppanizer API?`,
       );
     }
     const { code, message, details } = parsed.data.error;

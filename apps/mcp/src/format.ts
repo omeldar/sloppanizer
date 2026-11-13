@@ -3,7 +3,6 @@ import {
   daysBetween,
   describeEvent,
   describeRecurrence,
-  type FolderExport,
   formatDuration,
   type Label,
   type NextUp,
@@ -244,24 +243,6 @@ export function peopleStatsText(stats: PeopleStats): string {
     `People as ${role}, todos${period}: ${totals.todos} (${totals.open} open, ${totals.done} done${median}):`,
     ...stats.items.map(personStatLine),
   ].join("\n");
-}
-
-const sizeText = (bytes: number): string =>
-  bytes < 1024 * 1024
-    ? `${Math.max(1, Math.round(bytes / 1024))} KB`
-    : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-
-/** The Windows path of a file inside WSL, like Explorer shows it; null outside WSL. */
-export function windowsPathOf(path: string, wslDistro: string | undefined): string | null {
-  if (!wslDistro || !path.startsWith("/")) return null;
-  return `\\\\wsl.localhost\\${wslDistro}${path.replaceAll("/", "\\")}`;
-}
-
-export function folderExportText(file: FolderExport, wslDistro: string | undefined): string {
-  const lines = [`Wrote ${file.fileName} (${sizeText(file.bytes)}) to ${file.path}`];
-  const windows = windowsPathOf(file.path, wslDistro);
-  if (windows) lines.push(`In Windows: ${windows}`);
-  return lines.join("\n");
 }
 
 export function topicLine(topic: Topic): string {

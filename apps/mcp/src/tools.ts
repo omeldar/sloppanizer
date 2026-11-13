@@ -14,7 +14,6 @@ import {
   CreateProject,
   CreateSubtasks,
   CreateTodo,
-  type FolderExport,
   type Label,
   LinkKind,
   NextQuery,
@@ -36,6 +35,7 @@ import {
   SearchKind,
   SearchQuery,
   type SearchResult,
+  type Me,
   type Stats,
   type Todo,
   TodoListQuery,
@@ -54,7 +54,6 @@ import {
   activityLine,
   type DateContext,
   dateContext,
-  folderExportText,
   labelLine,
   nextUpText,
   noteDetail,
@@ -77,7 +76,6 @@ export interface ToolDeps {
   timeZone: string;
   now?: () => Date;
   /** WSL distribution, to show Windows paths of written files. */
-  wslDistro?: string | undefined;
 }
 
 // ---------- shared input pieces ----------
@@ -359,7 +357,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       annotations: READ,
     },
     async (args) => {
-      const [stats, projects, page] = await Promise.all([
+      const [me, stats, projects, page] = await Promise.all([
+        api.get<Me>("/me"),
         api.get<Stats>("/stats"),
         api.get<Project[]>("/projects"),
         api.get<TodoPage>("/todos", { sort: "created", order: "asc", limit: 500 }),
@@ -368,10 +367,23 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       const oldest = page.items.slice(0, args.oldest);
       const withoutPriority = page.items.filter((todo) => priorityOf(todo.labels) === null);
       if (args.format === "json") {
-        return JSON.stringify({ stats, projects: active, oldest, withoutPriority, activeTotal: page.total });
+        return JSON.stringify({
+          account: me.account.username,
+          stats,
+          projects: active,
+          oldest,
+          withoutPriority,
+          activeTotal: page.total,
+        });
       }
       const c = ctx();
-      const lines = [`Today ${c.today} (${c.timeZone})`, statsLine(stats, c), "", "Open per project:"];
+      const lines = [
+        `Account ${me.account.username}`,
+        `Today ${c.today} (${c.timeZone})`,
+        statsLine(stats, c),
+        "",
+        "Open per project:",
+      ];
       lines.push(`- inbox: ${stats.inbox}`);
       for (const p of active) lines.push(`- ${p.slug} (${p.name}): ${p.openCount}`);
       lines.push("", `Oldest open todos:`, todoLines(oldest, c, "None."));
@@ -1053,22 +1065,6 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         limit: args.limit,
       });
       return out(args.format, stats, peopleStatsText);
-    },
-  );
-
-  tool(
-    "export_to_folder",
-    {
-      title: "Export to folder",
-      description:
-        "Write a full export zip (all data and attachments) to the export folder as a backup. Returns the " +
-        "path. Older export files beyond the newest few are removed by the server.",
-      inputSchema: { format },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    },
-    async (args) => {
-      const file = await api.post<FolderExport>("/export/folder", {});
-      return out(args.format, file, (data) => folderExportText(data, deps.wslDistro));
     },
   );
 

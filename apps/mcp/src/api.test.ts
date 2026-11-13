@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { ApiError, createApi, notReachableMessage, ToolError } from "./api.ts";
 
-const TOKEN = `org_${"a".repeat(40)}`;
-const dir = mkdtempSync(join(tmpdir(), "organizer-mcp-api-"));
+const TOKEN = `spz_${"a".repeat(40)}`;
+const dir = mkdtempSync(join(tmpdir(), "sloppanizer-mcp-api-"));
 const tokenFile = join(dir, "mcp-token");
 writeFileSync(tokenFile, `${TOKEN}\n`);
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -42,7 +42,7 @@ describe("createApi", () => {
     }) as typeof fetch;
     await expect(createApi(config, failing).get("/stats")).rejects.toThrow(notReachableMessage(config.url));
     expect(notReachableMessage(config.url)).toBe(
-      "organizer is not reachable at http://127.0.0.1:4999. Start it: systemctl --user start organizer",
+      "Sloppanizer is not reachable at http://127.0.0.1:4999. Check the URL and your network.",
     );
   });
 
@@ -67,9 +67,9 @@ describe("createApi", () => {
     expect(error.message).not.toContain(TOKEN);
   });
 
-  it("says when the answer is not from organizer", async () => {
+  it("says when the answer is not from Sloppanizer", async () => {
     await expect(createApi(config, fakeFetch(502, undefined)).get("/stats")).rejects.toThrow(
-      "answered 502 without an organizer error body",
+      "answered 502 without a Sloppanizer error body",
     );
   });
 
@@ -79,11 +79,11 @@ describe("createApi", () => {
 
   it("explains a missing or malformed token file", async () => {
     const missing = createApi({ ...config, tokenFile: join(dir, "nope") }, fakeFetch(200, {}));
-    await expect(missing.get("/me")).rejects.toThrow(/No API token at .*nope\. Run deploy\/install\.sh/);
+    await expect(missing.get("/me")).rejects.toThrow(/No API token at .*nope\. Create one in Sloppanizer/);
     const badFile = join(dir, "bad");
     writeFileSync(badFile, "hello");
     const bad = createApi({ ...config, tokenFile: badFile }, fakeFetch(200, {}));
     await expect(bad.get("/me")).rejects.toThrow(ToolError);
-    await expect(bad.get("/me")).rejects.toThrow("does not hold an organizer token");
+    await expect(bad.get("/me")).rejects.toThrow("does not hold a Sloppanizer token");
   });
 });

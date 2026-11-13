@@ -42,16 +42,18 @@ export function LoginPage({ search, go }: { search: URLSearchParams; go: Go }) {
   // Browsers that offer passkeys in the username autofill get them there, without a button press.
   useEffect(() => {
     let stopped = false;
-    void conditionalMediationAvailable().then((available) => {
-      if (!available || stopped) return;
+    const offer = async () => {
+      if (!(await conditionalMediationAvailable()) || stopped) return;
       const controller = new AbortController();
       conditional.current = controller;
-      loginWithPasskey({ conditional: true, signal: controller.signal })
-        .then((tokens) => (tokens && !stopped ? finish(tokens) : undefined))
-        .catch((problem: unknown) => {
-          if (!controller.signal.aborted && !stopped) setError(errorMessage(problem));
-        });
-    });
+      try {
+        const tokens = await loginWithPasskey({ conditional: true, signal: controller.signal });
+        if (tokens && !stopped) await finish(tokens);
+      } catch (problem: unknown) {
+        if (!controller.signal.aborted && !stopped) setError(errorMessage(problem));
+      }
+    };
+    void offer();
     return () => {
       stopped = true;
       conditional.current?.abort();

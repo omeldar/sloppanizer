@@ -149,11 +149,10 @@ export function CopyButton({
   size?: "sm" | "md";
 }) {
   const [copied, setCopied] = useState(false);
-  const copy = () => {
-    void navigator.clipboard?.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
+  const copy = async () => {
+    await navigator.clipboard?.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
   return (
     <Button size={size} onClick={copy}>
@@ -211,7 +210,8 @@ export function RecoveryCodesBlock({
   saved: boolean;
   onSaved: (saved: boolean) => void;
 }) {
-  const text = recoveryCodesText(username, codes, new Date());
+  const [shownAt] = useState(() => new Date());
+  const text = recoveryCodesText(username, codes, shownAt);
   return (
     <>
       <p className={styles.info}>

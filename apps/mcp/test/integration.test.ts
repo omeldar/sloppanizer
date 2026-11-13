@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { type AddressInfo, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +9,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { addDays, type Todo, toLocalDate } from "@organizer/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { systemClock } from "../../server/src/clock.ts";
+import { openDb } from "../../server/src/db/index.ts";
+import { findAccount } from "../../server/src/services/accounts.ts";
+import { totpCode } from "../../server/src/services/auth/totp.ts";
+import { createToken } from "../../server/src/services/tokens.ts";
 import { bundle } from "../scripts/build.ts";
 
 // The real server on a free port with a temp data dir, the bundled MCP server over stdio.
@@ -16,9 +21,15 @@ const TZ = "Europe/Zurich";
 const TOKEN_NAME = "planner";
 const SERVER_DIR = fileURLToPath(new URL("../../server", import.meta.url));
 
-const root = mkdtempSync(join(tmpdir(), "organizer-mcp-it-"));
+const PASSWORD = "violet tram drifts over 9 hills";
+const TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+const root = mkdtempSync(join(tmpdir(), "sloppanizer-mcp-it-"));
 const dataDir = join(root, "data");
 const tokenFile = join(root, "mcp-token");
+const boTokenFile = join(root, "mcp-token-bo");
+const dbFile = () => join(dataDir, "sloppanizer.db");
+let annaAccountId = 0;
+let accessToken = "";
 const bundlePath = join(root, "mcp", "index.js");
 const today = toLocalDate(new Date(), TZ);
 
@@ -95,23 +106,58 @@ beforeAll(async () => {
     cwd: SERVER_DIR,
     env: {
       ...process.env,
-      ORGANIZER_PORT: String(port),
-      ORGANIZER_DATA_DIR: dataDir,
-      ORGANIZER_TZ: TZ,
-      ORGANIZER_WEB_DIR: join(root, "no-web"),
+      SLOPPANIZER_PORT: String(port),
+      SLOPPANIZER_DATA_DIR: dataDir,
       LOG_LEVEL: "warn",
       NODE_ENV: "test",
     },
     stdio: ["ignore", "ignore", "inherit"],
   });
   await waitForHealth();
-  const created = spawnSync(
-    process.execPath,
-    ["src/cli/token-create.ts", "--name", TOKEN_NAME, "--scope", "write", "--out", tokenFile],
-    { cwd: SERVER_DIR, env: { ...process.env, ORGANIZER_DATA_DIR: dataDir }, encoding: "utf8" },
-  );
-  if (created.status !== 0) throw new Error(`token:create failed: ${created.stderr}`);
-  mcp = await connect({ ORGANIZER_URL: baseUrl, ORGANIZER_TOKEN_FILE: tokenFile, ORGANIZER_TZ: TZ });
+  // Two accounts with the dev-account CLI, a write token each through the token service.
+  const passwordFile = join(root, "password");
+  writeFileSync(passwordFile, PASSWORD);
+  for (const username of ["anna", "bobby"]) {
+    const made = spawnSync(
+      process.execPath,
+      [
+        "src/cli/dev-account.ts",
+        username,
+        "--password-file",
+        passwordFile,
+        "--totp-secret",
+        TOTP_SECRET,
+        "--time-zone",
+        TZ,
+      ],
+      { cwd: SERVER_DIR, env: { ...process.env, SLOPPANIZER_DATA_DIR: dataDir }, encoding: "utf8" },
+    );
+    if (made.status !== 0) throw new Error(`dev-account failed: ${made.stderr}`);
+  }
+  const db = openDb(dbFile());
+  try {
+    for (const [username, name, file] of [
+      ["anna", TOKEN_NAME, tokenFile],
+      ["bobby", "bo-planner", boTokenFile],
+    ] as const) {
+      const account = findAccount(db, username);
+      if (!account) throw new Error(`no account ${username}`);
+      if (username === "anna") annaAccountId = account.id;
+      const { raw } = createToken(db, systemClock, account.id, { name, scope: "write" });
+      writeFileSync(file, raw, { mode: 0o600 });
+    }
+  } finally {
+    db.$client.close();
+  }
+  // A browser session of anna for the calls the web app makes.
+  const login = await fetch(`${baseUrl}/api/v1/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "anna", password: PASSWORD, code: totpCode(TOTP_SECRET, Date.now()) }),
+  });
+  if (login.status !== 200) throw new Error(`login failed: ${login.status} ${await login.text()}`);
+  accessToken = ((await login.json()) as { accessToken: string }).accessToken;
+  mcp = await connect({ SLOPPANIZER_URL: baseUrl, SLOPPANIZER_TOKEN_FILE: tokenFile, SLOPPANIZER_TZ: TZ });
 }, 60_000);
 
 afterAll(async () => {
@@ -137,7 +183,6 @@ describe("MCP server against the real API", () => {
         "add_subtasks",
         "bulk_update",
         "check_item",
-        "export_to_folder",
         "link_todos",
         "people_stats",
         "unlink_todos",
@@ -248,13 +293,17 @@ describe("MCP server against the real API", () => {
     expect(await ok("list_todos", { status: "all" })).toContain(`#${a} done`);
 
     // Every change is recorded with the token name as actor.
-    const db = new DatabaseSync(join(dataDir, "organizer.db"), { readOnly: true });
+    const db = new DatabaseSync(dbFile(), { readOnly: true });
     try {
-      const actors = db.prepare("SELECT DISTINCT actor FROM events").all() as { actor: string }[];
+      const actors = db
+        .prepare("SELECT DISTINCT actor FROM events WHERE account_id = ?")
+        .all(annaAccountId) as {
+        actor: string;
+      }[];
       expect(actors).toEqual([{ actor: TOKEN_NAME }]);
       const kinds = db
-        .prepare("SELECT kind FROM events WHERE todo_id = ? ORDER BY id")
-        .all(a)
+        .prepare("SELECT kind FROM events WHERE account_id = ? AND todo_id = ? ORDER BY id")
+        .all(annaAccountId, a)
         .map((row) => (row as { kind: string }).kind);
       // One PATCH may record several events in any order; compare as a multiset.
       expect(kinds[0]).toBe("created");
@@ -298,51 +347,70 @@ describe("MCP server against the real API", () => {
     expect(missing.isError).toBe(true);
   });
 
-  it("says how to start organizer when it is not running", async () => {
-    const down = await connect({ ORGANIZER_URL: "http://127.0.0.1:4899", ORGANIZER_TOKEN_FILE: tokenFile });
+  it("says when Sloppanizer is not reachable", async () => {
+    const down = await connect({
+      SLOPPANIZER_URL: "http://127.0.0.1:4899",
+      SLOPPANIZER_TOKEN_FILE: tokenFile,
+    });
     expect(await call("next_up", {}, down)).toEqual({
       isError: true,
-      text: "organizer is not reachable at http://127.0.0.1:4899. Start it: systemctl --user start organizer",
+      text: "Sloppanizer is not reachable at http://127.0.0.1:4899. Check the URL and your network.",
     });
   });
 
+  it("sees only the token's own account", async () => {
+    const bo = await connect({
+      SLOPPANIZER_URL: baseUrl,
+      SLOPPANIZER_TOKEN_FILE: boTokenFile,
+      SLOPPANIZER_TZ: TZ,
+    });
+    const created = await call("create_todo", { title: "Bo's secret plan" }, bo);
+    expect(created.isError).toBe(false);
+    const boTodo = idOf(created.text);
+    expect((await call("overview", {}, bo)).text).toMatch(/^Account bobby\n/);
+    expect(await ok("overview")).toMatch(/^Account anna\n/);
+    expect(await ok("list_todos", { status: "all" })).not.toContain("Bo's secret plan");
+    expect(await ok("search", { q: "secret" })).not.toContain("Bo's secret plan");
+    expect((await call("list_todos", { status: "all" }, bo)).text).not.toContain("Renew SSL certs");
+    // Ids count per account: anna's own #<same id> is hers, never bo's.
+    const sameId = await call("get_todo", { id: boTodo });
+    expect(sameId.text).not.toContain("Bo's secret plan");
+  });
+
   it("says where the token file should be when it is missing", async () => {
-    const noToken = await connect({ ORGANIZER_URL: baseUrl, ORGANIZER_TOKEN_FILE: join(root, "missing") });
+    const noToken = await connect({
+      SLOPPANIZER_URL: baseUrl,
+      SLOPPANIZER_TOKEN_FILE: join(root, "missing"),
+    });
     const result = await call("overview", {}, noToken);
     expect(result.isError).toBe(true);
     expect(result.text).toContain(`No API token at ${join(root, "missing")}`);
   });
 });
 
+/** A REST call as the browser session or with the MCP token. */
+async function rest(as: "session" | "token", method: string, path: string, body?: unknown) {
+  const auth =
+    as === "session"
+      ? { authorization: `Bearer ${accessToken}` }
+      : { authorization: `Bearer ${readFileSync(tokenFile, "utf8").trim()}` };
+  const response = await fetch(`${baseUrl}/api/v1${path}`, {
+    method,
+    headers: { ...auth, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await response.text();
+  return {
+    status: response.status,
+    json: text ? (JSON.parse(text) as Record<string, unknown>) : undefined,
+  };
+}
+
 // Step 2: contacts, the thread, notes and search. Builds on the data of the tests above (Anna Meier twice,
 // project homelab), so it avoids those names.
 describe("step 2 tools against the real API", () => {
-  let cookie = "";
   let maxId = 0;
   let todoId = 0;
-
-  /** A REST call as the browser session or with the MCP token. */
-  async function rest(as: "session" | "token", method: string, path: string, body?: unknown) {
-    const auth =
-      as === "session" ? { cookie } : { authorization: `Bearer ${readFileSync(tokenFile, "utf8").trim()}` };
-    const response = await fetch(`${baseUrl}/api/v1${path}`, {
-      method,
-      headers: { ...auth, ...(body === undefined ? {} : { "content-type": "application/json" }) },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const text = await response.text();
-    return {
-      status: response.status,
-      json: text ? (JSON.parse(text) as Record<string, unknown>) : undefined,
-    };
-  }
-
-  beforeAll(async () => {
-    // Loading the web app (here the placeholder page) sets the session cookie.
-    const page = await fetch(`${baseUrl}/`, { headers: { accept: "text/html" } });
-    cookie = String(page.headers.get("set-cookie")).split(";")[0] ?? "";
-    if (!cookie.startsWith("org_session=")) throw new Error(`no session cookie: ${cookie}`);
-  });
 
   it("finds whom to ask and links them as contacts end to end", async () => {
     // Person tags are made by the user first (Labels page); the MCP server can only use them.
@@ -464,12 +532,11 @@ describe("step 2 tools against the real API", () => {
     expect((await rest("token", "DELETE", `/comments/${browserId}`)).status).toBe(403);
     expect(await ok("get_activity", { todo: todoId })).toContain(`(comment ${own}, edited): Asked Max.`);
 
-    const db = new DatabaseSync(join(dataDir, "organizer.db"), { readOnly: true });
+    const db = new DatabaseSync(dbFile(), { readOnly: true });
     try {
-      expect(db.prepare("SELECT actor FROM comments ORDER BY id").all()).toEqual([
-        { actor: TOKEN_NAME },
-        { actor: "you" },
-      ]);
+      expect(
+        db.prepare("SELECT actor FROM comments WHERE account_id = ? ORDER BY id").all(annaAccountId),
+      ).toEqual([{ actor: TOKEN_NAME }, { actor: "you" }]);
     } finally {
       db.close();
     }
@@ -646,13 +713,5 @@ describe("step 3 tools against the real API", () => {
     const contacts = await ok("people_stats", { role: "contact", team: "Network team" });
     expect(contacts).toMatch(/^People as contacts, todos: /);
     expect(contacts).toContain("Max Muster | Network team |");
-  });
-
-  it("writes an export zip into the export folder", async () => {
-    const text = await ok("export_to_folder");
-    const path = /to (\/\S+\.zip)$/m.exec(text)?.[1] ?? "";
-    expect(path.startsWith(join(dataDir, "exports") + "/")).toBe(true);
-    expect(statSync(path).size).toBeGreaterThan(100);
-    expect(readFileSync(path).subarray(0, 2).toString()).toBe("PK");
   });
 });

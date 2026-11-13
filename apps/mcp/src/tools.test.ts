@@ -43,10 +43,10 @@ afterEach(async () => {
   await Promise.all(clients.splice(0).map((client) => client.close()));
 });
 
-async function connect(handler: Handler, wslDistro?: string) {
+async function connect(handler: Handler) {
   const { api, calls } = fakeApi(handler);
   const server = new McpServer({ name: "test", version: "0.0.0" });
-  registerTools(server, { api, timeZone: "Europe/Zurich", now: () => NOW, wslDistro });
+  registerTools(server, { api, timeZone: "Europe/Zurich", now: () => NOW });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test-client", version: "0.0.0" });
   await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
@@ -686,24 +686,5 @@ describe("step 3 tools", () => {
       "Anna Meier | Platform | requested 14, open 3, done 11, median took 2d 4h | contact 5",
       "Max Muster | requested 0, open 0, done 0 | contact 2",
     ]);
-  });
-
-  it("export_to_folder returns the written path, and the Windows path inside WSL", async () => {
-    const file = {
-      at,
-      path: "/home/me/.local/share/organizer/exports/organizer-export-2026-11-12.zip",
-      fileName: "organizer-export-2026-11-12.zip",
-      bytes: 3 * 1024 * 1024,
-    };
-    const inWsl = await connect(() => file, "Ubuntu");
-    expect((await inWsl.call("export_to_folder")).text).toBe(
-      `Wrote ${file.fileName} (3.0 MB) to ${file.path}\n` +
-        "In Windows: \\\\wsl.localhost\\Ubuntu\\home\\me\\.local\\share\\organizer\\exports\\organizer-export-2026-11-12.zip",
-    );
-    expect(inWsl.calls[0]).toEqual({ method: "POST", path: "/export/folder", body: {} });
-    const outside = await connect(() => file);
-    expect((await outside.call("export_to_folder")).text).toBe(
-      `Wrote ${file.fileName} (3.0 MB) to ${file.path}`,
-    );
   });
 });

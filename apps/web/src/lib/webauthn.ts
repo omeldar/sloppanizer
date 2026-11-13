@@ -88,7 +88,7 @@ export async function createPasskey(options: Json): Promise<Json | null> {
     return credential ? credentialToJson(credential as PublicKeyCredential) : null;
   } catch (error) {
     if (isCancel(error)) return null;
-    throw new Error(passkeyErrorText(error));
+    throw new Error(passkeyErrorText(error), { cause: error });
   }
 }
 
@@ -109,7 +109,7 @@ export async function getPasskey(
     return credential ? credentialToJson(credential as PublicKeyCredential) : null;
   } catch (error) {
     if (isCancel(error)) return null;
-    throw new Error(passkeyErrorText(error));
+    throw new Error(passkeyErrorText(error), { cause: error });
   }
 }
 

@@ -2,9 +2,10 @@ import type { QueryClient } from "@tanstack/react-query";
 import { downloadFile } from "./download.ts";
 import { keys } from "./queries.ts";
 
+const pad = (n: number) => String(n).padStart(2, "0");
+
 /** `sloppanizer-export-YYYYMMDD-HHmmss.zip`, in case the server's name does not reach the page. */
 export function exportFileName(now: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
   const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
   const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   return `sloppanizer-export-${date}-${time}.zip`;

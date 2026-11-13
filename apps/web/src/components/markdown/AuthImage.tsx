@@ -17,14 +17,17 @@ export function AuthImage({ src, alt }: { src: string; alt: string }) {
   useEffect(() => {
     let alive = true;
     let made: string | null = null;
-    attachmentBlob(src).then(
-      (blob) => {
+    const load = async () => {
+      try {
+        const blob = await attachmentBlob(src);
         if (!alive) return;
         made = URL.createObjectURL(blob);
         setState({ src, url: made, failed: false });
-      },
-      () => alive && setState({ src, url: null, failed: true }),
-    );
+      } catch {
+        if (alive) setState({ src, url: null, failed: true });
+      }
+    };
+    void load();
     return () => {
       alive = false;
       if (made) URL.revokeObjectURL(made);

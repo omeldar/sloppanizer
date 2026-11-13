@@ -12,7 +12,7 @@ export type ExportData = Record<string, Record<string, unknown>[]>;
 export type Sequences = Partial<Record<string, number>>;
 
 /** Settings keys a restore never takes from a file. */
-const SKIPPED_SETTING_KEYS: readonly unknown[] = [...LOCAL_SETTING_KEYS, ...OBSOLETE_SETTING_KEYS];
+const SKIPPED_SETTING_KEYS: ReadonlySet<unknown> = new Set([...LOCAL_SETTING_KEYS, ...OBSOLETE_SETTING_KEYS]);
 
 const quote = (name: string): string => `"${name.replaceAll('"', '""')}"`;
 
@@ -82,7 +82,7 @@ export function replaceAccountData(
     const columns = tableColumns(sqlite, table);
     const statements = new Map<string, Database.Statement>();
     for (const row of data[table] ?? []) {
-      if (table === "settings" && SKIPPED_SETTING_KEYS.includes(row.key)) continue;
+      if (table === "settings" && SKIPPED_SETTING_KEYS.has(row.key)) continue;
       const unknown = Object.keys(row).filter((name) => !columns.has(name));
       if (unknown.length > 0) throw new RowError(table, row.id, `unknown column ${unknown.join(", ")}`);
       const values: Record<string, unknown> = { ...insertValues(table, row), account_id: accountId };

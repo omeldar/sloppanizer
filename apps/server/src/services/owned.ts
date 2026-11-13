@@ -111,7 +111,7 @@ export function seedAccount(tx: Tx, accountId: number, at: string): void {
       .all()
       .map((l) => l.nameKey),
   );
-  const rows = SEED_LABELS.map((l) => ({ ...l, name: `priority::${l.value}` }))
+  const rows = SEED_LABELS.map((l) => Object.assign({}, l, { name: `priority::${l.value}` }))
     .filter((l) => !existing.has(foldCase(l.name)))
     .map((l) => ({
       name: l.name,
