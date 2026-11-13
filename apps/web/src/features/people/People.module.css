@@ -334,6 +334,13 @@
   background: var(--amber-tint);
 }
 
+.noMatch {
+  max-width: 360px;
+  padding: 6px 10px;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
 /* Person page */
 .personPage {
   max-width: 1160px;

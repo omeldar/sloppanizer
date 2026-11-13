@@ -178,6 +178,7 @@ export function PeopleStatsPage() {
         <TopicInput
           topics={splitList(search.topic)}
           placeholder="Only people with these topics"
+          existingOnly
           onAdd={(name) => set({ topic: joinList([...splitList(search.topic), name]) })}
           onRemove={(name) => set({ topic: joinList(splitList(search.topic).filter((t) => t !== name)) })}
         />
