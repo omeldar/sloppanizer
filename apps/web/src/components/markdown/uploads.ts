@@ -73,16 +73,21 @@ export async function insertUploads(
   const from = at ?? range.from;
   const to = at ?? range.to;
   const pieces = files.map((file) => ({ file, id: nextId++, text: placeholderText(file) }));
-  // Several files land on their own lines; a single one goes right at the cursor.
-  const joiner = files.length > 1 ? "\n" : "";
-  let offset = from;
+  const { lead, joiner, trail } = separators(
+    files.length,
+    view.state.sliceDoc(Math.max(0, from - 2), from),
+    view.state.sliceDoc(to, to + 2),
+  );
+  let offset = from + lead.length;
   const effects = pieces.map((piece, i) => {
     const start = offset + (i > 0 ? joiner.length : 0);
     offset = start + piece.text.length;
     return addPending.of({ id: piece.id, from: start, to: offset });
   });
-  const insert = pieces.map((p) => p.text).join(joiner);
-  view.dispatch({ changes: { from, to, insert }, effects, selection: { anchor: from + insert.length } });
+  const insert = lead + pieces.map((p) => p.text).join(joiner) + trail;
+  // The cursor ends after the last file, before any break that keeps the following text apart.
+  const end = from + insert.length - trail.length;
+  view.dispatch({ changes: { from, to, insert }, effects, selection: { anchor: end } });
 
   await Promise.all(
     pieces.map(async (piece) => {
@@ -95,6 +100,27 @@ export async function insertUploads(
       replace(view, piece.id, piece.text, replacement);
     }),
   );
+}
+
+/** Line breaks still missing for a blank line between inserted files and the text next to them. */
+const missing = (newlines: number) => "\n".repeat(2 - Math.min(2, newlines));
+
+/**
+ * What keeps inserted links apart from each other and from the text around them. Several files become
+ * one paragraph each, so they show one per line (a single line break would join them in the preview).
+ * A single file goes right at the cursor, after a space when it would touch a word or another link.
+ */
+export function separators(
+  count: number,
+  before: string,
+  after: string,
+): { lead: string; joiner: string; trail: string } {
+  if (count <= 1) return { lead: before === "" || /\s$/.test(before) ? "" : " ", joiner: "", trail: "" };
+  return {
+    lead: before === "" ? "" : missing(/\n*$/.exec(before)?.[0].length ?? 0),
+    joiner: "\n\n",
+    trail: after === "" ? "" : missing(/^\n*/.exec(after)?.[0].length ?? 0),
+  };
 }
 
 function replace(view: EditorView, id: number, expected: string, text: string) {

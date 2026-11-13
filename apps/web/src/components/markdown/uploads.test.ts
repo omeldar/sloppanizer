@@ -86,7 +86,36 @@ describe("insertUploads", () => {
       vi.fn(),
     );
     expect(v.state.doc.toString()).toBe(
-      "![image.png](/api/v1/attachments/1/image.png)\n![image.png](/api/v1/attachments/2/image.png)",
+      "![image.png](/api/v1/attachments/1/image.png)\n\n![image.png](/api/v1/attachments/2/image.png)",
+    );
+  });
+
+  it("puts several files in their own paragraphs, apart from the text before and after", async () => {
+    const v = editor("Body text\nmore", "Body text\n".length);
+    let n = 0;
+    await insertUploads(
+      v,
+      [new File(["x"], "report.xyz"), new File(["x"], "notes.pdf")],
+      async (file) => ({ name: file.name, url: `/api/v1/attachments/${++n}/${file.name}`, inline: false }),
+      vi.fn(),
+    );
+    expect(v.state.doc.toString()).toBe(
+      "Body text\n\n[report.xyz](/api/v1/attachments/1/report.xyz)\n\n[notes.pdf](/api/v1/attachments/2/notes.pdf)\n\nmore",
+    );
+    // Typing goes on right after the last file.
+    expect(v.state.doc.sliceString(0, v.state.selection.main.head).endsWith("notes.pdf)")).toBe(true);
+  });
+
+  it("keeps a single file off the link or word right before it", async () => {
+    const v = editor("[notes.pdf](/api/v1/attachments/2/notes.pdf)");
+    await insertUploads(
+      v,
+      [png("pic.png")],
+      async () => ({ name: "pic.png", url: "/api/v1/attachments/3/pic.png", inline: true }),
+      vi.fn(),
+    );
+    expect(v.state.doc.toString()).toBe(
+      "[notes.pdf](/api/v1/attachments/2/notes.pdf) ![pic.png](/api/v1/attachments/3/pic.png)",
     );
   });
 
