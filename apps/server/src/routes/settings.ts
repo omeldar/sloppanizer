@@ -1,7 +1,7 @@
-import { API_PREFIX, FolderExport, Settings } from "@organizer/shared";
+import { API_PREFIX, FolderExport, FolderExportListItem, Settings } from "@organizer/shared";
 import { z } from "zod";
 import { getSettings, listFolderExports, writeFolderExport } from "../services/folder-export.ts";
-import type { App, Deps } from "./types.ts";
+import { authOf, type App, type Deps } from "./types.ts";
 
 export function settingsRoutes(app: App, deps: Deps): void {
   app.get(
@@ -33,10 +33,14 @@ export function settingsRoutes(app: App, deps: Deps): void {
     {
       schema: {
         tags: ["export"],
-        summary: "The export zips in the export folder, newest first",
-        response: { 200: z.array(FolderExport) },
+        summary: "The export zips in the export folder, newest first (full paths for the session only)",
+        response: { 200: z.array(FolderExportListItem) },
       },
     },
-    async () => listFolderExports(deps.dataDir),
+    async (request) => {
+      const list = listFolderExports(deps.dataDir);
+      // Absolute paths name the data folder and the user; tokens get the file names only.
+      return authOf(request).via === "session" ? list : list.map(({ path: _path, ...rest }) => rest);
+    },
   );
 }

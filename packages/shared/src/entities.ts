@@ -458,6 +458,10 @@ export const FolderExport = z.strictObject({
 });
 export type FolderExport = z.infer<typeof FolderExport>;
 
+/** An entry of GET /export/folder: the full path only for the browser session (tokens do not see paths). */
+export const FolderExportListItem = FolderExport.extend({ path: z.string().optional() });
+export type FolderExportListItem = z.infer<typeof FolderExportListItem>;
+
 export const Settings = z.strictObject({
   /** Fixed folder for "Write to folder": <data dir>/exports. */
   exportDir: z.string(),

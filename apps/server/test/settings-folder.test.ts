@@ -80,6 +80,22 @@ describe("POST /export/folder", () => {
     expect((await t.withToken(t.token("w", "write"), "POST", "/api/v1/export/folder")).statusCode).toBe(201);
     expect((await t.withToken(t.token("r2", "read"), "GET", "/api/v1/export/folder")).statusCode).toBe(200);
   });
+
+  it("lists full paths for the session only, never to a token", async () => {
+    const t = await makeApp();
+    await t.call("POST", "/api/v1/export/folder");
+    const mine = json<FolderExport[]>(await t.call("GET", "/api/v1/export/folder"));
+    expect(mine[0]?.path).toBe(join(t.dataDir, "exports", mine[0]?.fileName as string));
+    for (const scope of ["read", "write"] as const) {
+      // oxlint-disable-next-line no-await-in-loop -- one caller after the other
+      const res = await t.withToken(t.token(`t-${scope}`, scope), "GET", "/api/v1/export/folder");
+      expect(res.statusCode).toBe(200);
+      expect(res.body).not.toContain(t.dataDir);
+      expect(json<FolderExport[]>(res).map(({ fileName, at, bytes }) => ({ fileName, at, bytes }))).toEqual(
+        mine.map(({ fileName, at, bytes }) => ({ fileName, at, bytes })),
+      );
+    }
+  });
 });
 
 describe("writeFileAtomically", () => {
