@@ -1,5 +1,9 @@
 /** Small helpers for building queries. */
 
+import type Database from "better-sqlite3";
+import { type AnyColumn, type SQL, sql } from "drizzle-orm";
+import { foldCase, foldDiacritics } from "./text.ts";
+
 /** SQLite allows many bound parameters, but chunks keep big IN lists safe. */
 const CHUNK = 500;
 
@@ -40,3 +44,22 @@ export function diffIds(
     removed: current.filter((id) => !next.includes(id)),
   };
 }
+
+/**
+ * SQL functions for Unicode-aware matching (SQLite's LIKE and lower() fold ASCII only):
+ * fold_case(text) = foldCase, fold_diacritics(text) = foldDiacritics. Registered on every connection
+ * by openDb; used in queries only, never in the schema, so the database file stays plain SQLite.
+ */
+export function registerTextFunctions(sqlite: Database.Database): void {
+  const options = { deterministic: true };
+  sqlite.function("fold_case", options, (text: unknown) =>
+    typeof text === "string" ? foldCase(text) : text,
+  );
+  sqlite.function("fold_diacritics", options, (text: unknown) =>
+    typeof text === "string" ? foldDiacritics(text) : text,
+  );
+}
+
+/** "column contains text" without case (any script): fold_case(column) LIKE %foldCase(text)%. */
+export const containsFolded = (column: SQL | AnyColumn, text: string): SQL =>
+  sql`fold_case(${column}) LIKE ${`%${escapeLike(foldCase(text))}%`} ESCAPE '\\'`;

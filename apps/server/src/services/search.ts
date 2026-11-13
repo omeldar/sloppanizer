@@ -10,7 +10,7 @@ import {
 import { inArray, type SQL, sql } from "drizzle-orm";
 import { comments, notes, people, todos } from "../db/schema.ts";
 import type { Ctx, Tx } from "./context.ts";
-import { foldChars, plainText } from "./text.ts";
+import { foldChars, foldDiacritics, plainText } from "./text.ts";
 import { projectRefs } from "./projects.ts";
 import { escapeLike } from "./sql.ts";
 
@@ -75,13 +75,19 @@ export function makeSnippet(
   return { snippet, highlights };
 }
 
-/** WHERE parts for the terms: FTS phrases ANDed, plus a LIKE per short term. */
+/**
+ * WHERE parts for the terms: FTS phrases ANDed, plus a LIKE per short term. The LIKE folds case and
+ * diacritics in every script, like the trigram index (remove_diacritics) does for longer terms.
+ */
 function termConditions(terms: readonly string[]): { match: string | null; likes: SQL[] } {
   const long = terms.filter((t) => [...t].length >= MIN_FTS_TERM);
   const short = terms.filter((t) => [...t].length < MIN_FTS_TERM);
   return {
     match: long.length > 0 ? long.map(ftsPhrase).join(" AND ") : null,
-    likes: short.map((t) => sql`(title || ' ' || body) LIKE ${`%${escapeLike(t)}%`} ESCAPE '\\'`),
+    likes: short.map(
+      (t) =>
+        sql`fold_diacritics(title || ' ' || body) LIKE ${`%${escapeLike(foldDiacritics(t))}%`} ESCAPE '\\'`,
+    ),
   };
 }
 

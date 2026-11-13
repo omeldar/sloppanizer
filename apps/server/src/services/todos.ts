@@ -37,7 +37,7 @@ import { linksByTodo } from "./links.ts";
 import { assertProjectExists, projectRefs } from "./projects.ts";
 import { resolvePeople, toPersonBrief } from "./people.ts";
 import { indexTodo, removeTodoFromIndex } from "./search-index.ts";
-import { chunks, diffIds, escapeLike, type SetChange } from "./sql.ts";
+import { chunks, containsFolded, diffIds, type SetChange } from "./sql.ts";
 import { foldCase } from "./text.ts";
 
 export type TodoRow = typeof todos.$inferSelect;
@@ -723,7 +723,7 @@ function listConditions(query: TodoListQuery, timeZone: string): SQL | undefined
   }
   if (query.parentId === "none") conditions.push(isNull(todos.parentId));
   else if (query.parentId !== undefined) conditions.push(eq(todos.parentId, query.parentId));
-  if (query.q) conditions.push(sql`${todos.title} LIKE ${`%${escapeLike(query.q)}%`} ESCAPE '\\'`);
+  if (query.q) conditions.push(containsFolded(todos.title, query.q));
   if (query.dueBefore !== undefined) conditions.push(sql`${todos.dueOn} < ${query.dueBefore}`);
   if (query.plannedOn !== undefined) conditions.push(eq(todos.plannedOn, query.plannedOn));
   if (query.plannedFrom !== undefined) conditions.push(sql`${todos.plannedOn} >= ${query.plannedFrom}`);

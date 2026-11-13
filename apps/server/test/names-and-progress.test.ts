@@ -134,6 +134,32 @@ describe("topic and tag names", () => {
   });
 });
 
+describe("todo and note list filter q", () => {
+  it("matches titles without case in every script", async () => {
+    const t = await makeApp();
+    const todo = await t.create<Todo>("/api/v1/todos", { title: "Termin beim Ärztehaus" });
+    await t.create<Todo>("/api/v1/todos", { title: "Arzt" });
+    const note = await t.create<{ id: number }>("/api/v1/notes", {
+      title: "Übergabe Ärztehaus",
+      bodyMd: "x",
+    });
+    await t.create("/api/v1/notes", { title: "Other", bodyMd: "x" });
+    const todoIds = async (text: string) =>
+      json<{ items: Todo[] }>(await t.call("GET", `/api/v1/todos?q=${encodeURIComponent(text)}`)).items.map(
+        (x) => x.id,
+      );
+    const noteIds = async (text: string) =>
+      json<{ items: { id: number }[] }>(
+        await t.call("GET", `/api/v1/notes?q=${encodeURIComponent(text)}`),
+      ).items.map((x) => x.id);
+    expect(await todoIds("ärztehaus")).toEqual([todo.id]);
+    expect(await todoIds("ÄRZTEHAUS")).toEqual([todo.id]);
+    expect(await noteIds("üBERGABE")).toEqual([note.id]);
+    // Still literal: LIKE wildcards in q match only themselves.
+    expect(await todoIds("%")).toEqual([]);
+  });
+});
+
 describe("subtask progress", () => {
   it("follows done, reopen and delete of direct children only", async () => {
     const t = await makeApp();

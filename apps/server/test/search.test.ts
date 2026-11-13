@@ -117,6 +117,19 @@ describe("GET /search", () => {
     expect((await find(t, q("_"))).items).toEqual([]);
   });
 
+  it("folds case and umlauts in short terms too, like the index does for longer ones", async () => {
+    const t = await makeApp();
+    const todo = await t.create<Todo>("/api/v1/todos", { title: "Öl wechseln" });
+    await t.create<Todo>("/api/v1/todos", { title: "Other" });
+    for (const term of ["öl", "ÖL", "ol", "Öl"]) {
+      // oxlint-disable-next-line no-await-in-loop -- one term after the other
+      const r = await find(t, q(term));
+      expect(hitsOf(r, "todo").map((h) => h.id)).toEqual([todo.id]);
+    }
+    // A short and a long term together.
+    expect(hitsOf(await find(t, q("ÖL WECHSELN")), "todo").map((h) => h.id)).toEqual([todo.id]);
+  });
+
   it("treats quotes and FTS syntax in q as plain text", async () => {
     const { t } = await sample();
     const texts = [

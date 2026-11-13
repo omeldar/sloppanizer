@@ -15,7 +15,7 @@ import { plainText } from "./text.ts";
 import { type Ctx, now, type Tx } from "./context.ts";
 import { assertProjectExists, projectRefs } from "./projects.ts";
 import { indexNote, removeFromIndex } from "./search-index.ts";
-import { escapeLike } from "./sql.ts";
+import { containsFolded } from "./sql.ts";
 
 export type NoteRow = typeof notes.$inferSelect;
 
@@ -50,7 +50,7 @@ export function listNotes(db: Tx, query: NoteListQuery): NotePage {
   else if (query.projectId !== undefined) conditions.push(eq(notes.projectId, query.projectId));
   if (query.pinned === true) conditions.push(isNotNull(notes.pinnedAt));
   if (query.pinned === false) conditions.push(isNull(notes.pinnedAt));
-  if (query.q) conditions.push(sql`${notes.title} LIKE ${`%${escapeLike(query.q)}%`} ESCAPE '\\'`);
+  if (query.q) conditions.push(containsFolded(notes.title, query.q));
   const where = and(...conditions);
   const rows = db
     .select()
