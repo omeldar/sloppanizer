@@ -2,6 +2,8 @@ import { CalendarDate, NextMode, PEOPLE_STATS_SORTS, SearchKind } from "@organiz
 import { createRootRoute, createRoute, createRouter, Link, lazyRouteComponent } from "@tanstack/react-router";
 import { z } from "zod";
 import { EmptyState, PageHeader } from "../components/ui.tsx";
+import { AccountPage } from "../features/account/AccountPage.tsx";
+import { AdminPage } from "../features/account/AdminPage.tsx";
 import { BoardPage } from "../features/board/BoardPage.tsx";
 import { LabelsPage } from "../features/labels/LabelsPage.tsx";
 import { InboxPage } from "../features/lists/InboxPage.tsx";
@@ -167,6 +169,8 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: "/people/$id", component: personPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/settings/tokens", component: TokensPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/account", component: AccountPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/admin", component: AdminPage }),
 ] as const;
 
 export const routeTree = rootRoute.addChildren(routes);

@@ -10,12 +10,16 @@ import { NewProjectDialog } from "../features/projects/NewProjectDialog.tsx";
 import { QuickAdd } from "../features/quickadd/QuickAdd.tsx";
 import { type KeyBinding, useActiveBindings, useKeyHold, useKeys } from "../keyboard/KeyboardProvider.tsx";
 import { useProjects, useStats, useTodo } from "../lib/queries.ts";
+import { useSignups } from "../lib/adminQueries.ts";
+import { useCurrentAccount } from "./account.tsx";
+import { AccountSwitcher } from "./AccountSwitcher.tsx";
 import { useCommands } from "./commands.tsx";
 import styles from "./Layout.module.css";
 import { StatusBar } from "./StatusBar.tsx";
 
 export function Layout() {
   const navigate = useNavigate();
+  const isAdmin = useCurrentAccount()?.role === "admin";
   const commands = useCommands();
   const page = usePageProject();
   const activeBindings = useActiveBindings();
@@ -51,6 +55,8 @@ export function Layout() {
     { keys: "g l", run: go("/labels"), label: "Go to Labels", group: "Go to" },
     { keys: "g p", run: go("/people"), label: "Go to People", group: "Go to" },
     { keys: "g s", run: go("/settings"), label: "Go to Settings", group: "Go to" },
+    { keys: "g u", run: go("/account"), label: "Go to Account", group: "Go to" },
+    ...(isAdmin ? [{ keys: "g a", run: go("/admin"), label: "Go to Admin", group: "Go to" }] : []),
     {
       keys: "?",
       run: () => {
@@ -112,6 +118,8 @@ function usePageProject() {
 }
 
 function Sidebar() {
+  const isAdmin = useCurrentAccount()?.role === "admin";
+  const signups = useSignups(isAdmin);
   const projects = useProjects();
   const stats = useStats();
   const [newProject, setNewProject] = useState(false);
@@ -167,7 +175,9 @@ function Sidebar() {
         <NavItem to="/labels" label="Labels" keys="g l" />
         <NavItem to="/people" label="People" keys="g p" />
         <NavItem to="/settings" label="Settings" keys="g s" />
+        {isAdmin && <NavItem to="/admin" label="Admin" count={signups.data?.length} keys="g a" />}
       </ul>
+      <AccountSwitcher />
       <NewProjectDialog open={newProject} onOpenChange={setNewProject} />
     </nav>
   );
@@ -252,6 +262,8 @@ function Breadcrumb() {
     trail = [{ label: "People", to: "/people" }, { label: "Statistics" }];
   else if (pathname.startsWith("/people/")) trail = [{ label: "People", to: "/people" }, { label: "Person" }];
   else if (pathname === "/settings") trail = [{ label: "Settings" }];
+  else if (pathname === "/account") trail = [{ label: "Account" }];
+  else if (pathname === "/admin") trail = [{ label: "Admin" }];
   else if (pathname === "/settings/tokens")
     trail = [{ label: "Settings", to: "/settings" }, { label: "API tokens" }];
   else if (pathname.startsWith("/projects/")) {

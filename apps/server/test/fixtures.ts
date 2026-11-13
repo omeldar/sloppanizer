@@ -2,7 +2,7 @@ import type { Attachment, Label, Note, Person, PersonTag, Project, Todo } from "
 import type { TestApp } from "./helpers.ts";
 
 /** Data in every export table, plus a deleted newest todo and attachment so sequences are ahead of the ids. */
-export async function fillEveryTable(t: TestApp) {
+export async function fillEveryTable(t: Pick<TestApp, "call" | "create" | "account" | "ctx">) {
   const project = await t.create<Project>("/api/v1/projects", { name: "Lab" });
   await t.create<Label>("/api/v1/labels", { name: "homelab" });
   await t.create<PersonTag>("/api/v1/person-tags", { name: "fast reply" });
@@ -54,8 +54,8 @@ export async function fillEveryTable(t: TestApp) {
       "content-type": "application/octet-stream",
     }),
   );
-  t.deps.db.$client
-    .prepare("DELETE FROM attachments WHERE account_id = ? AND id = ?")
+  t.ctx()
+    .db.$client.prepare("DELETE FROM attachments WHERE account_id = ? AND id = ?")
     .run(t.account.id, goneFile.id);
   return { project, anna, todo, file };
 }
