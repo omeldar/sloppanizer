@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { contrast } from "../lib/color.ts";
 
 const css = readFileSync(new URL("./tokens.css", import.meta.url), "utf8");
+const base = readFileSync(new URL("./base.css", import.meta.url), "utf8");
 
 function themeTokens(selector: RegExp): Record<string, string> {
   const block = selector.exec(css)?.[1] ?? "";
@@ -29,13 +30,17 @@ describe.each(Object.entries(themes))("%s theme text contrast", (_name, t) => {
     },
   );
 
-  it.each(["bg", "raised", "sunken", "strip", "strip-selected"])(
-    "the amber line (cursor rings) reaches 3:1 on %s",
+  it.each(["bg", "raised", "raised-2", "sunken", "strip", "strip-selected"])(
+    "the amber line (focus and cursor rings) reaches 3:1 on %s",
     (surface) => {
       expect(t["amber-line"], "--amber-line").toBeDefined();
       expect(contrast(t["amber-line"] as string, t[surface] as string)).toBeGreaterThanOrEqual(3);
     },
   );
+
+  it("the global keyboard focus ring uses the amber line", () => {
+    expect(base).toMatch(/:focus-visible\s*\{[^}]*outline:[^;]*var\(--amber-line\)/);
+  });
 
   it("dark text on the amber fill (primary buttons) reaches 4.5:1", () => {
     expect(contrast(t["on-amber"] as string, t["amber-fill"] as string)).toBeGreaterThanOrEqual(4.5);
