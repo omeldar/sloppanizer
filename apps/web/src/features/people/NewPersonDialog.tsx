@@ -2,7 +2,7 @@ import { DuplicatePersonDetails, type Person } from "@organizer/shared";
 import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useId, useState } from "react";
 import { useCommands } from "../../app/commands.tsx";
-import { Dialog } from "../../components/Dialog.tsx";
+import { Dialog, DialogActions, DialogBody } from "../../components/Dialog.tsx";
 import { Button, Field, TextInput } from "../../components/ui.tsx";
 import { ApiError, errorMessage } from "../../lib/api.ts";
 import { useCreatePerson, useTeams } from "../../lib/queries.ts";
@@ -64,7 +64,7 @@ function NewPersonForm({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <form className={styles.newForm} onSubmit={submit}>
+    <DialogBody onSubmit={submit}>
       <div className={styles.newRow}>
         <Field label="First name">
           {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog opens to type a name */}
@@ -107,7 +107,7 @@ function NewPersonForm({ onDone }: { onDone: () => void }) {
           {error}
         </p>
       )}
-      <div className={styles.newActions}>
+      <DialogActions>
         <Button
           type="submit"
           variant="primary"
@@ -115,7 +115,7 @@ function NewPersonForm({ onDone }: { onDone: () => void }) {
         >
           Add person
         </Button>
-      </div>
-    </form>
+      </DialogActions>
+    </DialogBody>
   );
 }

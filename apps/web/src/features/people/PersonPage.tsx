@@ -12,7 +12,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useId, useRef, useState } from "react";
-import { Dialog } from "../../components/Dialog.tsx";
+import { Dialog, DialogActions, DialogBody } from "../../components/Dialog.tsx";
 import { LabelPill } from "../../components/LabelPill.tsx";
 import { MarkdownField } from "../../components/markdown/MarkdownField.tsx";
 import { Menu } from "../../components/Menu.tsx";
@@ -369,7 +369,7 @@ function RenameTopicDialog({ topic, onClose }: { topic: { id: number; name: stri
   };
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()} title={`Rename ${topic.name}`} width={440}>
-      <form className={styles.newForm} onSubmit={submit}>
+      <DialogBody onSubmit={submit}>
         <Field label="New name" hint="Changes the topic for everyone who has it.">
           {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog opens to type */}
           <TextInput value={name} onChange={(e) => setName(e.target.value)} maxLength={60} autoFocus />
@@ -379,13 +379,13 @@ function RenameTopicDialog({ topic, onClose }: { topic: { id: number; name: stri
             {error}
           </p>
         )}
-        <div className={styles.newActions}>
+        <DialogActions>
           <Button onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={!name.trim() || rename.isPending}>
             Rename topic
           </Button>
-        </div>
-      </form>
+        </DialogActions>
+      </DialogBody>
     </Dialog>
   );
 }
@@ -407,27 +407,29 @@ function DeleteTopicDialog({
       description={`The topic is removed from ${topic.peopleCount === 1 ? "the one person" : `all ${topic.peopleCount} people`} who have it.`}
       width={440}
     >
-      <div className={styles.newActions}>
-        <Button onClick={onClose}>Keep it</Button>
-        <Button
-          variant="danger"
-          disabled={remove.isPending}
-          onClick={async () => {
-            try {
-              await remove.mutateAsync(topic.id);
-              toast.show({ message: `Deleted topic ${topic.name}` });
-              onClose();
-            } catch (error) {
-              toast.show({
-                tone: "error",
-                message: `Could not delete ${topic.name}. ${errorMessage(error)}`,
-              });
-            }
-          }}
-        >
-          Delete topic
-        </Button>
-      </div>
+      <DialogBody>
+        <DialogActions>
+          <Button onClick={onClose}>Keep it</Button>
+          <Button
+            variant="danger"
+            disabled={remove.isPending}
+            onClick={async () => {
+              try {
+                await remove.mutateAsync(topic.id);
+                toast.show({ message: `Deleted topic ${topic.name}` });
+                onClose();
+              } catch (error) {
+                toast.show({
+                  tone: "error",
+                  message: `Could not delete ${topic.name}. ${errorMessage(error)}`,
+                });
+              }
+            }}
+          >
+            Delete topic
+          </Button>
+        </DialogActions>
+      </DialogBody>
     </Dialog>
   );
 }
@@ -612,30 +614,32 @@ function DeletePersonDialog({
       description="Their notes, topics and tags are removed for good."
       width={440}
     >
-      {error && (
-        <p className={styles.error} role="alert">
-          {error}
-        </p>
-      )}
-      <div className={styles.newActions}>
-        <Button onClick={() => onOpenChange(false)}>Keep</Button>
-        <Button
-          variant="danger"
-          disabled={remove.isPending}
-          onClick={async () => {
-            try {
-              await remove.mutateAsync(person.id);
-              onOpenChange(false);
-              toast.show({ message: `Deleted ${person.displayName}` });
-              void navigate({ to: "/people" });
-            } catch (failure) {
-              setError(deleteProblem(failure));
-            }
-          }}
-        >
-          Delete person
-        </Button>
-      </div>
+      <DialogBody>
+        {error && (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        )}
+        <DialogActions>
+          <Button onClick={() => onOpenChange(false)}>Keep</Button>
+          <Button
+            variant="danger"
+            disabled={remove.isPending}
+            onClick={async () => {
+              try {
+                await remove.mutateAsync(person.id);
+                onOpenChange(false);
+                toast.show({ message: `Deleted ${person.displayName}` });
+                void navigate({ to: "/people" });
+              } catch (failure) {
+                setError(deleteProblem(failure));
+              }
+            }}
+          >
+            Delete person
+          </Button>
+        </DialogActions>
+      </DialogBody>
     </Dialog>
   );
 }

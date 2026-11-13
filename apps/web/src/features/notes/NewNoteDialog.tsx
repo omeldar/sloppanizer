@@ -1,7 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useId, useState } from "react";
 import { useCommands } from "../../app/commands.tsx";
-import { Dialog } from "../../components/Dialog.tsx";
+import { Dialog, DialogActions, DialogBody } from "../../components/Dialog.tsx";
 import { Popover } from "../../components/Popover.tsx";
 import { ProjectPicker } from "../../components/pickers/pickers.tsx";
 import { Button, Field, FieldButton, TextInput } from "../../components/ui.tsx";
@@ -50,7 +50,7 @@ function NewNoteForm({ projectId: startProject, onDone }: { projectId: number | 
   };
 
   return (
-    <form className={styles.newForm} onSubmit={submit}>
+    <DialogBody onSubmit={submit}>
       <Field label="Title">
         <TextInput
           value={title}
@@ -94,11 +94,11 @@ function NewNoteForm({ projectId: startProject, onDone }: { projectId: number | 
           {error}
         </p>
       )}
-      <div className={styles.newActions}>
+      <DialogActions>
         <Button type="submit" variant="primary" disabled={create.isPending}>
           Create note
         </Button>
-      </div>
-    </form>
+      </DialogActions>
+    </DialogBody>
   );
 }

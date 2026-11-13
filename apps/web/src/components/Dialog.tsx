@@ -1,5 +1,5 @@
 import * as RadixDialog from "@radix-ui/react-dialog";
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useKeys } from "../keyboard/KeyboardProvider.tsx";
 import styles from "./Dialog.module.css";
 
@@ -48,6 +48,31 @@ export function Dialog({
       </RadixDialog.Portal>
     </RadixDialog.Root>
   );
+}
+
+/**
+ * The padded inside of a dialog under its title: fields, messages and actions in one column.
+ * With onSubmit it is the dialog's form.
+ */
+export function DialogBody({
+  children,
+  onSubmit,
+}: {
+  children: ReactNode;
+  onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return onSubmit ? (
+    <form className={styles.body} onSubmit={onSubmit}>
+      {children}
+    </form>
+  ) : (
+    <div className={styles.body}>{children}</div>
+  );
+}
+
+/** The dialog's buttons, at the end of its body. */
+export function DialogActions({ children }: { children: ReactNode }) {
+  return <div className={styles.actions}>{children}</div>;
 }
 
 /** While a dialog is open, page shortcuts are off. */

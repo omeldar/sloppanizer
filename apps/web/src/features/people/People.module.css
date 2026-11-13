@@ -647,22 +647,10 @@
 }
 
 /* New person dialog */
-.newForm {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 .newRow {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-}
-
-.newActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 .duplicate {
