@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { type AddressInfo, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -10,9 +11,7 @@ import { addDays, type Todo, toLocalDate } from "@organizer/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { bundle } from "../scripts/build.ts";
 
-// The real server on port 4803 with a temp data dir, the bundled MCP server over stdio.
-const PORT = 4803;
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+// The real server on a free port with a temp data dir, the bundled MCP server over stdio.
 const TZ = "Europe/Zurich";
 const TOKEN_NAME = "planner";
 const SERVER_DIR = fileURLToPath(new URL("../../server", import.meta.url));
@@ -24,23 +23,38 @@ const bundlePath = join(root, "mcp", "index.js");
 const today = toLocalDate(new Date(), TZ);
 
 let server: ChildProcess | undefined;
+let baseUrl = "";
 const clients: Client[] = [];
 
-async function waitForHealth(timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+/**
+ * A port nothing listens on right now. A fixed port clashed with other runs of this test (another
+ * checkout, a second `pnpm test`) or a server already on it, which then answered in our place.
+ */
+async function freePort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const { port } = probe.address() as AddressInfo;
+  await new Promise((resolve) => probe.close(resolve));
+  return port;
+}
+
+/**
+ * Waits until our server answers its health check, or fails as soon as it exits. No own deadline: how
+ * long a start takes depends on the machine's load, and the beforeAll time limit catches a hang.
+ */
+async function waitForHealth(): Promise<void> {
+  for (;;) {
     if (server?.exitCode !== null) throw new Error(`server exited with ${server?.exitCode}`);
     try {
       // oxlint-disable-next-line no-await-in-loop -- polling, one request at a time
-      const response = await fetch(`${BASE_URL}/api/v1/health`);
+      const response = await fetch(`${baseUrl}/api/v1/health`);
       if (response.ok) return;
     } catch {
       // not up yet
     }
     // oxlint-disable-next-line no-await-in-loop -- polling interval
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error("server did not become healthy");
 }
 
 async function connect(env: Record<string, string>): Promise<Client> {
@@ -75,11 +89,13 @@ const idOf = (text: string): number => Number(/#(\d+)/.exec(text)?.[1]);
 
 beforeAll(async () => {
   await bundle(bundlePath);
+  const port = await freePort();
+  baseUrl = `http://127.0.0.1:${port}`;
   server = spawn(process.execPath, ["src/index.ts"], {
     cwd: SERVER_DIR,
     env: {
       ...process.env,
-      ORGANIZER_PORT: String(PORT),
+      ORGANIZER_PORT: String(port),
       ORGANIZER_DATA_DIR: dataDir,
       ORGANIZER_TZ: TZ,
       ORGANIZER_WEB_DIR: join(root, "no-web"),
@@ -88,14 +104,14 @@ beforeAll(async () => {
     },
     stdio: ["ignore", "ignore", "inherit"],
   });
-  await waitForHealth(30_000);
+  await waitForHealth();
   const created = spawnSync(
     process.execPath,
     ["src/cli/token-create.ts", "--name", TOKEN_NAME, "--scope", "write", "--out", tokenFile],
     { cwd: SERVER_DIR, env: { ...process.env, ORGANIZER_DATA_DIR: dataDir }, encoding: "utf8" },
   );
   if (created.status !== 0) throw new Error(`token:create failed: ${created.stderr}`);
-  mcp = await connect({ ORGANIZER_URL: BASE_URL, ORGANIZER_TOKEN_FILE: tokenFile, ORGANIZER_TZ: TZ });
+  mcp = await connect({ ORGANIZER_URL: baseUrl, ORGANIZER_TOKEN_FILE: tokenFile, ORGANIZER_TZ: TZ });
 }, 60_000);
 
 afterAll(async () => {
@@ -291,7 +307,7 @@ describe("MCP server against the real API", () => {
   });
 
   it("says where the token file should be when it is missing", async () => {
-    const noToken = await connect({ ORGANIZER_URL: BASE_URL, ORGANIZER_TOKEN_FILE: join(root, "missing") });
+    const noToken = await connect({ ORGANIZER_URL: baseUrl, ORGANIZER_TOKEN_FILE: join(root, "missing") });
     const result = await call("overview", {}, noToken);
     expect(result.isError).toBe(true);
     expect(result.text).toContain(`No API token at ${join(root, "missing")}`);
@@ -309,7 +325,7 @@ describe("step 2 tools against the real API", () => {
   async function rest(as: "session" | "token", method: string, path: string, body?: unknown) {
     const auth =
       as === "session" ? { cookie } : { authorization: `Bearer ${readFileSync(tokenFile, "utf8").trim()}` };
-    const response = await fetch(`${BASE_URL}/api/v1${path}`, {
+    const response = await fetch(`${baseUrl}/api/v1${path}`, {
       method,
       headers: { ...auth, ...(body === undefined ? {} : { "content-type": "application/json" }) },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -323,7 +339,7 @@ describe("step 2 tools against the real API", () => {
 
   beforeAll(async () => {
     // Loading the web app (here the placeholder page) sets the session cookie.
-    const page = await fetch(`${BASE_URL}/`, { headers: { accept: "text/html" } });
+    const page = await fetch(`${baseUrl}/`, { headers: { accept: "text/html" } });
     cookie = String(page.headers.get("set-cookie")).split(";")[0] ?? "";
     if (!cookie.startsWith("org_session=")) throw new Error(`no session cookie: ${cookie}`);
   });
