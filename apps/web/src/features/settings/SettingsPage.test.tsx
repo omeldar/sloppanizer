@@ -161,6 +161,34 @@ describe("settings: restore", () => {
     expect(within(alert).getByText("Nothing was changed.")).toBeTruthy();
   });
 
+  it("says each reason once and brings the message into view with the focus on it", async () => {
+    const scrolled = vi.fn<(options?: ScrollIntoViewOptions) => void>();
+    Element.prototype.scrollIntoView = scrolled;
+    setup("session", ({ method, path }) =>
+      method === "POST" && path.startsWith("/api/v1/restore?")
+        ? {
+            status: 422,
+            body: {
+              error: {
+                code: "validation_failed",
+                message: "This file cannot be restored: The file is not a zip archive.",
+                details: { problems: ["The file is not a zip archive."] },
+              },
+            },
+          }
+        : undefined,
+    );
+    await screen.findByRole("heading", { name: "Restore" });
+    pickFile(new File(["nope"], "bad.zip", { type: "application/zip" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(
+      "bad.zip cannot be restored. The file is not a zip archive.Nothing was changed.",
+    );
+    await waitFor(() => expect(document.activeElement).toBe(alert));
+    expect(scrolled.mock.contexts).toContain(alert);
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
   it("refuses files over 1 GB without uploading them", async () => {
     const { calls } = setup();
     await screen.findByRole("heading", { name: "Restore" });

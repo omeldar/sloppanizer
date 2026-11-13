@@ -32,8 +32,18 @@ export const RESTORE_TABLES = [
 type State =
   | { step: "idle" }
   | { step: "checking"; fileName: string }
-  | { step: "problems"; fileName: string; message: string; problems: string[] }
+  | { step: "problems"; fileName: string; reasons: string[] }
   | { step: "preview"; preview: RestorePreview };
+
+/**
+ * Why a restore failed, each reason once: the server's list of problems (its message only repeats the
+ * first one), else the message itself.
+ */
+export function restoreReasons(error: unknown): string[] {
+  const details = error instanceof ApiError ? RestoreProblemDetails.safeParse(error.details) : null;
+  const problems = details?.success ? details.data.problems : [];
+  return problems.length > 0 ? [...new Set(problems)] : [errorMessage(error)];
+}
 
 /** The first, one-line summary of what a restore brought back. */
 export function restoredSummary(result: RestoreResult): string {
@@ -49,6 +59,7 @@ export function RestoreSection() {
   const [confirming, setConfirming] = useState(false);
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const problemsBox = useRef<HTMLDivElement>(null);
   const hash = useRouterState({ select: (s) => s.location.hash });
 
   // The palette's "Restore from export" lands here.
@@ -56,27 +67,23 @@ export function RestoreSection() {
     if (hash === "restore") input.current?.focus();
   }, [hash]);
 
+  // The message appears below the drop zone, often below the fold: bring it into view and focus it.
+  useEffect(() => {
+    if (state.step !== "problems" || !problemsBox.current) return;
+    problemsBox.current.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    problemsBox.current.focus({ preventScroll: true });
+  }, [state]);
+
   const check = async (file: File) => {
     if (file.size > MAX_RESTORE_BYTES) {
-      setState({
-        step: "problems",
-        fileName: file.name,
-        message: "Export files can be up to 1 GB.",
-        problems: [],
-      });
+      setState({ step: "problems", fileName: file.name, reasons: ["Export files can be up to 1 GB."] });
       return;
     }
     setState({ step: "checking", fileName: file.name });
     try {
       setState({ step: "preview", preview: await uploadRestore(file, file.name) });
     } catch (error) {
-      const details = error instanceof ApiError ? RestoreProblemDetails.safeParse(error.details) : null;
-      setState({
-        step: "problems",
-        fileName: file.name,
-        message: errorMessage(error),
-        problems: details?.success ? details.data.problems : [],
-      });
+      setState({ step: "problems", fileName: file.name, reasons: restoreReasons(error) });
     }
   };
 
@@ -138,14 +145,15 @@ export function RestoreSection() {
       )}
 
       {state.step === "problems" && (
-        <div className={styles.problems} role="alert">
+        <div ref={problemsBox} className={styles.problems} role="alert" tabIndex={-1}>
           <p className={styles.problemTitle}>
-            {state.fileName} cannot be restored. {state.message}
+            {state.fileName} cannot be restored.
+            {state.reasons.length === 1 && ` ${state.reasons[0]}`}
           </p>
-          {state.problems.length > 0 && (
+          {state.reasons.length > 1 && (
             <ul className={styles.problemList}>
-              {state.problems.map((problem) => (
-                <li key={problem}>{problem}</li>
+              {state.reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
               ))}
             </ul>
           )}
@@ -294,8 +302,7 @@ function ConfirmForm({ preview, onCancel }: { preview: RestorePreview; onCancel:
         durationMs: 15_000,
       });
     } catch (failure) {
-      const details = failure instanceof ApiError ? RestoreProblemDetails.safeParse(failure.details) : null;
-      setError([errorMessage(failure), ...(details?.success ? details.data.problems : [])].join(" "));
+      setError(restoreReasons(failure).join(" "));
       setPending(false);
     }
   };
