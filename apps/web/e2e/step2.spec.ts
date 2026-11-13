@@ -313,7 +313,7 @@ test("week: drag onto Wednesday plans it, back to Unplanned clears it, shift+l m
   await expect(card(day(thursday))).toBeVisible();
 });
 
-test("the export zip is format 2 with the uploaded file, notes and people Markdown", async () => {
+test("the export zip (format 3) has the uploaded file, notes and people Markdown", async () => {
   const upload = await api.post(`${API}/attachments?name=e2e-${stamp}.png`, {
     data: pngBytes(),
     headers: { "content-type": "application/octet-stream" },
@@ -338,7 +338,7 @@ test("the export zip is format 2 with the uploaded file, notes and people Markdo
     format: number;
     attachments: { count: number; missing: number[] };
   };
-  expect(manifest.format).toBe(2);
+  expect(manifest.format).toBe(3);
   expect(manifest.attachments.missing).toEqual([]);
 
   const zipName = `attachments/${attachment.id}-${attachment.name}`;

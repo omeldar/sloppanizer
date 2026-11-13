@@ -196,7 +196,7 @@ test("the export zip downloads and its data.json holds the todo", async () => {
   expect(download.suggestedFilename()).toMatch(/^organizer-export-\d{8}-\d{6}\.zip$/);
   const files = unzipSync(readFileSync(await download.path()));
   const manifest = JSON.parse(strFromU8(files["manifest.json"]!)) as { app: string; format: number };
-  expect(manifest).toMatchObject({ app: "organizer", format: 2 });
+  expect(manifest).toMatchObject({ app: "organizer", format: 3 });
 
   const data = JSON.parse(strFromU8(files["data.json"]!)) as Record<string, Array<Record<string, unknown>>>;
   const todo = data.todos?.find((row) => row.id === todoId);
