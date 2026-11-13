@@ -570,7 +570,8 @@
 
 .todoRow {
   display: grid;
-  grid-template-columns: 3px 60px minmax(0, 1fr) 96px 96px 96px;
+  /* The status column fits "In progress" in the mono font with its padding. */
+  grid-template-columns: 3px 60px minmax(0, 1fr) 116px 96px 96px;
   align-items: center;
   min-height: 34px;
   background: var(--strip);
@@ -629,6 +630,7 @@
   font-size: 12px;
   color: var(--text-2);
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .todoStatus[data-status="in_progress"] {
