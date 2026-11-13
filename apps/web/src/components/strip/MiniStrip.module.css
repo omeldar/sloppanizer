@@ -16,9 +16,11 @@
   background: var(--strip-hover);
 }
 
+/* The j/k cursor: an amber ring like the focus ring, plain to see in both themes. */
 .card[data-selected] {
   background: var(--strip-selected);
-  border-color: var(--line-strong);
+  border-color: var(--amber-line);
+  box-shadow: inset 0 0 0 1px var(--amber-line);
 }
 
 .card[data-selected] .band {

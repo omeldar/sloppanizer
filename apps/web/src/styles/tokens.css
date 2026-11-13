@@ -15,6 +15,8 @@
   --amber: #ffb224;
   --amber-text: #ffb224;
   --amber-fill: #ffb224;
+  /* Rings and cursors: 3:1 against every surface, like other UI parts must reach. */
+  --amber-line: #ffb224;
   --on-amber: #14100a;
   --amber-tint: rgba(255, 178, 36, 0.12);
   --red: #f2555a;
@@ -46,6 +48,8 @@
   /* Spec #9A5B00 is 4.3:1 on sunken panels. */
   --amber-text: #8f5400;
   --amber-fill: #ffb224;
+  /* The fill amber is 1.4:1 on sunken panels; this one reaches 3.2:1 there and more elsewhere. */
+  --amber-line: #b06f00;
   --on-amber: #12161c;
   --amber-tint: rgba(255, 178, 36, 0.2);
   /* Spec #C9353B is 4.1:1 on sunken panels; text needs 4.5:1. */
