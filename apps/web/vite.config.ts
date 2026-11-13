@@ -49,6 +49,8 @@ export default defineConfig({
     environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["./src/test/setup.ts"],
+    // `pnpm test` runs every package at once: each takes its share of the cores, not all of them.
+    maxWorkers: "50%",
     css: { modules: { classNameStrategy: "non-scoped" } },
   },
 });
