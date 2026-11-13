@@ -1,19 +1,6 @@
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 14px 16px 16px;
-}
-
 .error {
   color: var(--red);
   font-size: var(--fs-small);
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 .colors {

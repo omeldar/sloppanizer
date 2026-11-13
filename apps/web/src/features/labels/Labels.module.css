@@ -76,13 +76,6 @@
   gap: 4px;
 }
 
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 14px 16px 16px;
-}
-
 .formRow {
   display: flex;
   align-items: flex-end;
@@ -106,12 +99,6 @@
 .error {
   color: var(--red);
   font-size: var(--fs-small);
-}
-
-.formActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 .sectionHead {

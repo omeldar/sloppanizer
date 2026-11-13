@@ -158,13 +158,6 @@
   color: var(--text-2);
 }
 
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 14px 16px 16px;
-}
-
 .scopes {
   display: flex;
   flex-direction: column;
@@ -219,15 +212,4 @@
 .error {
   color: var(--red);
   font-size: var(--fs-small);
-}
-
-.formActions,
-.dialogActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.dialogActions {
-  padding: 14px 16px 16px;
 }

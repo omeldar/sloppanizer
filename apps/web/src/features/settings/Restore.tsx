@@ -7,7 +7,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { type DragEvent, type FormEvent, useEffect, useRef, useState } from "react";
-import { Dialog } from "../../components/Dialog.tsx";
+import { Dialog, DialogBody, DialogActions } from "../../components/Dialog.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { Button, Field, Loading, TextInput } from "../../components/ui.tsx";
 import { ApiError, errorMessage } from "../../lib/api.ts";
@@ -308,7 +308,7 @@ function ConfirmForm({ preview, onCancel }: { preview: RestorePreview; onCancel:
   };
 
   return (
-    <form className={styles.confirm} onSubmit={submit}>
+    <DialogBody onSubmit={submit}>
       <Field label='Type "replace" to confirm'>
         {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog opens to type the word */}
         <TextInput value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus autoComplete="off" />
@@ -319,15 +319,15 @@ function ConfirmForm({ preview, onCancel }: { preview: RestorePreview; onCancel:
         </p>
       )}
       {pending && <p className={styles.note}>Saving a safety copy and replacing the data...</p>}
-      <div className={styles.confirmActions}>
+      <DialogActions>
         <Button onClick={onCancel} disabled={pending}>
           Cancel
         </Button>
         <Button type="submit" variant="danger" disabled={!ready || pending}>
           Replace all data
         </Button>
-      </div>
-    </form>
+      </DialogActions>
+    </DialogBody>
   );
 }
 

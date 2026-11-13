@@ -1,6 +1,6 @@
 import { type ActivityItem, type Comment, describeEvent, type Me, type Todo } from "@organizer/shared";
 import { type Ref, useEffect, useRef, useState } from "react";
-import { Dialog } from "../../components/Dialog.tsx";
+import { Dialog, DialogBody, DialogActions } from "../../components/Dialog.tsx";
 import { MarkdownEditor, type MarkdownEditorHandle } from "../../components/markdown/MarkdownEditor.tsx";
 import { MarkdownPreview } from "../../components/markdown/MarkdownPreview.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
@@ -249,24 +249,29 @@ function DeleteCommentDialog({
       description={`The comment on #${todoId} is removed for good. Attached files stay stored.`}
       width={440}
     >
-      <div className={styles.dialogActions}>
-        <Button onClick={() => onOpenChange(false)}>Keep it</Button>
-        <Button
-          variant="danger"
-          disabled={remove.isPending}
-          onClick={async () => {
-            try {
-              await remove.mutateAsync(comment.id);
-              onOpenChange(false);
-              toast.show({ message: "Deleted the comment" });
-            } catch (error) {
-              toast.show({ tone: "error", message: `Could not delete the comment. ${errorMessage(error)}` });
-            }
-          }}
-        >
-          Delete comment
-        </Button>
-      </div>
+      <DialogBody>
+        <DialogActions>
+          <Button onClick={() => onOpenChange(false)}>Keep it</Button>
+          <Button
+            variant="danger"
+            disabled={remove.isPending}
+            onClick={async () => {
+              try {
+                await remove.mutateAsync(comment.id);
+                onOpenChange(false);
+                toast.show({ message: "Deleted the comment" });
+              } catch (error) {
+                toast.show({
+                  tone: "error",
+                  message: `Could not delete the comment. ${errorMessage(error)}`,
+                });
+              }
+            }}
+          >
+            Delete comment
+          </Button>
+        </DialogActions>
+      </DialogBody>
     </Dialog>
   );
 }

@@ -1,7 +1,7 @@
 import type { ApiToken, TokenScope } from "@organizer/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
-import { Dialog } from "../../components/Dialog.tsx";
+import { Dialog, DialogBody, DialogActions } from "../../components/Dialog.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import {
   Button,
@@ -303,7 +303,7 @@ function NewTokenForm({
   };
 
   return (
-    <form className={styles.form} onSubmit={submit}>
+    <DialogBody onSubmit={submit}>
       <Field label="Name" hint="Where the token is used, e.g. MCP on the laptop.">
         {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog opens to type a name */}
         <TextInput value={name} onChange={(e) => setName(e.target.value)} maxLength={100} autoFocus />
@@ -346,13 +346,13 @@ function NewTokenForm({
           {error}
         </p>
       )}
-      <div className={styles.formActions}>
+      <DialogActions>
         <Button onClick={onCancel}>Cancel</Button>
         <Button type="submit" variant="primary" disabled={!name.trim() || pending}>
           Create token
         </Button>
-      </div>
-    </form>
+      </DialogActions>
+    </DialogBody>
   );
 }
 
@@ -360,7 +360,7 @@ function RevokeActions({ token, onDone }: { token: ApiToken; onDone: () => void 
   const revoke = useRevokeToken();
   const toast = useToast();
   return (
-    <div className={styles.dialogActions}>
+    <DialogActions>
       <Button onClick={onDone}>Keep it</Button>
       <Button
         variant="danger"
@@ -377,6 +377,6 @@ function RevokeActions({ token, onDone }: { token: ApiToken; onDone: () => void 
       >
         Revoke token
       </Button>
-    </div>
+    </DialogActions>
   );
 }

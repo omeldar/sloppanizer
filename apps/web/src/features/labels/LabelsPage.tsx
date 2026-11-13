@@ -8,7 +8,7 @@ import {
   type UpdateLabel,
 } from "@organizer/shared";
 import { type FormEvent, useState } from "react";
-import { Dialog } from "../../components/Dialog.tsx";
+import { Dialog, DialogBody, DialogActions } from "../../components/Dialog.tsx";
 import { LabelPill } from "../../components/LabelPill.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import {
@@ -188,7 +188,7 @@ function LabelForm({ label, onDone }: { label?: Label; onDone: () => void }) {
   }
 
   return (
-    <form className={styles.form} onSubmit={submit}>
+    <DialogBody onSubmit={submit}>
       <Field
         label="Name"
         hint={
@@ -233,7 +233,7 @@ function LabelForm({ label, onDone }: { label?: Label; onDone: () => void }) {
           {error}
         </p>
       )}
-      <div className={styles.formActions}>
+      <DialogActions>
         <Button
           type="submit"
           variant="primary"
@@ -241,8 +241,8 @@ function LabelForm({ label, onDone }: { label?: Label; onDone: () => void }) {
         >
           {label ? "Save label" : "Create label"}
         </Button>
-      </div>
-    </form>
+      </DialogActions>
+    </DialogBody>
   );
 }
 
@@ -273,7 +273,7 @@ export function ScopeConflict({
     return other.scope !== null && scopeKey(other.scope) === scopeKey(scope) && name !== label.name;
   };
   return (
-    <section className={styles.form} aria-label="Scope conflict">
+    <DialogBody label="Scope conflict">
       <p className={styles.conflictText}>
         {n === 1 ? "One todo already has" : `${n} todos already have`} a label of the scope{" "}
         <span className={styles.mono}>{scope}</span>. A todo keeps one label per scope, so renaming to{" "}
@@ -294,14 +294,14 @@ export function ScopeConflict({
           </li>
         ))}
       </ul>
-      <div className={styles.formActions}>
+      <DialogActions>
         <Button onClick={onCancel}>Cancel</Button>
         {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the choice the rename asked for; Esc cancels */}
         <Button variant="primary" disabled={pending} onClick={onKeep} autoFocus>
           Keep the renamed label on them
         </Button>
-      </div>
-    </section>
+      </DialogActions>
+    </DialogBody>
   );
 }
 
@@ -309,23 +309,28 @@ function DeleteLabel({ label, onDone }: { label: Label; onDone: () => void }) {
   const remove = useDeleteLabel();
   const toast = useToast();
   return (
-    <div className={styles.formActions} style={{ padding: 16 }}>
-      <Button onClick={onDone}>Keep it</Button>
-      <Button
-        variant="danger"
-        disabled={remove.isPending}
-        onClick={async () => {
-          try {
-            await remove.mutateAsync(label.id);
-            toast.show({ message: `Deleted label ${label.name}` });
-            onDone();
-          } catch (error) {
-            toast.show({ tone: "error", message: `Could not delete ${label.name}. ${errorMessage(error)}` });
-          }
-        }}
-      >
-        Delete label
-      </Button>
-    </div>
+    <DialogBody>
+      <DialogActions>
+        <Button onClick={onDone}>Keep it</Button>
+        <Button
+          variant="danger"
+          disabled={remove.isPending}
+          onClick={async () => {
+            try {
+              await remove.mutateAsync(label.id);
+              toast.show({ message: `Deleted label ${label.name}` });
+              onDone();
+            } catch (error) {
+              toast.show({
+                tone: "error",
+                message: `Could not delete ${label.name}. ${errorMessage(error)}`,
+              });
+            }
+          }}
+        >
+          Delete label
+        </Button>
+      </DialogActions>
+    </DialogBody>
   );
 }

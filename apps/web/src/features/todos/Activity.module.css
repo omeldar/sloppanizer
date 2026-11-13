@@ -152,9 +152,3 @@
   color: var(--text-3);
   font-size: var(--fs-small);
 }
-
-.dialogActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}

@@ -354,19 +354,6 @@ a.fileName:hover {
   gap: 8px;
 }
 
-.confirm {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px 16px;
-}
-
-.confirmActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
 .error {
   color: var(--red);
   font-size: var(--fs-small);

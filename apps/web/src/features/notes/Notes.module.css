@@ -253,12 +253,6 @@
   font-family: var(--font-mono);
 }
 
-.dialogActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
 .newRow {
   display: flex;
   align-items: center;

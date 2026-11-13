@@ -57,14 +57,24 @@ export function Dialog({
 export function DialogBody({
   children,
   onSubmit,
+  label,
 }: {
   children: ReactNode;
   onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
+  /** Makes the body a named region (when it is not a form). */
+  label?: string;
 }) {
-  return onSubmit ? (
-    <form className={styles.body} onSubmit={onSubmit}>
+  if (onSubmit) {
+    return (
+      <form className={styles.body} onSubmit={onSubmit}>
+        {children}
+      </form>
+    );
+  }
+  return label ? (
+    <section className={styles.body} aria-label={label}>
       {children}
-    </form>
+    </section>
   ) : (
     <div className={styles.body}>{children}</div>
   );

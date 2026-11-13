@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
-import { Dialog } from "../../components/Dialog.tsx";
+import { Dialog, DialogBody, DialogActions } from "../../components/Dialog.tsx";
 import { Button, Field, TextInput } from "../../components/ui.tsx";
 import { errorMessage } from "../../lib/api.ts";
 import { PROJECT_COLORS } from "../../lib/color.ts";
@@ -40,7 +40,7 @@ function NewProjectForm({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <form className={styles.form} onSubmit={submit}>
+    <DialogBody onSubmit={submit}>
       <Field label="Name">
         <TextInput
           value={name}
@@ -58,12 +58,12 @@ function NewProjectForm({ onDone }: { onDone: () => void }) {
           {error}
         </p>
       )}
-      <div className={styles.actions}>
+      <DialogActions>
         <Button type="submit" variant="primary" disabled={!name.trim() || create.isPending}>
           Create project
         </Button>
-      </div>
-    </form>
+      </DialogActions>
+    </DialogBody>
   );
 }
 

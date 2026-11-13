@@ -1,7 +1,7 @@
 import { DEFAULT_PERSON_TAG_COLOR, type PersonTag, PersonTagConflictDetails } from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
-import { Dialog } from "../../components/Dialog.tsx";
+import { Dialog, DialogBody, DialogActions } from "../../components/Dialog.tsx";
 import { LabelPill } from "../../components/LabelPill.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { Button, EmptyState, ErrorState, Field, Loading, TextInput } from "../../components/ui.tsx";
@@ -142,7 +142,7 @@ function TagForm({ tag, onDone }: { tag?: PersonTag; onDone: () => void }) {
   };
 
   return (
-    <form className={styles.form} onSubmit={submit}>
+    <DialogBody onSubmit={submit}>
       <Field label="Name" hint={problem ?? "Shown as a pill on people, like a plain label."}>
         <TextInput
           value={name}
@@ -179,7 +179,7 @@ function TagForm({ tag, onDone }: { tag?: PersonTag; onDone: () => void }) {
           {error}
         </p>
       )}
-      <div className={styles.formActions}>
+      <DialogActions>
         <Button
           type="submit"
           variant="primary"
@@ -187,8 +187,8 @@ function TagForm({ tag, onDone }: { tag?: PersonTag; onDone: () => void }) {
         >
           {tag ? "Save tag" : "Create tag"}
         </Button>
-      </div>
-    </form>
+      </DialogActions>
+    </DialogBody>
   );
 }
 
@@ -196,23 +196,25 @@ function DeleteTag({ tag, onDone }: { tag: PersonTag; onDone: () => void }) {
   const remove = useDeletePersonTag();
   const toast = useToast();
   return (
-    <div className={styles.formActions} style={{ padding: 16 }}>
-      <Button onClick={onDone}>Keep it</Button>
-      <Button
-        variant="danger"
-        disabled={remove.isPending}
-        onClick={async () => {
-          try {
-            await remove.mutateAsync(tag.id);
-            toast.show({ message: `Deleted person tag ${tag.name}` });
-            onDone();
-          } catch (error) {
-            toast.show({ tone: "error", message: `Could not delete ${tag.name}. ${errorMessage(error)}` });
-          }
-        }}
-      >
-        Delete tag
-      </Button>
-    </div>
+    <DialogBody>
+      <DialogActions>
+        <Button onClick={onDone}>Keep it</Button>
+        <Button
+          variant="danger"
+          disabled={remove.isPending}
+          onClick={async () => {
+            try {
+              await remove.mutateAsync(tag.id);
+              toast.show({ message: `Deleted person tag ${tag.name}` });
+              onDone();
+            } catch (error) {
+              toast.show({ tone: "error", message: `Could not delete ${tag.name}. ${errorMessage(error)}` });
+            }
+          }}
+        >
+          Delete tag
+        </Button>
+      </DialogActions>
+    </DialogBody>
   );
 }

@@ -1,7 +1,7 @@
 import type { Note, UpdateNote } from "@organizer/shared";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { Dialog } from "../../components/Dialog.tsx";
+import { Dialog, DialogBody, DialogActions } from "../../components/Dialog.tsx";
 import { MarkdownField } from "../../components/markdown/MarkdownField.tsx";
 import { Popover } from "../../components/Popover.tsx";
 import { ProjectPicker } from "../../components/pickers/pickers.tsx";
@@ -143,25 +143,27 @@ function DeleteNoteDialog({
       description="The note is removed for good. Attached files stay stored."
       width={440}
     >
-      <div className={styles.dialogActions}>
-        <Button onClick={() => onOpenChange(false)}>Keep it</Button>
-        <Button
-          variant="danger"
-          disabled={remove.isPending}
-          onClick={async () => {
-            try {
-              await remove.mutateAsync(note.id);
-              onOpenChange(false);
-              toast.show({ message: `Deleted "${note.title}"` });
-              void navigate({ to: "/notes" });
-            } catch (error) {
-              toast.show({ tone: "error", message: `Could not delete the note. ${errorMessage(error)}` });
-            }
-          }}
-        >
-          Delete note
-        </Button>
-      </div>
+      <DialogBody>
+        <DialogActions>
+          <Button onClick={() => onOpenChange(false)}>Keep it</Button>
+          <Button
+            variant="danger"
+            disabled={remove.isPending}
+            onClick={async () => {
+              try {
+                await remove.mutateAsync(note.id);
+                onOpenChange(false);
+                toast.show({ message: `Deleted "${note.title}"` });
+                void navigate({ to: "/notes" });
+              } catch (error) {
+                toast.show({ tone: "error", message: `Could not delete the note. ${errorMessage(error)}` });
+              }
+            }}
+          >
+            Delete note
+          </Button>
+        </DialogActions>
+      </DialogBody>
     </Dialog>
   );
 }

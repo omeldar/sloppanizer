@@ -12,7 +12,7 @@ import {
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Dialog } from "../../components/Dialog.tsx";
+import { Dialog, DialogBody, DialogActions } from "../../components/Dialog.tsx";
 import { LabelPill } from "../../components/LabelPill.tsx";
 import type { MarkdownEditorHandle } from "../../components/markdown/MarkdownEditor.tsx";
 import { MarkdownField } from "../../components/markdown/MarkdownField.tsx";
@@ -360,13 +360,15 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
         }
         width={460}
       >
-        <div className={styles.dialogActions}>
-          <Button onClick={() => void done.confirm(false)}>No, only #{todo.id}</Button>
-          {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the answer the question asks for */}
-          <Button variant="primary" onClick={() => void done.confirm(true)} autoFocus>
-            Yes, mark them done
-          </Button>
-        </div>
+        <DialogBody>
+          <DialogActions>
+            <Button onClick={() => void done.confirm(false)}>No, only #{todo.id}</Button>
+            {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the answer the question asks for */}
+            <Button variant="primary" onClick={() => void done.confirm(true)} autoFocus>
+              Yes, mark them done
+            </Button>
+          </DialogActions>
+        </DialogBody>
       </Dialog>
     </div>
   );
@@ -618,28 +620,33 @@ function DeleteDialog({
       description="The todo and its history are removed for good. Mark it done instead if you want to keep a record."
       width={440}
     >
-      <div className={styles.dialogActions}>
-        <Button onClick={() => onOpenChange(false)}>Keep it</Button>
-        <Button
-          variant="danger"
-          disabled={remove.isPending}
-          onClick={async () => {
-            try {
-              await remove.mutateAsync(todo.id);
-              onOpenChange(false);
-              toast.show({ message: `Deleted #${todo.id}` });
-              void navigate({
-                to: todo.project ? "/projects/$slug" : "/inbox",
-                params: todo.project ? { slug: todo.project.slug } : {},
-              });
-            } catch (error) {
-              toast.show({ tone: "error", message: `Could not delete #${todo.id}. ${errorMessage(error)}` });
-            }
-          }}
-        >
-          Delete todo
-        </Button>
-      </div>
+      <DialogBody>
+        <DialogActions>
+          <Button onClick={() => onOpenChange(false)}>Keep it</Button>
+          <Button
+            variant="danger"
+            disabled={remove.isPending}
+            onClick={async () => {
+              try {
+                await remove.mutateAsync(todo.id);
+                onOpenChange(false);
+                toast.show({ message: `Deleted #${todo.id}` });
+                void navigate({
+                  to: todo.project ? "/projects/$slug" : "/inbox",
+                  params: todo.project ? { slug: todo.project.slug } : {},
+                });
+              } catch (error) {
+                toast.show({
+                  tone: "error",
+                  message: `Could not delete #${todo.id}. ${errorMessage(error)}`,
+                });
+              }
+            }}
+          >
+            Delete todo
+          </Button>
+        </DialogActions>
+      </DialogBody>
     </Dialog>
   );
 }
