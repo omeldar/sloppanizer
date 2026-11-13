@@ -1,25 +1,29 @@
 import { strFromU8, unzipSync } from "fflate";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { openDb } from "../src/db/index.ts";
+import { describe, expect, it } from "vitest";
+import { ID_TABLES } from "../src/db/schema.ts";
 import { EXPORT_TABLES } from "../src/services/export.ts";
 import { repairNameKeys } from "../src/services/name-keys.ts";
-import { replaceAllData } from "../src/services/restore-data.ts";
+import { nextId } from "../src/services/owned.ts";
+import { replaceAccountData } from "../src/services/restore-data.ts";
 import { fillEveryTable } from "./fixtures.ts";
 import { makeApp } from "./helpers.ts";
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+type Sqlite = Awaited<ReturnType<typeof makeApp>>["deps"]["db"]["$client"];
 
-const tableRows = (sqlite: ReturnType<typeof openDb>["$client"], table: string) =>
-  sqlite.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();
+const physical = (table: string) => (table === "settings" ? "account_settings" : table);
+
+/** The account's rows of a table without account_id (local settings left out). */
+const accountRows = (sqlite: Sqlite, table: string, accountId: number) =>
+  (
+    sqlite
+      .prepare(`SELECT * FROM "${physical(table)}" WHERE account_id = ? ORDER BY rowid`)
+      .all(accountId) as Record<string, unknown>[]
+  )
+    .filter((row) => !(table === "settings" && row.key === "restoreInProgress"))
+    .map(({ account_id: _, ...row }) => row);
 
 describe("export data.json", () => {
-  it("loads into a fresh database with every row, id and sequence unchanged", async () => {
+  it("loads into another account of a fresh server with every row, id and sequence unchanged", async () => {
     const t = await makeApp();
     await fillEveryTable(t);
     const res = await t.call("GET", "/api/v1/export.zip");
@@ -28,41 +32,35 @@ describe("export data.json", () => {
     const data = JSON.parse(strFromU8(files["data.json"] as Uint8Array));
     const manifest = JSON.parse(strFromU8(files["manifest.json"] as Uint8Array));
     const source = t.deps.db.$client;
-    const sourceSeq = source
-      .prepare("SELECT name, seq FROM sqlite_sequence WHERE name IN ('todos','attachments') ORDER BY name")
-      .all();
-    expect(manifest.sequences).toEqual({
-      todos: (sourceSeq.find((r) => (r as { name: string }).name === "todos") as { seq: number }).seq,
-      attachments: (sourceSeq.find((r) => (r as { name: string }).name === "attachments") as { seq: number })
-        .seq,
-    });
 
-    const root = mkdtempSync(join(tmpdir(), "organizer-roundtrip-"));
-    roots.push(root);
-    const target = openDb(join(root, "fresh.db"));
-    const sqlite = target.$client;
-    // data.json leaves out the derived name keys; a restore refills them right after (as applyRestore does).
-    sqlite.transaction(() => {
-      replaceAllData(sqlite, data, manifest.sequences);
-      expect(repairNameKeys(sqlite)).toBe(0);
+    // Every id table has a sequence; the deleted newest todo and attachment keep them ahead of the ids.
+    expect(Object.keys(manifest.sequences).toSorted()).toEqual([...ID_TABLES].toSorted());
+    for (const table of ["todos", "attachments"]) {
+      const { maxId } = source
+        .prepare(`SELECT max(id) AS maxId FROM "${table}" WHERE account_id = ?`)
+        .get(t.account.id) as { maxId: number };
+      expect(manifest.sequences[table]).toBeGreaterThan(maxId);
+    }
+    // data.json carries no account ids.
+    expect(JSON.stringify(data)).not.toContain("account_id");
+
+    const fresh = await makeApp();
+    const bo = await fresh.asAccount({ username: "bo" });
+    const target = fresh.deps.db.$client;
+    target.transaction(() => {
+      replaceAccountData(target, bo.account.id, data, manifest.sequences);
+      // data.json leaves out the derived name keys; a restore refills them right after.
+      expect(repairNameKeys(target, bo.account.id)).toBe(0);
     })();
-    expect(sqlite.pragma("foreign_key_check")).toEqual([]);
-    const everything = (db: typeof source) =>
-      Object.fromEntries(EXPORT_TABLES.map((table) => [table, tableRows(db, table)]));
-    expect(everything(sqlite)).toEqual(everything(source));
-    expect(EXPORT_TABLES.filter((table) => tableRows(source, table).length === 0)).toEqual([]);
-    expect(
-      sqlite
-        .prepare("SELECT name, seq FROM sqlite_sequence WHERE name IN ('todos','attachments') ORDER BY name")
-        .all(),
-    ).toEqual(sourceSeq);
+    expect(target.pragma("foreign_key_check")).toEqual([]);
+
+    const everything = (sqlite: Sqlite, accountId: number) =>
+      Object.fromEntries(EXPORT_TABLES.map((table) => [table, accountRows(sqlite, table, accountId)]));
+    expect(everything(target, bo.account.id)).toEqual(everything(source, t.account.id));
+    expect(EXPORT_TABLES.filter((table) => accountRows(source, table, t.account.id).length === 0)).toEqual(
+      [],
+    );
     // The next todo gets a new id, not the one of the deleted newest todo.
-    const next = sqlite
-      .prepare(
-        "INSERT INTO todos (title, created_at, updated_at, last_activity_at) VALUES ('n', 'x', 'x', 'x')",
-      )
-      .run().lastInsertRowid;
-    expect(Number(next)).toBe(manifest.sequences.todos + 1);
-    target.$client.close();
+    expect(target.transaction(() => nextId(bo.ctx(), "todos"))()).toBe(manifest.sequences.todos + 1);
   });
 });

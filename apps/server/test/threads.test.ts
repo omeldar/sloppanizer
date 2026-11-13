@@ -1,6 +1,7 @@
 import type { Activity, Comment, Todo } from "@organizer/shared";
 import { describe, expect, it } from "vitest";
 import { events } from "../src/db/schema.ts";
+import { insertOwnedRow } from "../src/services/owned.ts";
 import { json, makeApp, type TestApp } from "./helpers.ts";
 
 const MIN = 60_000;
@@ -151,16 +152,13 @@ describe("activity thread", () => {
     await t.call("PATCH", `/api/v1/todos/${todo.id}`, { descriptionMd: "abcdef", projectId: home.id });
     await t.call("DELETE", `/api/v1/projects/${home.id}`);
     // An event as step 1 wrote it (no role).
-    t.deps.db
-      .insert(events)
-      .values({
-        todoId: todo.id,
-        actor: "you",
-        kind: "people_changed",
-        data: JSON.stringify({ from: [], to: [{ id: 1, name: "Anna Meier" }] }),
-        createdAt: "2026-11-11T10:00:00.000Z",
-      })
-      .run();
+    insertOwnedRow(t.ctx(), events, {
+      todoId: todo.id,
+      actor: "you",
+      kind: "people_changed",
+      data: JSON.stringify({ from: [], to: [{ id: 1, name: "Anna Meier" }] }),
+      createdAt: "2026-11-11T10:00:00.000Z",
+    });
     const data = (await activity(t, todo.id)).items
       .filter((i) => i.type === "event")
       .map((i) => (i.type === "event" ? [i.event.kind, i.event.data] : []));

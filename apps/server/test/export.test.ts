@@ -51,7 +51,7 @@ describe("GET /export.zip", () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toBe("application/zip");
     expect(res.headers["content-disposition"]).toBe(
-      'attachment; filename="organizer-export-20261114-140405.zip"',
+      'attachment; filename="sloppanizer-export-20261114-140405.zip"',
     );
     const files = unzipSync(res.rawPayload);
     const names = Object.keys(files).toSorted();
@@ -66,11 +66,12 @@ describe("GET /export.zip", () => {
 
     const manifest = JSON.parse(strFromU8(files["manifest.json"] as Uint8Array));
     expect(manifest).toMatchObject({
-      app: "organizer",
-      format: 3,
+      app: "sloppanizer",
+      format: 4,
       exportedAt: "2026-11-14T13:04:05.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 8,
+      schemaVersion: 9,
+      account: { username: "anna" },
       attachments: { count: 0, bytes: 0, missing: [] },
     });
 
@@ -78,7 +79,12 @@ describe("GET /export.zip", () => {
     expect(Object.keys(data).toSorted()).toEqual([...EXPORT_TABLES].toSorted());
     const sqlite = t.deps.db.$client;
     for (const table of EXPORT_TABLES) {
-      const rows = sqlite.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();
+      const physical = table === "settings" ? "account_settings" : table;
+      const rows = (
+        sqlite
+          .prepare(`SELECT * FROM "${physical}" WHERE account_id = ? ORDER BY rowid`)
+          .all(t.account.id) as Record<string, unknown>[]
+      ).map(({ account_id: _, ...row }) => row);
       expect(data[table]).toEqual(asExported(table, rows));
       expect(manifest.counts[table]).toBe(rows.length);
     }
@@ -150,11 +156,12 @@ const frontMatter = (md: string) => {
   return { meta: parse(match?.[1] ?? "") as Record<string, unknown>, body: match?.[2] ?? "" };
 };
 
-describe("export format 3", () => {
+describe("export format 4", () => {
   it("holds the new tables, the uploaded files and Markdown for notes and people", async () => {
     const t = await makeApp({ now: "2026-11-11T13:04:05.000Z", timeZone: "Europe/Zurich" });
     const sqlite = t.deps.db.$client;
     const at = "2026-11-11T13:04:05.000Z";
+    const a = t.account.id;
     const project = await t.create<{ id: number }>("/api/v1/projects", { name: "Home lab" });
     const todo = await t.create<Todo>("/api/v1/todos", {
       title: "Open port 443",
@@ -175,35 +182,49 @@ describe("export format 3", () => {
         anna,
       );
     sqlite
-      .prepare("INSERT INTO topics (id, name, created_at) VALUES (1, 'VPN', ?), (2, 'firewall rules', ?)")
-      .run(at, at);
-    sqlite
-      .prepare("INSERT INTO person_topics (person_id, topic_id, created_at) VALUES (?, 1, ?), (?, 2, ?)")
-      .run(anna, at, anna, at);
+      .prepare(
+        "INSERT INTO topics (account_id, id, name, created_at) VALUES (?, 1, 'VPN', ?), (?, 2, 'firewall rules', ?)",
+      )
+      .run(a, at, a, at);
     sqlite
       .prepare(
-        "INSERT INTO person_tags (id, name, color, created_at, updated_at) VALUES (1, 'fast reply', '#3E8E7E', ?, ?)",
+        "INSERT INTO person_topics (account_id, person_id, topic_id, created_at) VALUES (?, ?, 1, ?), (?, ?, 2, ?)",
       )
-      .run(at, at);
-    sqlite
-      .prepare("INSERT INTO person_tag_links (person_id, tag_id, created_at) VALUES (?, 1, ?)")
-      .run(anna, at);
+      .run(a, anna, at, a, anna, at);
     sqlite
       .prepare(
-        "INSERT INTO todo_people (todo_id, person_id, role, created_at) VALUES (?, ?, 'contact', ?), (?, ?, 'contact', ?)",
+        "INSERT INTO person_tags (account_id, id, name, color, created_at, updated_at) VALUES (?, 1, 'fast reply', '#3E8E7E', ?, ?)",
       )
-      .run(todo.id, max.id, at, todo.id, anna, at);
+      .run(a, at, at);
+    sqlite
+      .prepare("INSERT INTO person_tag_links (account_id, person_id, tag_id, created_at) VALUES (?, ?, 1, ?)")
+      .run(a, anna, at);
+    sqlite
+      .prepare(
+        "INSERT INTO todo_people (account_id, todo_id, person_id, role, created_at) VALUES (?, ?, ?, 'contact', ?), (?, ?, ?, 'contact', ?)",
+      )
+      .run(a, todo.id, max.id, at, a, todo.id, anna, at);
     sqlite
       .prepare(
         // The later comment gets the lower id: the Markdown still lists them by time.
-        "INSERT INTO comments (todo_id, actor, body_md, created_at, updated_at) VALUES (?, 'planner', 'Done: [log](/api/v1/attachments/3/log.pdf)', ?, ?), (?, 'you', ?, ?, ?)",
+        "INSERT INTO comments (account_id, id, todo_id, actor, body_md, created_at, updated_at, author_kind) VALUES (?, 1, ?, 'planner', 'Done: [log](/api/v1/attachments/3/log.pdf)', ?, ?, 'token'), (?, 2, ?, 'you', ?, ?, ?, 'session')",
       )
-      .run(todo.id, "2026-11-12T08:00:00.000Z", at, todo.id, "Asked Max.\n", "2026-11-11T13:05:00.000Z", at);
+      .run(
+        a,
+        todo.id,
+        "2026-11-12T08:00:00.000Z",
+        at,
+        a,
+        todo.id,
+        "Asked Max.\n",
+        "2026-11-11T13:05:00.000Z",
+        at,
+      );
     sqlite
       .prepare(
-        "INSERT INTO notes (project_id, title, body_md, pinned_at, created_by, created_at, updated_at) VALUES (?, 'Router: setup', ?, ?, 'you', ?, ?), (NULL, 'Empty', '', NULL, 'planner', ?, ?)",
+        "INSERT INTO notes (account_id, id, project_id, title, body_md, pinned_at, created_by, created_at, updated_at) VALUES (?, 1, ?, 'Router: setup', ?, ?, 'you', ?, ?), (?, 2, NULL, 'Empty', '', NULL, 'planner', ?, ?)",
       )
-      .run(project.id, "![shot](/api/v1/attachments/1/shot.png)", at, at, at, at, at);
+      .run(a, project.id, "![shot](/api/v1/attachments/1/shot.png)", at, at, at, a, at, at);
     const png = Uint8Array.from([
       0x89,
       0x50,
@@ -217,13 +238,12 @@ describe("export format 3", () => {
     ]);
     const txt = new TextEncoder().encode("line\n".repeat(200));
     const insertAttachment = sqlite.prepare(
-      "INSERT INTO attachments (name, mime_type, size, sha256, created_by, created_at) VALUES (?, ?, ?, ?, 'you', ?)",
+      "INSERT INTO attachments (account_id, id, name, mime_type, size, sha256, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, 'you', ?)",
     );
-    insertAttachment.run("shot.png", "image/png", png.length, sha(png), at);
-    insertAttachment.run("net.txt", "application/octet-stream", txt.length, sha(txt), at);
-    insertAttachment.run("log.pdf", "application/pdf", 10, "0".repeat(64), at);
-    const dir = join(t.dataDir, "attachments");
-    mkdirSync(dir, { recursive: true });
+    insertAttachment.run(a, 1, "shot.png", "image/png", png.length, sha(png), at);
+    insertAttachment.run(a, 2, "net.txt", "application/octet-stream", txt.length, sha(txt), at);
+    insertAttachment.run(a, 3, "log.pdf", "application/pdf", 10, "0".repeat(64), at);
+    const dir = t.filesDir;
     writeFileSync(join(dir, "1"), png);
     writeFileSync(join(dir, "2"), txt);
     // File 3 is missing on disk: listed in the manifest, the export still works.
@@ -252,7 +272,7 @@ describe("export format 3", () => {
     expect(methods["attachments/2-net.txt"]).toBe(8);
 
     const manifest = JSON.parse(text("manifest.json"));
-    expect(manifest.format).toBe(3);
+    expect(manifest.format).toBe(4);
     expect(manifest.attachments).toEqual({ count: 2, bytes: png.length + txt.length, missing: [3] });
     const data = JSON.parse(text("data.json"));
     expect(Object.keys(data)).toEqual([...EXPORT_TABLES]);
@@ -261,7 +281,12 @@ describe("export format 3", () => {
     expect(text("data.json")).not.toContain('"author_token_id"');
     expect(data.comments.every((c: object) => "author_kind" in c)).toBe(true);
     for (const table of EXPORT_TABLES) {
-      const rows = sqlite.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();
+      const physical = table === "settings" ? "account_settings" : table;
+      const rows = (
+        sqlite
+          .prepare(`SELECT * FROM "${physical}" WHERE account_id = ? ORDER BY rowid`)
+          .all(t.account.id) as Record<string, unknown>[]
+      ).map(({ account_id: _, ...row }) => row);
       expect(data[table]).toEqual(asExported(table, rows));
       expect(manifest.counts[table]).toBe(rows.length);
     }
@@ -338,7 +363,7 @@ describe("export format 3", () => {
       requested: [],
       contact_for: [todo.id],
     });
-    expect(text("README.md")).toContain("Export format 3.");
+    expect(text("README.md")).toContain("Export format 4.");
   });
 });
 

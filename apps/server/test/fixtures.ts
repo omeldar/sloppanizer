@@ -54,7 +54,9 @@ export async function fillEveryTable(t: TestApp) {
       "content-type": "application/octet-stream",
     }),
   );
-  t.deps.db.$client.prepare("DELETE FROM attachments WHERE id = ?").run(goneFile.id);
+  t.deps.db.$client
+    .prepare("DELETE FROM attachments WHERE account_id = ? AND id = ?")
+    .run(t.account.id, goneFile.id);
   return { project, anna, todo, file };
 }
 
