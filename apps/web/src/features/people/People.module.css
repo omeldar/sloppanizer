@@ -335,7 +335,8 @@
 }
 
 .noMatch {
-  max-width: 360px;
+  width: max-content;
+  max-width: 480px;
   padding: 6px 10px;
   color: var(--text-2);
   font-size: var(--fs-small);
@@ -378,8 +379,8 @@
 }
 
 .personCounts {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
   color: var(--text-2);
 }
 

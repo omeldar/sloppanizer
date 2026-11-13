@@ -255,6 +255,11 @@ a.fileName:hover {
   background: var(--red-tint);
 }
 
+/* Focused only to bring it into view and read it out; it is a message, not a control. */
+.problems:focus {
+  outline: none;
+}
+
 .problemTitle {
   color: var(--text);
   font-weight: 600;

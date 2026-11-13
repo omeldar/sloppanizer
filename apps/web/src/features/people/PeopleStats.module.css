@@ -314,8 +314,12 @@
   font-size: var(--fs-mono);
 }
 
+/* The breakdown is words: the text font, whose parentheses do not look like brackets as B612 Mono's do. */
 .personNumbers dd span {
   color: var(--text-2);
+  font-family: var(--font-text);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
 }
 
 .months {

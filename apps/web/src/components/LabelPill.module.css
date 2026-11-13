@@ -8,6 +8,8 @@
   font-family: var(--font-mono);
   font-size: var(--fs-pill);
   line-height: 16px;
+  /* A mono space is a full cell wide; names with spaces ("easy to work with") read as one name. */
+  word-spacing: -0.3em;
   white-space: nowrap;
   overflow: hidden;
 }
