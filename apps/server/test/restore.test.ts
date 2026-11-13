@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
+import { attachmentFileName } from "../src/services/export.ts";
 import { setSetting } from "../src/services/settings.ts";
 import { fillEveryTable } from "./fixtures.ts";
 import { json, makeApp, type TestApp } from "./helpers.ts";
@@ -388,6 +389,43 @@ describe("restore apply", () => {
         await t.call("GET", `/api/v1/search?q=${encodeURIComponent("ärzte")}`),
       ).counts.person,
     ).toBe(2);
+  });
+
+  it("takes type and name of restored attachments from the file, never from data.json", async () => {
+    const t = await makeApp();
+    const html = Buffer.from("<script>alert(1)</script>");
+    const up = await t.call("POST", "/api/v1/attachments?name=page.html", html, {
+      "content-type": "text/html",
+    });
+    const page = up.json() as { id: number; name: string };
+    const { file } = await fillEveryTable(t);
+    const crafted = "../x<i>.html";
+    const zip = rework(await exportZip(t), (_m, d, files) => {
+      for (const row of d.attachments) {
+        // A crafted export: HTML served as HTML, and a name with markup and path parts.
+        if (row.id === page.id) Object.assign(row, { mime_type: "text/html", name: crafted });
+        if (row.id === file.id) row.mime_type = "text/html";
+      }
+      files[`attachments/${attachmentFileName({ id: page.id, name: crafted })}`] = files[
+        `attachments/${page.id}-${page.name}`
+      ] as Uint8Array;
+      delete files[`attachments/${page.id}-${page.name}`];
+    });
+    const preview = json<RestorePreview>(await upload(t, zip));
+    expect(
+      (await t.call("POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" })).statusCode,
+    ).toBe(200);
+    const meta = json<{ name: string; mimeType: string }>(
+      await t.call("GET", `/api/v1/attachments/${page.id}/meta`),
+    );
+    expect(meta).toMatchObject({ name: "x-i-.html", mimeType: "application/octet-stream" });
+    const served = await t.call("GET", `/api/v1/attachments/${page.id}`);
+    expect(served.headers["content-type"]).toBe("application/octet-stream");
+    expect(served.headers["content-disposition"]).toMatch(/^attachment;/);
+    // The real PNG gets its type back from its bytes.
+    expect(
+      json<{ mimeType: string }>(await t.call("GET", `/api/v1/attachments/${file.id}/meta`)).mimeType,
+    ).toBe("image/png");
   });
 
   it("keeps the newest 5 safety copies", async () => {

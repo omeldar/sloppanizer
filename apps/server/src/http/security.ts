@@ -186,7 +186,12 @@ export function registerSecurity(app: FastifyInstance, options: SecurityOptions)
     reply.header("Referrer-Policy", "no-referrer");
     reply.header("X-Frame-Options", "DENY");
     const type = reply.getHeader("content-type");
-    if (typeof type === "string" && type.startsWith("text/html")) {
+    // A route's own policy wins (attachments are sandboxed whatever their type).
+    if (
+      typeof type === "string" &&
+      type.startsWith("text/html") &&
+      !reply.hasHeader("content-security-policy")
+    ) {
       reply.header("Content-Security-Policy", CSP);
     }
     return payload;

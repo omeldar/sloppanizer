@@ -195,6 +195,16 @@ describe("attachment downloads", () => {
     expect(res.headers["content-disposition"]).toBe("attachment; filename*=UTF-8''report.pdf");
   });
 
+  it("keeps the sandbox policy even for a row whose type says text/html", async () => {
+    const t = await makeApp();
+    const a = await stored(t, HTML, "page.html", "text/html");
+    // As a crafted restore could have left it before the restore cleaned types.
+    t.deps.db.$client.prepare("UPDATE attachments SET mime_type = 'text/html' WHERE id = ?").run(a.id);
+    const res = await t.call("GET", a.url);
+    expect(res.headers["content-type"]).toMatch(/^text\/html/);
+    expect(res.headers["content-security-policy"]).toBe("default-src 'none'; sandbox");
+  });
+
   it("answers 404 for unknown ids and for a file missing on disk", async () => {
     const t = await makeApp();
     expect((await t.call("GET", "/api/v1/attachments/9")).statusCode).toBe(404);

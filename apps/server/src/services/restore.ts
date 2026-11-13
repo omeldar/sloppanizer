@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { ATTACHMENTS_DIR, writePrivateFile } from "../data-dir.ts";
 import { type Db, openDb, schemaVersion } from "../db/index.ts";
 import { ApiError } from "../http/errors.ts";
+import { detectType, OCTET_STREAM, sanitizeName } from "./attachments.ts";
 import { now } from "./context.ts";
 import { attachmentFileName, buildExport, EXPORT_TABLES, fileStamp } from "./export.ts";
 import { type FolderDeps, freeName, writeFileAtomically } from "./folder-export.ts";
@@ -86,7 +87,11 @@ interface AttachmentRowData {
   name: string;
   size: number;
   sha256: string;
+  mime_type: string;
 }
+
+/** Bytes detectType needs from the start of a file. */
+const HEAD_BYTES = 16;
 
 interface Archive {
   zip: Buffer;
@@ -287,6 +292,8 @@ interface AttachmentCheck {
   bytes: number;
   missing: number[];
   warnings: string[];
+  /** The first bytes of every checked file by attachment id (for the type). */
+  heads: Map<number, Buffer>;
 }
 
 /** Receives the files while they are checked (apply writes them to the staging folder). */
@@ -302,6 +309,7 @@ function checkAttachments(archive: Archive, problems: Problems, sink?: FileSink)
   const listedMissing = new Set(archive.manifest.attachments?.missing ?? []);
   const used = new Set<string>();
   const missing: number[] = [];
+  const heads = new Map<number, Buffer>();
   let count = 0;
   let bytes = 0;
   for (const row of rows) {
@@ -321,10 +329,13 @@ function checkAttachments(archive: Archive, problems: Problems, sink?: FileSink)
       continue;
     }
     const hash = createHash("sha256");
+    let head = Buffer.alloc(0);
     let size: number;
     sink?.start(row.id);
     try {
       size = inflateEntry(archive.zip, entry, entry.size, (chunk) => {
+        if (head.length < HEAD_BYTES)
+          head = Buffer.concat([head, chunk.subarray(0, HEAD_BYTES - head.length)]);
         hash.update(chunk);
         sink?.write(chunk);
       });
@@ -338,6 +349,7 @@ function checkAttachments(archive: Archive, problems: Problems, sink?: FileSink)
       problems.add(`The file of attachment ${row.id} (${row.name}) does not match its size or checksum.`);
       continue;
     }
+    heads.set(row.id, head);
     count += 1;
     bytes += size;
   }
@@ -355,7 +367,21 @@ function checkAttachments(archive: Archive, problems: Problems, sink?: FileSink)
       `${extra} file${extra > 1 ? "s" : ""} in attachments/ belong${extra > 1 ? "" : "s"} to no attachment and ${extra > 1 ? "are" : "is"} ignored.`,
     );
   }
-  return { count, bytes, missing, warnings };
+  return { count, bytes, missing, warnings, heads };
+}
+
+/**
+ * Type and name of restored attachments are never taken from data.json: the type comes from the
+ * file's first bytes and the name is cleaned, as for an upload (a file missing in the archive gets
+ * application/octet-stream). Otherwise a crafted export could serve a file as text/html.
+ */
+function cleanAttachmentRows(archive: Archive, heads: ReadonlyMap<number, Buffer>): void {
+  for (const row of (archive.data.attachments ?? []) as unknown as AttachmentRowData[]) {
+    const head = heads.get(row.id);
+    const { mime, ext } = head ? detectType(head) : { mime: OCTET_STREAM, ext: "" };
+    row.mime_type = mime;
+    row.name = sanitizeName(typeof row.name === "string" ? row.name : undefined, ext);
+  }
 }
 
 function liveCounts(db: Db, tables: readonly string[]): Record<string, number> {
@@ -576,8 +602,9 @@ export async function applyRestore(deps: RestoreDeps, uploadId: string): Promise
     rmSync(staging, { recursive: true, force: true });
     privateDir(staging);
     // The files are checked again (size and sha256) while they are written.
-    checkAttachments(archive, problems, folderSink(staging));
+    const { heads } = checkAttachments(archive, problems, folderSink(staging));
     if (problems.any) throw problems.error();
+    cleanAttachmentRows(archive, heads);
 
     const sqlite = deps.db.$client;
     const progress: InProgress = { uploadId, stagingDir: staging };
