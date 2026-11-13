@@ -32,6 +32,8 @@ export type KeyMode = "normal" | "insert";
 
 interface KeyboardState {
   register: (layer: Layer) => () => void;
+  /** Holds keys nobody handles until the release; see useKeyHold. */
+  hold: () => () => void;
   mode: KeyMode;
   /** Keys typed so far of an unfinished sequence, e.g. "g". */
   pending: string;
@@ -41,6 +43,10 @@ interface KeyboardState {
 const KeyboardContext = createContext<KeyboardState | null>(null);
 
 const SEQUENCE_TIMEOUT_MS = 1500;
+/** How long held keys wait after the hold ends for the page that loaded to take them. */
+const HELD_KEYS_GRACE_MS = 1000;
+/** A few keys at most: a short burst typed while a page loads, not a backlog. */
+const MAX_HELD_KEYS = 3;
 const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock"]);
 
 type Pressed = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey">;
@@ -51,13 +57,46 @@ export function KeyboardProvider({ children }: { children: ReactNode }) {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [mode, setMode] = useState<KeyMode>("normal");
   const [pending, setPending] = useState("");
+  // Keys pressed while a page loads (no layer took them), replayed when its layer registers.
+  const holds = useRef(0);
+  const releasedAt = useRef(0);
+  const held = useRef<Pressed[]>([]);
 
-  const register = useCallback((layer: Layer) => {
-    layers.current = [...layers.current, layer];
+  const heldKeys = useCallback((): Pressed[] => {
+    if (holds.current === 0 && Date.now() - releasedAt.current > HELD_KEYS_GRACE_MS) held.current = [];
+    return held.current;
+  }, []);
+
+  const hold = useCallback(() => {
+    holds.current += 1;
     return () => {
-      layers.current = layers.current.filter((l) => l !== layer);
+      holds.current -= 1;
+      releasedAt.current = Date.now();
     };
   }, []);
+
+  const register = useCallback(
+    (layer: Layer) => {
+      layers.current = [...layers.current, layer];
+      // A held key goes to the first new layer that has a single key binding for it.
+      if (layer.enabled.current && heldKeys().length > 0) {
+        const left: Pressed[] = [];
+        for (const pressed of held.current) {
+          const binding = layer.bindings.current.find((b) => {
+            const chords = parseKeys(b.keys);
+            return chords.length === 1 && matchesChord(chords[0] as Chord, pressed);
+          });
+          if (binding) binding.run(new KeyboardEvent("keydown", pressed));
+          else left.push(pressed);
+        }
+        held.current = left;
+      }
+      return () => {
+        layers.current = layers.current.filter((l) => l !== layer);
+      };
+    },
+    [heldKeys],
+  );
 
   /** Enabled layers from the top down to (and including) the first modal one. */
   const visibleLayers = useCallback((): Layer[] => {
@@ -131,6 +170,9 @@ export function KeyboardProvider({ children }: { children: ReactNode }) {
       } else if (prefix) {
         event.preventDefault();
         setSequence([pressed]);
+      } else if (holds.current > 0 && !typing && heldKeys().length < MAX_HELD_KEYS) {
+        event.preventDefault();
+        held.current = [...held.current, pressed];
       }
     };
 
@@ -147,11 +189,11 @@ export function KeyboardProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
     };
-  }, [activeBindings]);
+  }, [activeBindings, heldKeys]);
 
   const value = useMemo(
-    () => ({ register, mode, pending, activeBindings }),
-    [register, mode, pending, activeBindings],
+    () => ({ register, hold, mode, pending, activeBindings }),
+    [register, hold, mode, pending, activeBindings],
   );
   return <KeyboardContext.Provider value={value}>{children}</KeyboardContext.Provider>;
 }
@@ -179,6 +221,16 @@ export function useKeys(
   });
   const modal = options.modal ?? false;
   useEffect(() => register({ bindings: bindingsRef, enabled: enabledRef, modal }), [register, modal]);
+}
+
+/**
+ * While `active` (a page or its data still loading), single keys no shortcut takes are kept, and the
+ * first layer that registers with a binding for them runs it, up to a second after the hold ends.
+ * So "m" pressed right after opening a todo still focuses the comment box once the page is there.
+ */
+export function useKeyHold(active: boolean): void {
+  const { hold } = useKeyboard();
+  useEffect(() => (active ? hold() : undefined), [active, hold]);
 }
 
 export function useKeyMode(): { mode: KeyMode; pending: string } {

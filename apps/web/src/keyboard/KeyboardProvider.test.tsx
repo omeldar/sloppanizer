@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type KeyBinding, KeyboardProvider, useKeyMode, useKeys } from "./KeyboardProvider.tsx";
+import { type KeyBinding, KeyboardProvider, useKeyHold, useKeyMode, useKeys } from "./KeyboardProvider.tsx";
 
 function Keys({
   bindings,
@@ -186,6 +186,64 @@ describe("keyboard system", () => {
     const input = screen.getByLabelText("title");
     input.addEventListener("keydown", (event) => event.preventDefault());
     fireEvent.keyDown(input, { key: "Escape" });
+    expect(run).not.toHaveBeenCalled();
+  });
+});
+
+function Hold({ active }: { active: boolean }) {
+  useKeyHold(active);
+  return null;
+}
+
+/** A page that is still loading (hold on), then shows with its shortcuts. */
+function LoadingPage({ ready, bindings }: { ready: boolean; bindings: KeyBinding[] }) {
+  return ready ? <Keys bindings={bindings} /> : <Hold active />;
+}
+
+describe("keys pressed while a page loads", () => {
+  it("runs a key the loading page binds once it is there", async () => {
+    const comment = vi.fn<(...args: unknown[]) => void>();
+    const bindings = [{ keys: "m", run: comment }];
+    const { rerender } = setup(<LoadingPage ready={false} bindings={bindings} />);
+    await userEvent.keyboard("m");
+    expect(comment).not.toHaveBeenCalled();
+    rerender(
+      <KeyboardProvider>
+        <LoadingPage ready bindings={bindings} />
+      </KeyboardProvider>,
+    );
+    expect(comment).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a held key the new page does not bind, and never replays it later", async () => {
+    const later = vi.fn<(...args: unknown[]) => void>();
+    const { rerender } = setup(<LoadingPage ready={false} bindings={[]} />);
+    await userEvent.keyboard("m");
+    rerender(
+      <KeyboardProvider>
+        <LoadingPage ready bindings={[{ keys: "x", run: vi.fn<(...args: unknown[]) => void>() }]} />
+      </KeyboardProvider>,
+    );
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 5000);
+    rerender(
+      <KeyboardProvider>
+        <LoadingPage ready bindings={[{ keys: "x", run: vi.fn<(...args: unknown[]) => void>() }]} />
+        <Keys bindings={[{ keys: "m", run: later }]} />
+      </KeyboardProvider>,
+    );
+    expect(later).not.toHaveBeenCalled();
+  });
+
+  it("does not hold keys when no page is loading", async () => {
+    const run = vi.fn<(...args: unknown[]) => void>();
+    const { rerender } = setup(<Hold active={false} />);
+    await userEvent.keyboard("m");
+    rerender(
+      <KeyboardProvider>
+        <Keys bindings={[{ keys: "m", run }]} />
+      </KeyboardProvider>,
+    );
     expect(run).not.toHaveBeenCalled();
   });
 });

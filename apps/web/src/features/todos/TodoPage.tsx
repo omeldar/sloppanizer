@@ -28,7 +28,7 @@ import {
   Loading,
   TitleInput,
 } from "../../components/ui.tsx";
-import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
+import { type KeyBinding, useKeyHold, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { ApiError, errorMessage } from "../../lib/api.ts";
 import { absoluteTime, dueText, relativeTime } from "../../lib/format.ts";
 import {
@@ -59,6 +59,8 @@ export function TodoPage() {
   const search = route.useSearch();
   const todoId = Number(id);
   const todo = useTodo(todoId);
+  // "m" or "e" pressed before the todo is there run once it is.
+  useKeyHold(todo.isPending);
 
   if (
     !Number.isInteger(todoId) ||

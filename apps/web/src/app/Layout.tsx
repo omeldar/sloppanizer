@@ -7,7 +7,7 @@ import { NewNoteDialog } from "../features/notes/NewNoteDialog.tsx";
 import { NewPersonDialog } from "../features/people/NewPersonDialog.tsx";
 import { NewProjectDialog } from "../features/projects/NewProjectDialog.tsx";
 import { QuickAdd } from "../features/quickadd/QuickAdd.tsx";
-import { type KeyBinding, useActiveBindings, useKeys } from "../keyboard/KeyboardProvider.tsx";
+import { type KeyBinding, useActiveBindings, useKeyHold, useKeys } from "../keyboard/KeyboardProvider.tsx";
 import { useProjects, useStats, useTodo } from "../lib/queries.ts";
 import { useCommands } from "./commands.tsx";
 import styles from "./Layout.module.css";
@@ -68,6 +68,9 @@ export function Layout() {
     },
   ];
   useKeys(globalKeys);
+  // Keys typed while the next page loads (its code or data) wait for it instead of getting lost.
+  const loading = useRouterState({ select: (s) => s.isLoading });
+  useKeyHold(loading);
 
   return (
     <div className={styles.shell}>
