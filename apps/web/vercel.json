@@ -14,6 +14,10 @@
       "destination": "/app.html"
     },
     {
+      "source": "/u/:account/",
+      "destination": "/app.html"
+    },
+    {
       "source": "/(login|signup|setup|reset)",
       "destination": "/app.html"
     }
@@ -76,6 +80,15 @@
     },
     {
       "source": "/u/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
+    },
+    {
+      "source": "/u/:account/",
       "headers": [
         {
           "key": "X-Robots-Tag",

@@ -52,7 +52,12 @@ describe("vercel.json", () => {
     expect(htmlSource.test("/assets/app-1234.js")).toBe(false);
   });
 
-  const appPaths = [...APP_PATH_PREFIXES.map((p) => (p.endsWith("/") ? `${p}anna/todos/1` : p)), "/u", "/u/"];
+  const appPaths = [
+    ...APP_PATH_PREFIXES.map((p) => (p.endsWith("/") ? `${p}anna/todos/1` : p)),
+    "/u",
+    "/u/",
+    "/u/anna/",
+  ];
 
   it.each(appPaths)("sends %s to app.html and marks it noindex", (path) => {
     const rewrite = vercel.rewrites.find((r) => sourceMatches(r.source, path));
@@ -63,6 +68,10 @@ describe("vercel.json", () => {
         r.headers.some((h) => h.key === "X-Robots-Tag" && h.value === "noindex"),
     );
     expect(noindex).toBe(true);
+  });
+
+  it("rewrites an account's start page with its trailing slash (Vercel's :path* does not match it)", () => {
+    expect(vercel.rewrites).toContainEqual({ source: "/u/:account/", destination: "/app.html" });
   });
 
   it("keeps the landing page out of the rewrites", () => {
