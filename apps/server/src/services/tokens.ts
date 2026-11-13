@@ -13,14 +13,17 @@ import { apiTokens } from "../db/schema.ts";
 import { ApiError } from "../http/errors.ts";
 import { foldCase } from "./text.ts";
 
+/** API tokens belong to one account; everything here is scoped by the caller's account id. */
+
 const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 /** last_used_at is written at most this often per token. */
 const LAST_USED_THROTTLE_MS = 60_000;
+export const MAX_ACTIVE_TOKENS = 20;
 
 export function generateRawToken(): string {
   let body = "";
   for (let i = 0; i < 40; i++) body += BASE62[randomInt(BASE62.length)];
-  return `org_${body}`;
+  return `spz_${body}`;
 }
 
 export const hashToken = (raw: string): string => createHash("sha256").update(raw).digest("hex");
@@ -44,35 +47,52 @@ export interface NewToken {
   expiresAt?: string | null | undefined;
 }
 
-/** Creates a token and returns the raw value once; only its sha256 hash is stored. */
-export function createToken(db: Db, clock: Clock, input: NewToken): { token: ApiToken; raw: string } {
+const isActive = (row: TokenRow, nowMs: number): boolean =>
+  row.revokedAt === null && (row.expiresAt === null || Date.parse(row.expiresAt) > nowMs);
+
+/** Creates a token of the account and returns the raw value once; only its sha256 hash is stored. */
+export function createToken(
+  db: Db,
+  clock: Clock,
+  accountId: number,
+  input: NewToken,
+): { token: ApiToken; raw: string } {
   // Comments and history name the actor by token name, so names must not be shared or look like the session.
   const key = foldCase(input.name);
   if (key === SESSION_ACTOR) {
     throw new ApiError("validation_failed", 'The name "you" is reserved for the browser session.');
   }
+  const nowMs = clock().getTime();
   // Few tokens, and SQLite's lower() folds ASCII only: compare in JS.
-  const taken = db
-    .select({ name: apiTokens.name })
+  const active = db
+    .select()
     .from(apiTokens)
-    .where(isNull(apiTokens.revokedAt))
+    .where(and(eq(apiTokens.accountId, accountId), isNull(apiTokens.revokedAt)))
     .all()
-    .find((t) => foldCase(t.name) === key);
+    .filter((row) => isActive(row, nowMs));
+  const taken = active.find((t) => foldCase(t.name) === key);
   if (taken) {
     throw new ApiError(
       "conflict",
       `A token named "${taken.name}" exists already. Pick another name, or revoke that token first.`,
     );
   }
+  if (active.length >= MAX_ACTIVE_TOKENS) {
+    throw new ApiError(
+      "conflict",
+      `This account has ${MAX_ACTIVE_TOKENS} active tokens, the most it can have. Revoke one you no longer use.`,
+    );
+  }
   const raw = generateRawToken();
   const row = db
     .insert(apiTokens)
     .values({
+      accountId,
       name: input.name,
       prefix: raw.slice(0, TOKEN_PREFIX_LENGTH),
       tokenHash: hashToken(raw),
       scope: input.scope,
-      createdAt: clock().toISOString(),
+      createdAt: new Date(nowMs).toISOString(),
       expiresAt: input.expiresAt ?? null,
     })
     .returning()
@@ -80,27 +100,32 @@ export function createToken(db: Db, clock: Clock, input: NewToken): { token: Api
   return { token: toApiToken(row), raw };
 }
 
-export function listTokens(db: Db): ApiToken[] {
+export function listTokens(db: Db, accountId: number): ApiToken[] {
   return db
     .select()
     .from(apiTokens)
+    .where(eq(apiTokens.accountId, accountId))
     .orderBy(desc(apiTokens.createdAt), desc(apiTokens.id))
     .all()
     .map(toApiToken);
 }
 
-/** Marks a token revoked. Returns false when it does not exist. */
-export function revokeToken(db: Db, clock: Clock, id: number): boolean {
-  const row = db.select().from(apiTokens).where(eq(apiTokens.id, id)).get();
+/** Marks a token of the account revoked. Returns false when the account has no such token. */
+export function revokeToken(db: Db, clock: Clock, accountId: number, id: number): boolean {
+  const scope = and(eq(apiTokens.id, id), eq(apiTokens.accountId, accountId));
+  const row = db.select().from(apiTokens).where(scope).get();
   if (!row) return false;
   db.update(apiTokens)
     .set({ revokedAt: clock().toISOString() })
-    .where(and(eq(apiTokens.id, id), isNull(apiTokens.revokedAt)))
+    .where(and(scope, isNull(apiTokens.revokedAt)))
     .run();
   return true;
 }
 
-/** The token for a raw value, if it is valid now (not revoked, not expired). Updates last_used_at. */
+/**
+ * The token for a raw value, if it is valid now (not revoked, not expired). Updates last_used_at. The
+ * caller checks that its account is active.
+ */
 export function verifyToken(db: Db, clock: Clock, raw: string): TokenRow | null {
   if (!TOKEN_PATTERN.test(raw)) return null;
   const row = db
@@ -108,9 +133,8 @@ export function verifyToken(db: Db, clock: Clock, raw: string): TokenRow | null 
     .from(apiTokens)
     .where(eq(apiTokens.tokenHash, hashToken(raw)))
     .get();
-  if (!row || row.revokedAt !== null) return null;
   const now = clock();
-  if (row.expiresAt !== null && Date.parse(row.expiresAt) <= now.getTime()) return null;
+  if (!row || !isActive(row, now.getTime())) return null;
   if (row.lastUsedAt === null || now.getTime() - Date.parse(row.lastUsedAt) >= LAST_USED_THROTTLE_MS) {
     db.update(apiTokens).set({ lastUsedAt: now.toISOString() }).where(eq(apiTokens.id, row.id)).run();
   }

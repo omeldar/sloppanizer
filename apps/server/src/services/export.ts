@@ -1,9 +1,10 @@
-import { createReadStream, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join } from "node:path";
-import { once } from "node:events";
-import { PassThrough, type Readable } from "node:stream";
+import type { Readable } from "node:stream";
 import {
   describeRecurrence,
+  EXPORT_FORMAT,
+  type ExportManifest,
   formatDuration,
   INLINE_IMAGE_TYPES,
   toLocalDate,
@@ -11,20 +12,24 @@ import {
   todoDurationMs,
 } from "@organizer/shared";
 import { asc } from "drizzle-orm";
-import { strToU8, Zip, ZipDeflate, ZipPassThrough } from "fflate";
+import { strToU8 } from "fflate";
 import { stringify } from "yaml";
 import { schemaVersion } from "../db/index.ts";
-import { todos } from "../db/schema.ts";
+import { ID_TABLES, todos } from "../db/schema.ts";
 import type { Ctx } from "./context.ts";
+import { owned } from "./owned.ts";
+import { type ZipEntry, zipStream } from "./zip-writer.ts";
 import { slugify } from "./projects.ts";
-import { LOCAL_SETTING_KEYS, setSetting } from "./settings.ts";
-import { LAST_EXPORT_AT } from "./stats.ts";
+import { LAST_EXPORT_AT, LOCAL_SETTING_KEYS, setSetting } from "./settings.ts";
 import { compareNames } from "./text.ts";
 import { hydrate } from "./todos.ts";
 
-export const EXPORT_FORMAT = 3;
+export { EXPORT_FORMAT };
 
-/** Tables in the export, in restore order (parents before children). Never api_tokens, search_fts or the secret. */
+/**
+ * Tables in the export (data.json names), in restore order (parents before children). Never api_tokens,
+ * search_fts, account rows or secrets. "settings" holds the account's settings (account_settings).
+ */
 export const EXPORT_TABLES = [
   "projects",
   "labels",
@@ -44,9 +49,15 @@ export const EXPORT_TABLES = [
   "settings",
 ] as const;
 
+export type ExportTable = (typeof EXPORT_TABLES)[number];
+
+/** The database table behind a data.json table. */
+export const dbTable = (table: string): string => (table === "settings" ? "account_settings" : table);
+
 /**
  * Columns left out of data.json: derived from other columns (refilled after a restore) or only valid on
- * this device. A restore ignores them when a file has them.
+ * this server. A restore ignores them when a file has them. account_id is never in data.json either: any
+ * export fits any account.
  */
 export const LOCAL_COLUMNS: Partial<Record<(typeof EXPORT_TABLES)[number], readonly string[]>> = {
   labels: ["name_key"],
@@ -55,24 +66,25 @@ export const LOCAL_COLUMNS: Partial<Record<(typeof EXPORT_TABLES)[number], reado
   comments: ["author_token_id"],
 };
 
-/** The row without the local columns of its table. */
+/** The row without account_id and the local columns of its table. */
 export function withoutLocalColumns(table: string, row: Record<string, unknown>): Record<string, unknown> {
-  const local = LOCAL_COLUMNS[table as keyof typeof LOCAL_COLUMNS];
-  if (!local) return row;
-  return Object.fromEntries(Object.entries(row).filter(([name]) => !local.includes(name)));
+  const local = LOCAL_COLUMNS[table as keyof typeof LOCAL_COLUMNS] ?? [];
+  return Object.fromEntries(
+    Object.entries(row).filter(([name]) => name !== "account_id" && !local.includes(name)),
+  );
 }
 
-const README = `# organizer export
+const README = `# Sloppanizer export
 
-This archive is a complete copy of your organizer data (API tokens, the secret and settings of
-this device are left out). Export format 3.
+This archive is a complete copy of one Sloppanizer account's data (its sign-in data, API tokens and
+the server's settings are left out). Export format 4.
 
-- manifest.json: app, export format, time of export, app and schema version, row counts per table,
-  the attachments (count, bytes, ids of files that were missing on disk) and the id sequences of
-  todos and attachments (so a restore never gives out an old id again).
+- manifest.json: app, export format, time of export, app and schema version, the account (username
+  and display name), row counts per table, the attachments (count, bytes, ids of files that were
+  missing on disk) and the id sequences of every table (so a restore never gives out an old id again).
 - data.json: every row of every table with its original id (column names as in the database,
-  without name_key and comments.author_token_id, which a restore links again). This is the file a
-  restore reads.
+  without account_id, name_key and comments.author_token_id, which a restore fills in again). This
+  is the file a restore reads.
   Text is kept exactly as stored, links included.
 - attachments/: every uploaded file as <id>-<name>.
 - todos/: one Markdown file per todo (NNNN-title.md): YAML front matter with the main fields
@@ -85,9 +97,10 @@ this device are left out). Export format 3.
 In the Markdown files, links to uploaded files point into attachments/, so images show up in any
 Markdown viewer. The Markdown files are for reading and searching; a restore does not need them.
 
-Restore: in organizer open Settings, Restore, and pick this zip. It reads data.json and
-attachments/ and replaces all data, after saving a safety copy of the current data. Formats 1 to 3
-can be restored.
+Restore: in Sloppanizer open Settings, Restore, and pick this zip. It reads data.json and
+attachments/ and replaces the data of the account you are signed in to, after saving a safety copy
+of its current data. Any account can restore any export, and exports of the single-user organizer
+(formats 1 to 3) can be restored too.
 `;
 
 // ---------- Markdown helpers ----------
@@ -219,15 +232,14 @@ function groupBy<T, K>(rows: readonly T[], key: (row: T) => K): Map<K, T[]> {
 }
 
 export interface ExportOptions {
-  /** Where the uploaded files live (<data dir>/attachments). */
-  attachmentsDir: string;
+  /** The account's files folder (<files dir>/<account id>). */
+  filesDir: string;
   appVersion: string;
+  /** Names the account in the manifest. */
+  account: { username: string; displayName: string };
   /** false: leave lastExportAt alone (the safety copy before a restore). Default true. */
   recordExport?: boolean;
 }
-
-/** One file of the zip: bytes built in memory, or an uploaded file read as a stream. */
-type ZipEntry = { path: string; stored: boolean } & ({ content: Uint8Array } | { file: string });
 
 export interface ExportResult {
   fileName: string;
@@ -235,18 +247,28 @@ export interface ExportResult {
   stream: Readable;
 }
 
-/** Reads the sequences of the AUTOINCREMENT tables, so a restore never hands out an id again. */
-function sequences(ctx: Ctx): { todos: number; attachments: number } {
-  const rows = ctx.db.$client.prepare("SELECT name, seq FROM sqlite_sequence").all() as {
-    name: string;
-    seq: number;
-  }[];
-  const seq = (name: string) => rows.find((r) => r.name === name)?.seq ?? 0;
-  return { todos: seq("todos"), attachments: seq("attachments") };
+/** The highest id ever given per id table of the account, so a restore never hands out an id again. */
+function sequences(ctx: Ctx): Record<string, number> {
+  const sqlite = ctx.db.$client;
+  const stored = new Map(
+    (
+      sqlite
+        .prepare("SELECT table_name, last_id FROM account_sequences WHERE account_id = ?")
+        .all(ctx.accountId) as { table_name: string; last_id: number }[]
+    ).map((r) => [r.table_name, r.last_id]),
+  );
+  return Object.fromEntries(
+    ID_TABLES.map((table) => {
+      const { maxId } = sqlite
+        .prepare(`SELECT coalesce(max(id), 0) AS maxId FROM "${table}" WHERE account_id = ?`)
+        .get(ctx.accountId) as { maxId: number };
+      return [table, Math.max(stored.get(table) ?? 0, maxId)];
+    }),
+  );
 }
 
 /**
- * Builds the export (format 3) and stores settings.lastExportAt. The database is read in one
+ * Builds the export of the context's account (format 4) and stores its lastExportAt. The database is read in one
  * snapshot right away; the zip is streamed, and uploaded files are read from disk while it streams,
  * so memory stays small even with many files.
  */
@@ -255,28 +277,26 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
   const exportedAtIso = exportedAt.toISOString();
   const tz = ctx.timeZone;
   // Store the export time first so the copy includes it, like a backup taken right now.
-  if (options.recordExport !== false) setSetting(ctx.db, LAST_EXPORT_AT, exportedAtIso);
+  if (options.recordExport !== false) setSetting(ctx, LAST_EXPORT_AT, exportedAtIso);
 
   const sqlite = ctx.db.$client;
   const data: Record<string, unknown[]> = {};
   const counts: Record<string, number> = {};
   const readAll = sqlite.transaction(() => {
     for (const table of EXPORT_TABLES) {
-      const rows =
-        table === "settings"
-          ? sqlite
-              .prepare(
-                `SELECT * FROM settings WHERE key NOT IN (${LOCAL_SETTING_KEYS.map(() => "?").join(", ")}) ORDER BY rowid`,
-              )
-              .all(...LOCAL_SETTING_KEYS)
-          : (
-              sqlite.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all() as Record<string, unknown>[]
-            ).map((row) => withoutLocalColumns(table, row));
+      const skip =
+        table === "settings" ? ` AND key NOT IN (${LOCAL_SETTING_KEYS.map(() => "?").join(", ")})` : "";
+      const params = table === "settings" ? [ctx.accountId, ...LOCAL_SETTING_KEYS] : [ctx.accountId];
+      const rows = (
+        sqlite
+          .prepare(`SELECT * FROM "${dbTable(table)}" WHERE account_id = ?${skip} ORDER BY rowid`)
+          .all(...params) as Record<string, unknown>[]
+      ).map((row) => withoutLocalColumns(table, row));
       data[table] = rows;
       counts[table] = rows.length;
     }
     return {
-      todos: hydrate(ctx.db, ctx.db.select().from(todos).orderBy(asc(todos.id)).all()),
+      todos: hydrate(ctx, ctx.db.select().from(todos).where(owned(ctx, todos)).orderBy(asc(todos.id)).all()),
       sequences: sequences(ctx),
     };
   });
@@ -290,7 +310,7 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
   const missing: number[] = [];
   let bytes = 0;
   for (const attachment of rows<AttachmentRow>("attachments")) {
-    const file = join(options.attachmentsDir, String(attachment.id));
+    const file = join(options.filesDir, String(attachment.id));
     let size: number;
     try {
       size = statSync(file).size;
@@ -421,63 +441,25 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
     );
   }
 
-  const manifest = {
-    app: "organizer",
+  const manifest: ExportManifest = {
+    app: "sloppanizer",
     format: EXPORT_FORMAT,
     exportedAt: exportedAtIso,
     appVersion: options.appVersion,
     schemaVersion: schemaVersion(ctx.db),
+    account: { username: options.account.username, displayName: options.account.displayName },
     counts,
-    attachments: { count: attachmentFiles.size, bytes, missing },
     sequences: snapshot.sequences,
+    attachments: { count: attachmentFiles.size, bytes, missing },
   };
   text("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
   text("data.json", `${JSON.stringify(data, null, 2)}\n`);
   text("README.md", README);
 
   return {
-    fileName: `organizer-export-${fileStamp(exportedAt, tz)}.zip`,
+    fileName: `sloppanizer-export-${fileStamp(exportedAt, tz)}.zip`,
     stream: zipStream(entries, exportedAt),
   };
-}
-
-/** Streams the entries as one zip; uploaded files are read in chunks, with backpressure. */
-function zipStream(entries: readonly ZipEntry[], mtime: Date): Readable {
-  const out = new PassThrough();
-  const zip = new Zip((error, chunk, final) => {
-    if (error) {
-      out.destroy(error);
-      return;
-    }
-    out.write(chunk);
-    if (final) out.end();
-  });
-  const write = async () => {
-    for (const entry of entries) {
-      const file = entry.stored ? new ZipPassThrough(entry.path) : new ZipDeflate(entry.path, { level: 6 });
-      file.mtime = mtime;
-      zip.add(file);
-      if ("content" in entry) {
-        file.push(entry.content, true);
-      } else {
-        // oxlint-disable-next-line no-await-in-loop -- files are read one after the other
-        for await (const chunk of createReadStream(entry.file)) {
-          file.push(chunk as Uint8Array);
-          // oxlint-disable-next-line no-await-in-loop -- wait for the reader before reading more
-          if (out.writableNeedDrain) await once(out, "drain");
-        }
-        file.push(new Uint8Array(0), true);
-      }
-      // oxlint-disable-next-line no-await-in-loop -- one entry after the other keeps memory small
-      if (out.writableNeedDrain) await once(out, "drain");
-    }
-    zip.end();
-  };
-  write().catch((error: unknown) => {
-    zip.terminate();
-    out.destroy(error as Error);
-  });
-  return out;
 }
 
 /** Collects a stream into one buffer (tests, small zips). */

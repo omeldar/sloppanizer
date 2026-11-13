@@ -1,6 +1,6 @@
 import { API_PREFIX } from "@organizer/shared";
 import { buildExport } from "../services/export.ts";
-import type { App, Deps } from "./types.ts";
+import { type App, authOf, ctxOf, type Deps, filesDirOf } from "./types.ts";
 
 export function exportRoutes(app: App, deps: Deps): void {
   app.get(
@@ -9,13 +9,14 @@ export function exportRoutes(app: App, deps: Deps): void {
       config: { access: "write" },
       schema: {
         tags: ["export"],
-        summary: "Download everything as a zip (session or write token); sets lastExportAt",
+        summary: "Download the account's data as a zip (session or write token); sets lastExportAt",
       },
     },
-    async (_request, reply) => {
-      const { fileName, stream } = buildExport(deps, {
-        attachmentsDir: deps.attachmentsDir,
+    async (request, reply) => {
+      const { fileName, stream } = buildExport(ctxOf(request, deps), {
+        filesDir: filesDirOf(request, deps),
         appVersion: deps.version,
+        account: authOf(request).account,
       });
       return reply
         .header("Content-Type", "application/zip")

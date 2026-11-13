@@ -8,11 +8,12 @@ import {
   type NoteSummary,
   type UpdateNote,
 } from "@organizer/shared";
-import { and, desc, eq, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
+import { desc, eq, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
 import { notes } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { plainText } from "./text.ts";
-import { type Ctx, now, type Tx } from "./context.ts";
+import { type Ctx, inTx, now, type Scoped } from "./context.ts";
+import { insertOwnedRow, owned } from "./owned.ts";
 import { assertProjectExists, projectRefs } from "./projects.ts";
 import { indexNote, removeFromIndex } from "./search-index.ts";
 import { containsFolded } from "./sql.ts";
@@ -23,9 +24,9 @@ const EXCERPT_LENGTH = 200;
 
 export const noteExcerpt = (bodyMd: string): string => plainText(bodyMd).slice(0, EXCERPT_LENGTH);
 
-function toNotes(db: Tx, rows: readonly NoteRow[]): Note[] {
+function toNotes(sc: Scoped, rows: readonly NoteRow[]): Note[] {
   const projects = projectRefs(
-    db,
+    sc,
     rows.map((r) => r.projectId),
   );
   return rows.map((row) => ({
@@ -44,15 +45,15 @@ function toNotes(db: Tx, rows: readonly NoteRow[]): Note[] {
 const toSummary = ({ bodyMd, ...rest }: Note): NoteSummary => ({ ...rest, excerpt: noteExcerpt(bodyMd) });
 
 /** Pinned notes first (newest pin first), then by last change. */
-export function listNotes(db: Tx, query: NoteListQuery): NotePage {
+export function listNotes(sc: Scoped, query: NoteListQuery): NotePage {
   const conditions: (SQL | undefined)[] = [];
   if (query.projectId === "none") conditions.push(isNull(notes.projectId));
   else if (query.projectId !== undefined) conditions.push(eq(notes.projectId, query.projectId));
   if (query.pinned === true) conditions.push(isNotNull(notes.pinnedAt));
   if (query.pinned === false) conditions.push(isNull(notes.pinnedAt));
   if (query.q) conditions.push(containsFolded(notes.title, query.q));
-  const where = and(...conditions);
-  const rows = db
+  const where = owned(sc, notes, ...conditions);
+  const rows = sc.db
     .select()
     .from(notes)
     .where(where)
@@ -60,48 +61,48 @@ export function listNotes(db: Tx, query: NoteListQuery): NotePage {
     .limit(query.limit)
     .offset(query.offset)
     .all();
-  const { n } = db.get<{ n: number }>(
-    sql`SELECT count(*) AS n FROM ${notes} ${where ? sql`WHERE ${where}` : sql``}`,
-  );
-  return { items: toNotes(db, rows).map(toSummary), total: n, limit: query.limit, offset: query.offset };
+  const { n } = sc.db.get<{ n: number }>(sql`SELECT count(*) AS n FROM ${notes} WHERE ${where}`);
+  return { items: toNotes(sc, rows).map(toSummary), total: n, limit: query.limit, offset: query.offset };
 }
 
-function noteRow(db: Tx, id: number): NoteRow {
-  const row = db.select().from(notes).where(eq(notes.id, id)).get();
+function noteRow(sc: Scoped, id: number): NoteRow {
+  const row = sc.db
+    .select()
+    .from(notes)
+    .where(owned(sc, notes, eq(notes.id, id)))
+    .get();
   if (!row) throw notFound("Note", id);
   return row;
 }
 
-export function getNote(db: Tx, id: number): Note {
-  return toNotes(db, [noteRow(db, id)])[0] as Note;
+export function getNote(sc: Scoped, id: number): Note {
+  return toNotes(sc, [noteRow(sc, id)])[0] as Note;
 }
 
 export function createNote(ctx: Ctx, actor: string, input: CreateNote): Note {
   return ctx.db.transaction((tx) => {
-    assertProjectExists(tx, input.projectId);
+    const sc = inTx(ctx, tx);
+    assertProjectExists(sc, input.projectId);
     const at = now(ctx);
-    const row = tx
-      .insert(notes)
-      .values({
-        title: input.title,
-        bodyMd: input.bodyMd ?? "",
-        projectId: input.projectId ?? null,
-        pinnedAt: input.pinned ? at : null,
-        createdBy: actor,
-        createdAt: at,
-        updatedAt: at,
-      })
-      .returning()
-      .get();
-    indexNote(tx, row.id);
-    return toNotes(tx, [row])[0] as Note;
+    const id = insertOwnedRow(sc, notes, {
+      title: input.title,
+      bodyMd: input.bodyMd ?? "",
+      projectId: input.projectId ?? null,
+      pinnedAt: input.pinned ? at : null,
+      createdBy: actor,
+      createdAt: at,
+      updatedAt: at,
+    });
+    indexNote(sc, id);
+    return getNote(sc, id);
   });
 }
 
 /** Changes a note; pinned true keeps an earlier pin time, false unpins. A no-op keeps updatedAt. */
 export function updateNote(ctx: Ctx, id: number, input: UpdateNote): Note {
   return ctx.db.transaction((tx) => {
-    const current = noteRow(tx, id);
+    const sc = inTx(ctx, tx);
+    const current = noteRow(sc, id);
     const at = now(ctx);
     const patch: Partial<NoteRow> = {};
     if (input.title !== undefined && input.title !== current.title) patch.title = input.title;
@@ -114,27 +115,31 @@ export function updateNote(ctx: Ctx, id: number, input: UpdateNote): Note {
       }
     }
     if (input.projectId !== undefined && input.projectId !== current.projectId) {
-      assertProjectExists(tx, input.projectId);
+      assertProjectExists(sc, input.projectId);
       patch.projectId = input.projectId;
     }
     if (input.pinned === true && current.pinnedAt === null) patch.pinnedAt = at;
     if (input.pinned === false && current.pinnedAt !== null) patch.pinnedAt = null;
-    if (Object.keys(patch).length === 0) return toNotes(tx, [current])[0] as Note;
-    const row = tx
+    if (Object.keys(patch).length === 0) return toNotes(sc, [current])[0] as Note;
+    const row = sc.db
       .update(notes)
       .set({ ...patch, updatedAt: at })
-      .where(eq(notes.id, id))
+      .where(owned(sc, notes, eq(notes.id, id)))
       .returning()
       .get() as NoteRow;
-    if (patch.title !== undefined || patch.bodyMd !== undefined) indexNote(tx, id);
-    return toNotes(tx, [row])[0] as Note;
+    if (patch.title !== undefined || patch.bodyMd !== undefined) indexNote(sc, id);
+    return toNotes(sc, [row])[0] as Note;
   });
 }
 
 export function deleteNote(ctx: Ctx, id: number): void {
   ctx.db.transaction((tx) => {
-    const result = tx.delete(notes).where(eq(notes.id, id)).run();
+    const sc = inTx(ctx, tx);
+    const result = sc.db
+      .delete(notes)
+      .where(owned(sc, notes, eq(notes.id, id)))
+      .run();
     if (result.changes === 0) throw notFound("Note", id);
-    removeFromIndex(tx, "note", id);
+    removeFromIndex(sc, "note", id);
   });
 }

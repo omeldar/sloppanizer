@@ -2,7 +2,6 @@ import type { Person, SearchHit, SearchResult, Todo } from "@organizer/shared";
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
-import { loadConfig } from "../src/config.ts";
 import { rebuildSearchIndex } from "../src/services/search-index.ts";
 import { findRanges, makeSnippet } from "../src/services/search.ts";
 import { json, makeApp, type TestApp } from "./helpers.ts";
@@ -230,10 +229,7 @@ describe("GET /search", () => {
     t.deps.db.run(sql`DELETE FROM search_fts`);
     expect((await find(t, q("gateway"))).items).toEqual([]);
     const second = await buildApp({
-      config: {
-        ...loadConfig({ ORGANIZER_DATA_DIR: t.dataDir, ORGANIZER_TZ: "Europe/Zurich" }),
-        webDir: t.webDir,
-      },
+      config: t.config,
     });
     await second.app.close();
     expect((await find(t, q("gateway"))).counts).toEqual({ todo: 1, note: 1, comment: 1, person: 0 });

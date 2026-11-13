@@ -7,9 +7,11 @@ import {
   toLocalDateTime,
   type TodoStatus,
 } from "@organizer/shared";
-import { inArray, type SQL, sql } from "drizzle-orm";
+import { and, eq, inArray, type SQL, sql } from "drizzle-orm";
 import { comments, notes, people, todos } from "../db/schema.ts";
-import type { Ctx, Tx } from "./context.ts";
+import type { Ctx, Scoped } from "./context.ts";
+import { owned } from "./owned.ts";
+import { searchRowId } from "./search-index.ts";
 import { foldChars, foldDiacritics, plainText } from "./text.ts";
 import { projectRefs } from "./projects.ts";
 import { escapeLike } from "./sql.ts";
@@ -91,36 +93,40 @@ function termConditions(terms: readonly string[]): { match: string | null; likes
   };
 }
 
-function whereFor(kind: SearchKind, terms: readonly string[]): SQL {
+function whereFor(sc: Scoped, kind: SearchKind, terms: readonly string[]): SQL {
   const { match, likes } = termConditions(terms);
-  const parts = [sql`kind = ${kind}`, ...likes];
+  const parts = [sql`account_id = ${sc.accountId}`, sql`kind = ${kind}`, ...likes];
   if (match !== null) parts.unshift(sql`search_fts MATCH ${match}`);
   return sql.join(parts, sql` AND `);
 }
 
-function searchKind(db: Tx, kind: SearchKind, terms: readonly string[], limit: number): IndexRow[] {
+function searchKind(sc: Scoped, kind: SearchKind, terms: readonly string[], limit: number): IndexRow[] {
   const { match } = termConditions(terms);
-  // bm25 weights: kind, ref_id, todo_id (unindexed), title 5, body 1. Ties and LIKE-only: newest id first.
-  const order = match !== null ? sql`bm25(search_fts, 0, 0, 0, 5, 1), ref_id DESC` : sql`ref_id DESC`;
-  return db.all<IndexRow>(sql`
+  // bm25 weights: account_id, kind, ref_id, todo_id (unindexed), title 5, body 1. Ties and LIKE-only:
+  // newest id first.
+  const order = match !== null ? sql`bm25(search_fts, 0, 0, 0, 0, 5, 1), ref_id DESC` : sql`ref_id DESC`;
+  return sc.db.all<IndexRow>(sql`
     SELECT ref_id AS refId, todo_id AS todoId, title, body FROM search_fts
-    WHERE ${whereFor(kind, terms)} ORDER BY ${order} LIMIT ${limit}`);
+    WHERE ${whereFor(sc, kind, terms)} ORDER BY ${order} LIMIT ${limit}`);
 }
 
-function countKind(db: Tx, kind: SearchKind, terms: readonly string[]): number {
-  return db.get<{ n: number }>(sql`SELECT count(*) AS n FROM search_fts WHERE ${whereFor(kind, terms)}`).n;
+function countKind(sc: Scoped, kind: SearchKind, terms: readonly string[]): number {
+  return sc.db.get<{ n: number }>(
+    sql`SELECT count(*) AS n FROM search_fts WHERE ${whereFor(sc, kind, terms)}`,
+  ).n;
 }
 
 const idsOf = (rows: readonly IndexRow[]) => rows.map((r) => r.refId);
 
 /** Turns index rows into hits, reading the details each kind shows from its table. */
 function toHits(
-  ctx: Pick<Ctx, "db" | "timeZone">,
+  ctx: Pick<Ctx, "db" | "timeZone" | "accountId">,
   kind: SearchKind,
   rows: IndexRow[],
   terms: string[],
 ): SearchHit[] {
   const { db } = ctx;
+  const sc: Scoped = ctx;
   if (rows.length === 0) return [];
   const base = (row: IndexRow, title: string, text: string) => ({
     kind,
@@ -137,7 +143,7 @@ function toHits(
         db
           .select({ id: todos.id, status: todos.status })
           .from(todos)
-          .where(inArray(todos.id, idsOf(rows)))
+          .where(owned(sc, todos, inArray(todos.id, idsOf(rows))))
           .all()
           .map((t) => [t.id, t.status]),
       );
@@ -152,11 +158,11 @@ function toHits(
         db
           .select({ id: notes.id, projectId: notes.projectId })
           .from(notes)
-          .where(inArray(notes.id, idsOf(rows)))
+          .where(owned(sc, notes, inArray(notes.id, idsOf(rows))))
           .all()
           .map((n) => [n.id, n.projectId]),
       );
-      const projects = projectRefs(db, [...projectOf.values()]);
+      const projects = projectRefs(sc, [...projectOf.values()]);
       return rows.map((row) => {
         const projectId = projectOf.get(row.refId) ?? null;
         return {
@@ -175,8 +181,8 @@ function toHits(
             title: todos.title,
           })
           .from(comments)
-          .innerJoin(todos, sql`${todos.id} = ${comments.todoId}`)
-          .where(inArray(comments.id, idsOf(rows)))
+          .innerJoin(todos, and(eq(todos.accountId, comments.accountId), eq(todos.id, comments.todoId)))
+          .where(owned(sc, comments, inArray(comments.id, idsOf(rows))))
           .all()
           .map((c) => [c.id, c]),
       );
@@ -194,7 +200,7 @@ function toHits(
         db
           .select({ id: people.id, team: people.team })
           .from(people)
-          .where(inArray(people.id, idsOf(rows)))
+          .where(owned(sc, people, inArray(people.id, idsOf(rows))))
           .all()
           .map((p) => [p.id, p.team]),
       );
@@ -211,13 +217,15 @@ function toHits(
 }
 
 /** "#123" or "123": that todo, if it exists. */
-function todoByNumber(db: Tx, q: string): IndexRow | null {
-  const match = /^#?(\d{1,15})$/.exec(q);
+function todoByNumber(sc: Scoped, q: string): IndexRow | null {
+  // Ids stay below 2^32 per account (search-index.ts packs them into the rowid).
+  const match = /^#?(\d{1,9})$/.exec(q);
   if (!match) return null;
   const id = Number(match[1]);
   return (
-    db.get<IndexRow | undefined>(
-      sql`SELECT ref_id AS refId, todo_id AS todoId, title, body FROM search_fts WHERE rowid = ${id * 4}`,
+    sc.db.get<IndexRow | undefined>(
+      sql`SELECT ref_id AS refId, todo_id AS todoId, title, body FROM search_fts
+        WHERE rowid = ${searchRowId(sc.accountId, "todo", id)}`,
     ) ?? null
   );
 }
@@ -226,17 +234,16 @@ function todoByNumber(db: Tx, q: string): IndexRow | null {
  * Search over todos, notes, comments and people. Terms are ANDed; ranking by bm25 (title weight 5),
  * then newest. Counts per kind ignore the limit.
  */
-export function search(ctx: Pick<Ctx, "db" | "timeZone">, query: SearchQuery): SearchResult {
-  const { db } = ctx;
+export function search(ctx: Pick<Ctx, "db" | "timeZone" | "accountId">, query: SearchQuery): SearchResult {
   const terms = query.q.split(/\s+/).filter((t) => t.length > 0);
   const counts = { todo: 0, note: 0, comment: 0, person: 0 };
   const items: SearchHit[] = [];
   for (const kind of SEARCH_KINDS) {
     if (!query.kinds.includes(kind)) continue;
-    let rows = searchKind(db, kind, terms, query.limit);
-    counts[kind] = countKind(db, kind, terms);
+    let rows = searchKind(ctx, kind, terms, query.limit);
+    counts[kind] = countKind(ctx, kind, terms);
     if (kind === "todo") {
-      const byNumber = todoByNumber(db, query.q);
+      const byNumber = todoByNumber(ctx, query.q);
       if (byNumber) {
         const already = rows.some((r) => r.refId === byNumber.refId);
         if (!already) counts.todo += 1;

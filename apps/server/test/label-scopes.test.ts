@@ -1,7 +1,6 @@
 import type { Activity, Label, Todo } from "@organizer/shared";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
-import { loadConfig } from "../src/config.ts";
 import { repairScopeConflicts } from "../src/services/labels.ts";
 import { json, makeApp, type TestApp } from "./helpers.ts";
 
@@ -94,8 +93,8 @@ async function duplicate(t: TestApp) {
   const id = (name: string) =>
     (raw.prepare("SELECT id FROM labels WHERE name = ?").get(name) as { id: number }).id;
   raw
-    .prepare("INSERT INTO todo_labels (todo_id, label_id) VALUES (?, ?), (?, ?)")
-    .run(todo.id, id("priority::critical"), todo.id, extra.id);
+    .prepare("INSERT INTO todo_labels (account_id, todo_id, label_id) VALUES (?, ?, ?), (?, ?, ?)")
+    .run(t.account.id, todo.id, id("priority::critical"), t.account.id, todo.id, extra.id);
   return { todo, clean };
 }
 
@@ -104,7 +103,7 @@ describe("repairScopeConflicts", () => {
     const t = await makeApp();
     await t.create<Label>("/api/v1/labels", { name: "homelab" });
     const { todo, clean } = await duplicate(t);
-    expect(repairScopeConflicts(t.deps)).toBe(1);
+    expect(repairScopeConflicts(t.ctx())).toBe(1);
     expect(await labelsOf(t, todo.id)).toEqual(["priority::critical", "homelab"]);
     expect(await lastEvent(t, todo.id)).toMatchObject({
       kind: "labels_changed",
@@ -115,17 +114,14 @@ describe("repairScopeConflicts", () => {
       },
     });
     expect(await labelsOf(t, clean.id)).toEqual(["priority::high"]);
-    expect(repairScopeConflicts(t.deps)).toBe(0);
+    expect(repairScopeConflicts(t.ctx())).toBe(0);
   });
 
   it("runs at every start", async () => {
     const t = await makeApp();
     await t.create<Label>("/api/v1/labels", { name: "homelab" });
     const { todo } = await duplicate(t);
-    const config = {
-      ...loadConfig({ ORGANIZER_DATA_DIR: t.dataDir, ORGANIZER_TZ: "Europe/Zurich" }),
-      webDir: t.webDir,
-    };
+    const config = t.config;
     const second = await buildApp({ config });
     await second.app.close();
     expect(await labelsOf(t, todo.id)).toEqual(["priority::critical", "homelab"]);

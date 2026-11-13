@@ -7,9 +7,9 @@ import {
   MAX_ATTACHMENT_BYTES,
 } from "@organizer/shared";
 import { createReadStream } from "node:fs";
-import type { FastifyReply } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { attachmentFile, getAttachment, isInline, storeAttachment } from "../services/attachments.ts";
-import { actorOf, type App, type Deps } from "./types.ts";
+import { actorOf, type App, ctxOf, type Deps, filesDirOf } from "./types.ts";
 
 /** User files never run in the app's origin: sandboxed, no sniffing, images inline, the rest as download. */
 const FILE_CSP = "default-src 'none'; sandbox";
@@ -25,7 +25,7 @@ export function attachmentRoutes(app: App, deps: Deps): void {
       `${API_PREFIX}/attachments`,
       {
         bodyLimit: MAX_ATTACHMENT_BYTES,
-        config: { tooLargeMessage: "Files can be up to 25 MB." },
+        config: { tooLargeMessage: "Files can be up to 25 MB.", upload: true },
         schema: {
           tags,
           summary: "Upload a file: the raw bytes as body (any Content-Type), ?name=<file name>",
@@ -36,8 +36,8 @@ export function attachmentRoutes(app: App, deps: Deps): void {
       async (request, reply) => {
         const body = Buffer.isBuffer(request.body) ? request.body : Buffer.alloc(0);
         const attachment = storeAttachment(
-          deps,
-          deps.attachmentsDir,
+          ctxOf(request, deps),
+          { dir: filesDirOf(request, deps), limitBytes: deps.filesLimitBytes },
           actorOf(request),
           request.query.name,
           body,
@@ -50,11 +50,11 @@ export function attachmentRoutes(app: App, deps: Deps): void {
   app.get(
     `${API_PREFIX}/attachments/:id/meta`,
     { schema: { tags, summary: "Attachment details", params: IdParams, response: { 200: Attachment } } },
-    async (request) => getAttachment(deps.db, request.params.id),
+    async (request) => getAttachment(ctxOf(request, deps), request.params.id),
   );
 
-  const sendFile = (id: number, reply: FastifyReply) => {
-    const { row, path, size } = attachmentFile(deps.db, deps.attachmentsDir, id);
+  const sendFile = (request: FastifyRequest, id: number, reply: FastifyReply) => {
+    const { row, path, size } = attachmentFile(ctxOf(request, deps), filesDirOf(request, deps), id);
     const disposition = isInline(row.mimeType) ? "inline" : "attachment";
     return reply
       .header("Content-Type", row.mimeType)
@@ -68,7 +68,7 @@ export function attachmentRoutes(app: App, deps: Deps): void {
   app.get(
     `${API_PREFIX}/attachments/:id`,
     { schema: { tags, summary: "The file (images inline, everything else as download)", params: IdParams } },
-    async (request, reply) => sendFile(request.params.id, reply),
+    async (request, reply) => sendFile(request, request.params.id, reply),
   );
   app.get(
     `${API_PREFIX}/attachments/:id/:name`,
@@ -79,6 +79,6 @@ export function attachmentRoutes(app: App, deps: Deps): void {
         params: AttachmentFileParams,
       },
     },
-    async (request, reply) => sendFile(request.params.id, reply),
+    async (request, reply) => sendFile(request, request.params.id, reply),
   );
 }

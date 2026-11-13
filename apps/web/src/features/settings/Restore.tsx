@@ -1,15 +1,11 @@
-import {
-  API_PREFIX,
-  type RestorePreview,
-  RestoreProblemDetails,
-  type RestoreResult,
-} from "@organizer/shared";
+import { type RestorePreview, RestoreProblemDetails, type RestoreResult } from "@organizer/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { type DragEvent, type FormEvent, useEffect, useRef, useState } from "react";
 import { Dialog, DialogBody, DialogActions } from "../../components/Dialog.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { Button, Field, Loading, TextInput } from "../../components/ui.tsx";
+import { useDownload } from "../../components/useDownload.ts";
 import { ApiError, errorMessage } from "../../lib/api.ts";
 import { absoluteTime, formatBytes, relativeTime } from "../../lib/format.ts";
 import { applyRestore, cancelRestore, uploadRestore, useBackups } from "../../lib/queries.ts";
@@ -335,6 +331,7 @@ function ConfirmForm({ preview, onCancel }: { preview: RestorePreview; onCancel:
 
 function Backups() {
   const backups = useBackups();
+  const download = useDownload();
   const list = backups.data ?? [];
   if (list.length === 0) return null;
   return (
@@ -344,13 +341,13 @@ function Backups() {
       <ul className={styles.files} aria-label="Safety copies">
         {list.map((file) => (
           <li key={file.fileName} className={styles.file}>
-            <a
+            <button
+              type="button"
               className={styles.fileName}
-              href={`${API_PREFIX}/restore/backups/${encodeURIComponent(file.fileName)}`}
-              download={file.fileName}
+              onClick={() => download(`/restore/backups/${encodeURIComponent(file.fileName)}`, file.fileName)}
             >
               {file.fileName}
-            </a>
+            </button>
             <span className={styles.fileMeta}>
               <time dateTime={file.createdAt}>{absoluteTime(file.createdAt)}</time>,{" "}
               {relativeTime(file.createdAt)}

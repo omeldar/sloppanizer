@@ -8,7 +8,8 @@ import {
 import { eq } from "drizzle-orm";
 import { todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
-import { type Ctx, now } from "./context.ts";
+import { type Ctx, inTx, now } from "./context.ts";
+import { owned } from "./owned.ts";
 import { recordEvents } from "./events.ts";
 import { indexTodo } from "./search-index.ts";
 import { getTodo } from "./todos.ts";
@@ -20,7 +21,12 @@ import { getTodo } from "./todos.ts";
  */
 export function toggleChecklist(ctx: Ctx, actor: string, id: number, input: ToggleChecklist): Todo {
   return ctx.db.transaction((tx) => {
-    const row = tx.select().from(todos).where(eq(todos.id, id)).get();
+    const sc = inTx(ctx, tx);
+    const row = tx
+      .select()
+      .from(todos)
+      .where(owned(sc, todos, eq(todos.id, id)))
+      .get();
     if (!row) throw notFound("Todo", id);
     const items = parseChecklist(row.descriptionMd);
     const item = items[input.index];
@@ -36,13 +42,13 @@ export function toggleChecklist(ctx: Ctx, actor: string, id: number, input: Togg
           updatedAt: at,
           lastActivityAt: at,
         })
-        .where(eq(todos.id, id))
+        .where(owned(sc, todos, eq(todos.id, id)))
         .run();
-      indexTodo(tx, id);
-      recordEvents(tx, actor, at, [
+      indexTodo(sc, id);
+      recordEvents(sc, actor, at, [
         { todoId: id, kind: "checklist_changed", data: { text: item.text, checked: input.checked } },
       ]);
     }
-    return getTodo(tx, id);
+    return getTodo(sc, id);
   });
 }

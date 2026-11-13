@@ -2,12 +2,10 @@ import { addDays, type Stats, startOfLocalDay, toLocalDate } from "@organizer/sh
 import { sql } from "drizzle-orm";
 import { todos } from "../db/schema.ts";
 import type { Ctx } from "./context.ts";
-import { getSetting } from "./settings.ts";
-
-export const LAST_EXPORT_AT = "lastExportAt";
+import { getSetting, LAST_EXPORT_AT } from "./settings.ts";
 
 /**
- * Counters for the status bar. Dates use the user's time zone. overdue, dueToday, plannedToday
+ * Counters for the status bar of the account. Dates use the account's time zone. overdue, dueToday, plannedToday
  * and inbox count active todos only; plannedToday includes todos planned for an earlier day that
  * are still not done (the same rule as Next up). doneLast7Days = today and the 6 days before.
  */
@@ -25,6 +23,6 @@ export function stats(ctx: Ctx): Stats {
       coalesce(sum(${active} AND ${todos.dueOn} = ${today}), 0) AS dueToday,
       coalesce(sum(${active} AND ${todos.plannedOn} <= ${today}), 0) AS plannedToday,
       coalesce(sum(${active} AND ${todos.projectId} IS NULL), 0) AS inbox
-    FROM ${todos}`);
-  return { ...row, lastExportAt: getSetting<string>(ctx.db, LAST_EXPORT_AT) };
+    FROM ${todos} WHERE ${todos.accountId} = ${ctx.accountId}`);
+  return { ...row, lastExportAt: getSetting<string>(ctx, LAST_EXPORT_AT) };
 }

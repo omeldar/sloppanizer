@@ -1,5 +1,6 @@
 import { API_PREFIX, Health, Me } from "@organizer/shared";
-import type { App, Deps } from "./types.ts";
+import { sql } from "drizzle-orm";
+import { type App, authOf, type Deps } from "./types.ts";
 
 export function metaRoutes(app: App, deps: Deps): void {
   app.get(
@@ -8,15 +9,19 @@ export function metaRoutes(app: App, deps: Deps): void {
       config: { access: "public" },
       schema: { tags: ["meta"], summary: "Liveness check (no auth)", response: { 200: Health } },
     },
-    async () => ({ ok: true as const, version: deps.version }),
+    async () => {
+      // Fails (500) when the database cannot answer.
+      deps.db.get(sql`SELECT 1`);
+      return { ok: true as const, version: deps.version };
+    },
   );
   app.get(
     `${API_PREFIX}/me`,
-    { schema: { tags: ["meta"], summary: "Who is calling", response: { 200: Me } } },
+    { schema: { tags: ["meta"], summary: "Who is calling and their account", response: { 200: Me } } },
     async (request) => {
-      const auth = request.auth;
-      if (!auth) throw new Error("auth missing after the security hook");
-      return { actor: auth.actor, via: auth.via, scope: auth.scope };
+      const { actor, via, scope, account } = authOf(request);
+      const { id, username, displayName, color, role } = account;
+      return { actor, via, scope, account: { id, username, displayName, color, role } };
     },
   );
 }

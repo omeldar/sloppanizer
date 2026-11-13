@@ -66,7 +66,7 @@ describe("todos CRUD", () => {
     const notJson = await t.app.inject({
       method: "POST",
       url: "/api/v1/todos",
-      headers: { cookie: t.cookie, "content-type": "application/json" },
+      headers: { ...t.account.headers(), "content-type": "application/json" },
       payload: "{bad",
     });
     expect(notJson.statusCode).toBe(422);

@@ -34,6 +34,11 @@ interface Issue {
 }
 
 export function registerErrorHandling(app: FastifyInstance): void {
+  /** Never details of the failure (they stay in the log, under the request id the answer names). */
+  const serverError = (requestId: string) =>
+    errorBody("internal", `Something went wrong on the server. Try again. (Request ${requestId})`, {
+      requestId,
+    });
   app.setErrorHandler((error: FastifyError, request, reply) => {
     if (error instanceof ApiError) {
       return reply.status(error.status).send(errorBody(error.code, error.message, error.details));
@@ -53,9 +58,7 @@ export function registerErrorHandling(app: FastifyInstance): void {
     }
     if (isResponseSerializationError(error)) {
       request.log.error({ err: error, issues: error.cause }, "response does not match its schema");
-      return reply
-        .status(500)
-        .send(errorBody("internal", "The server built an invalid response. See the server log."));
+      return reply.status(500).send(serverError(request.id));
     }
     if (error.statusCode === 415 || error.code === "FST_ERR_CTP_INVALID_MEDIA_TYPE") {
       return reply.status(422).send(errorBody("validation_failed", "Send the body as application/json."));
@@ -72,8 +75,6 @@ export function registerErrorHandling(app: FastifyInstance): void {
       return reply.status(413).send(errorBody("too_large", message));
     }
     request.log.error({ err: error }, "unhandled error");
-    return reply
-      .status(500)
-      .send(errorBody("internal", "Something went wrong on the server. See the server log."));
+    return reply.status(500).send(serverError(request.id));
   });
 }

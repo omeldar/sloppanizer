@@ -12,7 +12,7 @@ import { z } from "zod";
 import { toggleChecklist } from "../services/checklist.ts";
 import { addLinks, removeLink } from "../services/links.ts";
 import { createSubtasks } from "../services/subtasks.ts";
-import { actorOf, type App, type Deps } from "./types.ts";
+import { actorOf, type App, ctxOf, type Deps } from "./types.ts";
 
 /** Subtasks, links between todos and checklist items. */
 export function todoRelationRoutes(app: App, deps: Deps): void {
@@ -29,7 +29,9 @@ export function todoRelationRoutes(app: App, deps: Deps): void {
       },
     },
     async (request, reply) =>
-      reply.status(201).send(createSubtasks(deps, actorOf(request), request.params.id, request.body)),
+      reply
+        .status(201)
+        .send(createSubtasks(ctxOf(request, deps), actorOf(request), request.params.id, request.body)),
   );
   app.post(
     `${API_PREFIX}/todos/:id/links`,
@@ -42,13 +44,19 @@ export function todoRelationRoutes(app: App, deps: Deps): void {
         response: { 200: Todo },
       },
     },
-    async (request) => addLinks(deps, actorOf(request), request.params.id, request.body),
+    async (request) => addLinks(ctxOf(request, deps), actorOf(request), request.params.id, request.body),
   );
   app.delete(
     `${API_PREFIX}/todos/:id/links/:otherId`,
     { schema: { tags, summary: "Remove a link", params: LinkParams, querystring: LinkDeleteQuery } },
     async (request, reply) => {
-      removeLink(deps, actorOf(request), request.params.id, request.params.otherId, request.query.kind);
+      removeLink(
+        ctxOf(request, deps),
+        actorOf(request),
+        request.params.id,
+        request.params.otherId,
+        request.query.kind,
+      );
       return reply.status(204).send();
     },
   );
@@ -63,6 +71,7 @@ export function todoRelationRoutes(app: App, deps: Deps): void {
         response: { 200: Todo },
       },
     },
-    async (request) => toggleChecklist(deps, actorOf(request), request.params.id, request.body),
+    async (request) =>
+      toggleChecklist(ctxOf(request, deps), actorOf(request), request.params.id, request.body),
   );
 }

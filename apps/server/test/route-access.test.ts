@@ -62,8 +62,6 @@ const MATRIX: [method: string, path: string, access: Access][] = [
   ["GET", "/attachments/1/meta", "read"],
   ["GET", "/attachments/1/a.png", "read"],
   ["GET", "/export.zip", "write"],
-  ["POST", "/export/folder", "write"],
-  ["GET", "/export/folder", "read"],
   ["GET", "/tokens", "session"],
   ["POST", "/tokens", "session"],
   ["DELETE", "/tokens/1", "session"],
@@ -76,7 +74,7 @@ const MATRIX: [method: string, path: string, access: Access][] = [
 ];
 
 /** Reads the registered routes from Fastify's tree print: "METHOD /api/v1/..." without HEAD. */
-function registeredApiRoutes(tree: string): string[] {
+export function registeredApiRoutes(tree: string): string[] {
   const stack: string[] = [];
   const found: string[] = [];
   for (const line of tree.split("\n")) {
@@ -93,6 +91,9 @@ function registeredApiRoutes(tree: string): string[] {
   }
   return found.toSorted();
 }
+
+/** Routes of the sign-in flows, the account's own pages and the admin (not user data). */
+export const isAccountRoute = (route: string): boolean => /^[A-Z]+ \/(auth|account|admin)(\/|$)/.test(route);
 
 const shape = (path: string) =>
   path
@@ -131,9 +132,10 @@ describe("access on every API route", () => {
     const expected = MATRIX.map(([method, path]) =>
       `${method} ${shape(path)}`.replace(/:\w+/g, ":p"),
     ).toSorted();
-    // /health is public and checked in security.test.ts
+    // /health is public and checked in security.test.ts; the sign-in, account and admin routes have
+    // their own access rules and tests (auth-*.test.ts, admin.test.ts).
     const real = registered
-      .filter((route) => route !== "GET /health")
+      .filter((route) => route !== "GET /health" && !isAccountRoute(route))
       .map((route) => route.replace(/:\w+/g, ":p"))
       .toSorted();
     expect(real).toEqual(expected);
@@ -205,6 +207,6 @@ describe("access on every API route", () => {
     });
     expect((await t.call("DELETE", `/api/v1/tokens/${token.id}`)).statusCode).toBeLessThan(300);
     expect((await t.withToken(value, "GET", "/api/v1/search?q=abc")).statusCode).toBe(401);
-    expect((await t.withToken(value, "POST", "/api/v1/export/folder")).statusCode).toBe(401);
+    expect((await t.withToken(value, "GET", "/api/v1/export.zip")).statusCode).toBe(401);
   });
 });

@@ -1,7 +1,34 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { clearAttachmentCache } from "../../lib/attachmentCache.ts";
 import { renderWithApp } from "../../test/render.tsx";
 import { MarkdownPreview } from "./MarkdownPreview.tsx";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  clearAttachmentCache();
+});
+
+/** A fake API that serves image bytes; blob URLs are counted like the browser makes them. */
+function mockBlobApi(status = 200) {
+  const calls: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      calls.push(input);
+      return status === 200
+        ? new Response(new Blob(["png"], { type: "image/png" }))
+        : new Response(JSON.stringify({ error: { code: "not_found", message: "No such file." } }), {
+            status,
+          });
+    }),
+  );
+  let made = 0;
+  vi.spyOn(URL, "createObjectURL").mockImplementation(() => `blob:test/${++made}`);
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+  return calls;
+}
 
 function preview(source: string) {
   const view = renderWithApp(<MarkdownPreview source={source} />);
@@ -36,12 +63,33 @@ describe("todo references", () => {
 });
 
 describe("images", () => {
-  it("shows the app's own attachments as lazy images that open the file", async () => {
-    preview("![diagram](/api/v1/attachments/4/diagram.png)");
+  it("loads the app's own attachments through fetch and shows them from a blob URL", async () => {
+    const calls = mockBlobApi();
+    const view = preview("![diagram](/api/v1/attachments/4/diagram.png)");
     const image = await screen.findByRole("img", { name: "diagram" });
-    expect(image.getAttribute("loading")).toBe("lazy");
-    expect(image.closest("a")?.getAttribute("href")).toBe("/api/v1/attachments/4/diagram.png");
+    expect(image.getAttribute("src")).toBe("blob:test/1");
+    expect(image.closest("a")?.getAttribute("href")).toBe("blob:test/1");
     expect(image.closest("a")?.getAttribute("target")).toBe("_blank");
+    expect(calls).toEqual(["/api/v1/attachments/4/diagram.png"]);
+    view.unmount();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:test/1");
+  });
+
+  it("asks the server once per attachment while the page is open", async () => {
+    const calls = mockBlobApi();
+    const first = preview("![a](/api/v1/attachments/5/a.png)");
+    await screen.findByRole("img", { name: "a" });
+    first.unmount();
+    preview("![a again](/api/v1/attachments/5/a.png)");
+    expect((await screen.findByRole("img", { name: "a again" })).getAttribute("src")).toBe("blob:test/2");
+    expect(calls).toEqual(["/api/v1/attachments/5/a.png"]);
+  });
+
+  it("says so when an image cannot be loaded", async () => {
+    mockBlobApi(404);
+    preview("![gone](/api/v1/attachments/6/gone.png)");
+    expect(await screen.findByText("gone (could not load)")).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("shows outside images as a link with the alt text, never an img", async () => {

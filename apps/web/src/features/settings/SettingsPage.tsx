@@ -1,8 +1,7 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { PageHeader } from "../../components/ui.tsx";
 import { Button } from "../../components/ui.tsx";
-import { downloadExport } from "../../lib/export.ts";
+import { useDownloadExport } from "../../components/useDownload.ts";
 import { absoluteTime, formatBytes, relativeTime } from "../../lib/format.ts";
 import { useMe, useSettings, useStats } from "../../lib/queries.ts";
 import { setTheme, type Theme, useTheme } from "../../lib/theme.ts";
@@ -18,7 +17,7 @@ export function SettingsPage() {
   const theme = useTheme();
   const stats = useStats();
   const me = useMe();
-  const client = useQueryClient();
+  const downloadExport = useDownloadExport();
   const lastExport = stats.data?.lastExportAt ?? null;
   const session = me.data?.via === "session";
 
@@ -59,7 +58,7 @@ export function SettingsPage() {
           per todo. Keep a copy on another drive.
         </p>
         <div className={styles.exportRow}>
-          <Button variant="primary" onClick={() => downloadExport(client)}>
+          <Button variant="primary" onClick={downloadExport}>
             Download export
           </Button>
           <span className={styles.lastExport} data-stale={!lastExport || undefined}>

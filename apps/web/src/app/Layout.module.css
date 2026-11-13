@@ -36,10 +36,6 @@
   flex-shrink: 0;
 }
 
-.brandMark {
-  color: var(--text-2);
-}
-
 .nav {
   margin: 0;
   padding: 0;

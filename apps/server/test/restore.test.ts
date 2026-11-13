@@ -569,10 +569,7 @@ describe("restore apply", () => {
 });
 
 const restart = async (t: TestApp) => {
-  const config = {
-    ...loadConfig({ ORGANIZER_DATA_DIR: t.dataDir, ORGANIZER_TZ: "Europe/Zurich" }),
-    webDir: t.webDir,
-  };
+  const config = t.config;
   const second = await buildApp({ config, clock: () => new Date("2026-11-11T12:00:00.000Z") });
   await second.app.close();
 };

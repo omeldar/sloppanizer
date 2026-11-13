@@ -113,25 +113,6 @@ describe("restore guards", () => {
   });
 });
 
-describe("folder export retention", () => {
-  it("prunes only its own zips and leaves other files in the folder alone", async () => {
-    const t = await makeApp();
-    await t.call("POST", "/api/v1/export/folder");
-    const dir = join(t.dataDir, "exports");
-    mkdirSync(dir, { recursive: true });
-    const foreign = ["notes.txt", "my-backup.zip", "organizer-export-manual.zip"];
-    for (const name of foreign) writeFileSync(join(dir, name), "mine");
-    for (let i = 0; i < 6; i += 1) {
-      t.advance(1000);
-      // oxlint-disable-next-line no-await-in-loop -- one export after the other
-      await t.call("POST", "/api/v1/export/folder");
-    }
-    const left = readdirSync(dir);
-    expect(left).toEqual(expect.arrayContaining(foreign));
-    expect(left.filter((n) => /^organizer-export-\d{8}-\d{6}/.test(n))).toHaveLength(4);
-  });
-});
-
 describe("comment ownership by token id", () => {
   it("keeps the comments of a revoked token from a new token with the same name", async () => {
     // Ownership is the token id, not its name: a revoked token's name can be reused, and the new token

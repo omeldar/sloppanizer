@@ -1,6 +1,6 @@
 import { API_PREFIX, SearchQuery, SearchResult } from "@organizer/shared";
 import { search } from "../services/search.ts";
-import type { App, Deps } from "./types.ts";
+import { type App, ctxOf, type Deps } from "./types.ts";
 
 export function searchRoutes(app: App, deps: Deps): void {
   app.get(
@@ -13,6 +13,6 @@ export function searchRoutes(app: App, deps: Deps): void {
         response: { 200: SearchResult },
       },
     },
-    async (request) => search(deps, request.query),
+    async (request) => search(ctxOf(request, deps), request.query),
   );
 }

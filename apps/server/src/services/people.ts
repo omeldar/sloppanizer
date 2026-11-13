@@ -11,7 +11,8 @@ import {
 import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
 import { people, personTagLinks, personTopics, todoPeople, todos, topics } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
-import { type Ctx, now, type Tx } from "./context.ts";
+import { type Ctx, inTx, now, type Scoped } from "./context.ts";
+import { insertOwnedRow, owned } from "./owned.ts";
 import { resolvePersonTags, tagsByPerson } from "./person-tags.ts";
 import { compareNames, foldCase, foldDiacritics } from "./text.ts";
 import { indexPerson, removeFromIndex } from "./search-index.ts";
@@ -21,7 +22,7 @@ import { deleteOrphanTopics, findOrCreateTopics, findTopics } from "./topics.ts"
 export type PersonRow = typeof people.$inferSelect;
 
 /** The person as todos carry it: no tags, topics or notes. */
-export const toPersonBrief = (row: PersonRow): PersonBrief => ({
+export const toPersonBrief = (row: Omit<PersonRow, "accountId">): PersonBrief => ({
   id: row.id,
   firstName: row.firstName,
   lastName: row.lastName,
@@ -42,18 +43,18 @@ const NO_COUNTS: PersonCounts = {
 const activeList = sql.raw(ACTIVE_STATUSES.map((s) => `'${s}'`).join(","));
 
 /** Todo counts per person id, both roles, in one grouped query per chunk. */
-function countsByPerson(db: Tx, ids: readonly number[]): Map<number, PersonCounts> {
+function countsByPerson(sc: Scoped, ids: readonly number[]): Map<number, PersonCounts> {
   const out = new Map<number, PersonCounts>();
   for (const part of chunks(ids)) {
-    const rows = db.all<{ personId: number } & PersonCounts>(sql`
+    const rows = sc.db.all<{ personId: number } & PersonCounts>(sql`
       SELECT tp.person_id AS personId,
         sum(tp.role = 'requester') AS requested,
         sum(tp.role = 'requester' AND t.status IN (${activeList})) AS requestedOpen,
         sum(tp.role = 'requester' AND t.status = 'done') AS requestedDone,
         sum(tp.role = 'contact') AS contact,
         sum(tp.role = 'contact' AND t.status IN (${activeList})) AS contactOpen
-      FROM ${todoPeople} tp JOIN ${todos} t ON t.id = tp.todo_id
-      WHERE tp.person_id IN (${sql.join(
+      FROM ${todoPeople} tp JOIN ${todos} t ON t.account_id = tp.account_id AND t.id = tp.todo_id
+      WHERE tp.account_id = ${sc.accountId} AND tp.person_id IN (${sql.join(
         part.map((id) => sql`${id}`),
         sql`, `,
       )})
@@ -64,14 +65,17 @@ function countsByPerson(db: Tx, ids: readonly number[]): Map<number, PersonCount
 }
 
 /** Topic names per person id, by name. */
-function topicsByPerson(db: Tx, ids: readonly number[]): Map<number, string[]> {
+function topicsByPerson(sc: Scoped, ids: readonly number[]): Map<number, string[]> {
   const out = new Map<number, string[]>();
   for (const part of chunks(ids)) {
-    for (const { personId, name } of db
+    for (const { personId, name } of sc.db
       .select({ personId: personTopics.personId, name: topics.name })
       .from(personTopics)
-      .innerJoin(topics, eq(topics.id, personTopics.topicId))
-      .where(inArray(personTopics.personId, part))
+      .innerJoin(
+        topics,
+        and(eq(topics.accountId, personTopics.accountId), eq(topics.id, personTopics.topicId)),
+      )
+      .where(owned(sc, personTopics, inArray(personTopics.personId, part)))
       .all()) {
       const list = out.get(personId) ?? [];
       list.push(name);
@@ -83,12 +87,12 @@ function topicsByPerson(db: Tx, ids: readonly number[]): Map<number, string[]> {
 }
 
 /** Full people (topics, tags, counts) for the given rows, in the same order. */
-export function loadPeople(db: Tx, rows: readonly PersonRow[]): Person[] {
+export function loadPeople(sc: Scoped, rows: readonly PersonRow[]): Person[] {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
-  const topicMap = topicsByPerson(db, ids);
-  const tagMap = tagsByPerson(db, ids);
-  const countMap = countsByPerson(db, ids);
+  const topicMap = topicsByPerson(sc, ids);
+  const tagMap = tagsByPerson(sc, ids);
+  const countMap = countsByPerson(sc, ids);
   return rows.map((row) => ({
     ...toPersonBrief(row),
     notesMd: row.notesMd,
@@ -100,19 +104,20 @@ export function loadPeople(db: Tx, rows: readonly PersonRow[]): Person[] {
   }));
 }
 
-export const toPerson = (db: Tx, row: PersonRow): Person => loadPeople(db, [row])[0] as Person;
+export const toPerson = (sc: Scoped, row: PersonRow): Person => loadPeople(sc, [row])[0] as Person;
 
-export function getPerson(db: Tx, id: number): Person {
-  return toPerson(db, getPersonRow(db, id));
+export function getPerson(sc: Scoped, id: number): Person {
+  return toPerson(sc, getPersonRow(sc, id));
 }
 
 /** People with exactly this first and last name, ignoring case (works for non-ASCII letters too). */
-export function findNamesakes(db: Tx, firstName: string, lastName: string): PersonRow[] {
+export function findNamesakes(sc: Scoped, firstName: string, lastName: string): PersonRow[] {
   const first = foldCase(firstName);
   const last = foldCase(lastName);
-  return db
+  return sc.db
     .select()
     .from(people)
+    .where(owned(sc, people))
     .orderBy(asc(people.id))
     .all()
     .filter((row) => foldCase(row.firstName) === first && foldCase(row.lastName) === last);
@@ -126,11 +131,12 @@ export const byName = (
 ): number => compareNames(a.lastName, b.lastName) || compareNames(a.firstName, b.firstName) || a.id - b.id;
 
 /** Newest todo link per person id. */
-function lastLinkByPerson(db: Tx): Map<number, string> {
+function lastLinkByPerson(sc: Scoped): Map<number, string> {
   return new Map(
-    db
+    sc.db
       .select({ personId: todoPeople.personId, at: max(todoPeople.createdAt) })
       .from(todoPeople)
+      .where(owned(sc, todoPeople))
       .groupBy(todoPeople.personId)
       .all()
       .map((r) => [r.personId, r.at ?? ""]),
@@ -165,8 +171,8 @@ export function filterPeople(list: readonly Person[], filters: PersonFilters): P
  * People with topics, tags and counts. q matches names (both orders), note, team, email and topic
  * names without case or diacritics; topic and tag filters need every name (AND).
  */
-export function listPeople(db: Tx, query: PeopleQuery): Person[] {
-  let list = filterPeople(loadPeople(db, db.select().from(people).all()), query);
+export function listPeople(sc: Scoped, query: PeopleQuery): Person[] {
+  let list = filterPeople(loadPeople(sc, sc.db.select().from(people).where(owned(sc, people)).all()), query);
   if (query.q) {
     const needle = foldDiacritics(query.q);
     list = list.filter((p) =>
@@ -190,7 +196,7 @@ export function listPeople(db: Tx, query: PeopleQuery): Person[] {
     case "contact":
       return list.toSorted((a, b) => b.counts.contact - a.counts.contact || byName(a, b));
     case "recent": {
-      const last = lastLinkByPerson(db);
+      const last = lastLinkByPerson(sc);
       return list.toSorted(
         (a, b) => (last.get(b.id) ?? "").localeCompare(last.get(a.id) ?? "") || byName(a, b),
       );
@@ -198,20 +204,26 @@ export function listPeople(db: Tx, query: PeopleQuery): Person[] {
   }
 }
 
-export function getPersonRow(db: Tx, id: number): PersonRow {
-  const row = db.select().from(people).where(eq(people.id, id)).get();
+export function getPersonRow(sc: Scoped, id: number): PersonRow {
+  const row = sc.db
+    .select()
+    .from(people)
+    .where(owned(sc, people, eq(people.id, id)))
+    .get();
   if (!row) throw notFound("Person", id);
   return row;
 }
 
-function insertPerson(db: Tx, at: string, firstName: string, lastName: string, note = ""): PersonRow {
-  const row = db
-    .insert(people)
-    .values({ firstName: firstName.trim(), lastName: lastName.trim(), note, createdAt: at, updatedAt: at })
-    .returning()
-    .get();
-  indexPerson(db, row.id);
-  return row;
+function insertPerson(sc: Scoped, at: string, firstName: string, lastName: string, note = ""): PersonRow {
+  const id = insertOwnedRow(sc, people, {
+    firstName: firstName.trim(),
+    lastName: lastName.trim(),
+    note,
+    createdAt: at,
+    updatedAt: at,
+  });
+  indexPerson(sc, id);
+  return getPersonRow(sc, id);
 }
 
 interface LinkChanges {
@@ -223,19 +235,20 @@ const hasChange = (change: SetChange<string>): boolean =>
   change.set !== undefined || change.add !== undefined || change.remove !== undefined;
 
 /** Applies topic and tag changes of one person; returns true when anything changed. */
-function applyLinks(tx: Tx, at: string, personId: number, change: LinkChanges): boolean {
+function applyLinks(sc: Scoped, at: string, personId: number, change: LinkChanges): boolean {
+  const tx = sc.db;
   let changed = false;
   if (hasChange(change.topics)) {
     const current = tx
       .select({ id: personTopics.topicId })
       .from(personTopics)
-      .where(eq(personTopics.personId, personId))
+      .where(owned(sc, personTopics, eq(personTopics.personId, personId)))
       .all()
       .map((r) => r.id);
     const ids = (names: readonly string[] | undefined, create: boolean) =>
       names === undefined
         ? undefined
-        : (create ? findOrCreateTopics(tx, at, names) : findTopics(tx, names)).map((t) => t.id);
+        : (create ? findOrCreateTopics(sc, at, names) : findTopics(sc, names)).map((t) => t.id);
     const { added, removed } = diffIds(current, {
       set: ids(change.topics.set, true),
       add: ids(change.topics.add, true),
@@ -243,27 +256,34 @@ function applyLinks(tx: Tx, at: string, personId: number, change: LinkChanges): 
     });
     if (removed.length > 0) {
       tx.delete(personTopics)
-        .where(and(eq(personTopics.personId, personId), inArray(personTopics.topicId, removed)))
+        .where(
+          owned(
+            sc,
+            personTopics,
+            eq(personTopics.personId, personId),
+            inArray(personTopics.topicId, removed),
+          ),
+        )
         .run();
     }
     if (added.length > 0) {
       tx.insert(personTopics)
-        .values(added.map((topicId) => ({ personId, topicId, createdAt: at })))
+        .values(added.map((topicId) => ({ accountId: sc.accountId, personId, topicId, createdAt: at })))
         .run();
     }
     // Topics created for nothing (e.g. added and removed in one request) go too.
-    deleteOrphanTopics(tx);
+    deleteOrphanTopics(sc);
     changed ||= added.length > 0 || removed.length > 0;
   }
   if (hasChange(change.tags)) {
     const current = tx
       .select({ id: personTagLinks.tagId })
       .from(personTagLinks)
-      .where(eq(personTagLinks.personId, personId))
+      .where(owned(sc, personTagLinks, eq(personTagLinks.personId, personId)))
       .all()
       .map((r) => r.id);
     const ids = (names: readonly string[] | undefined) =>
-      names === undefined ? undefined : resolvePersonTags(tx, names).map((t) => t.id);
+      names === undefined ? undefined : resolvePersonTags(sc, names).map((t) => t.id);
     const { added, removed } = diffIds(current, {
       set: ids(change.tags.set),
       add: ids(change.tags.add),
@@ -271,12 +291,19 @@ function applyLinks(tx: Tx, at: string, personId: number, change: LinkChanges): 
     });
     if (removed.length > 0) {
       tx.delete(personTagLinks)
-        .where(and(eq(personTagLinks.personId, personId), inArray(personTagLinks.tagId, removed)))
+        .where(
+          owned(
+            sc,
+            personTagLinks,
+            eq(personTagLinks.personId, personId),
+            inArray(personTagLinks.tagId, removed),
+          ),
+        )
         .run();
     }
     if (added.length > 0) {
       tx.insert(personTagLinks)
-        .values(added.map((tagId) => ({ personId, tagId, createdAt: at })))
+        .values(added.map((tagId) => ({ accountId: sc.accountId, personId, tagId, createdAt: at })))
         .run();
     }
     changed ||= added.length > 0 || removed.length > 0;
@@ -286,71 +313,71 @@ function applyLinks(tx: Tx, at: string, personId: number, change: LinkChanges): 
 
 export function createPerson(ctx: Ctx, input: CreatePerson): Person {
   return ctx.db.transaction((tx) => {
+    const sc = inTx(ctx, tx);
     if (!input.allowDuplicate) {
-      const existing = findNamesakes(tx, input.firstName, input.lastName)[0];
+      const existing = findNamesakes(sc, input.firstName, input.lastName)[0];
       if (existing) {
         throw new ApiError(
           "conflict",
           `${existing.firstName} ${existing.lastName} already exists. Use that person, or send allowDuplicate: true with a note that tells them apart.`,
-          { existing: toPerson(tx, existing) },
+          { existing: toPerson(sc, existing) },
         );
       }
     }
     // Check tags before anything is written, so an unknown tag creates nothing.
-    resolvePersonTags(tx, input.tags ?? []);
+    resolvePersonTags(sc, input.tags ?? []);
     const at = now(ctx);
-    const row = tx
-      .insert(people)
-      .values({
-        firstName: input.firstName,
-        lastName: input.lastName,
-        note: input.note ?? "",
-        team: input.team ?? "",
-        email: input.email ?? "",
-        notesMd: input.notesMd ?? "",
-        createdAt: at,
-        updatedAt: at,
-      })
-      .returning()
-      .get();
-    applyLinks(tx, at, row.id, { topics: { set: input.topics }, tags: { set: input.tags } });
-    indexPerson(tx, row.id);
-    return toPerson(tx, row);
+    const id = insertOwnedRow(sc, people, {
+      firstName: input.firstName,
+      lastName: input.lastName,
+      note: input.note ?? "",
+      team: input.team ?? "",
+      email: input.email ?? "",
+      notesMd: input.notesMd ?? "",
+      createdAt: at,
+      updatedAt: at,
+    });
+    applyLinks(sc, at, id, { topics: { set: input.topics }, tags: { set: input.tags } });
+    indexPerson(sc, id);
+    return getPerson(sc, id);
   });
 }
 
 /** Changes a person. Person edits never touch todos (no events, no last activity). */
 export function updatePerson(ctx: Ctx, id: number, input: UpdatePerson): Person {
   return ctx.db.transaction((tx) => {
-    const current = getPersonRow(tx, id);
+    const sc = inTx(ctx, tx);
+    const current = getPersonRow(sc, id);
     const at = now(ctx);
     const patch: Partial<PersonRow> = {};
     for (const key of ["firstName", "lastName", "note", "team", "email", "notesMd"] as const) {
       const value = input[key];
       if (value !== undefined && value !== current[key]) patch[key] = value;
     }
-    const linksChanged = applyLinks(tx, at, id, {
+    const linksChanged = applyLinks(sc, at, id, {
       topics: { set: input.topics, add: input.addTopics, remove: input.removeTopics },
       tags: { set: input.tags, add: input.addTags, remove: input.removeTags },
     });
-    if (Object.keys(patch).length === 0 && !linksChanged) return toPerson(tx, current);
+    if (Object.keys(patch).length === 0 && !linksChanged) return toPerson(sc, current);
     const row = tx
       .update(people)
       .set({ ...patch, updatedAt: at })
-      .where(eq(people.id, id))
+      .where(owned(sc, people, eq(people.id, id)))
       .returning()
       .get() as PersonRow;
-    indexPerson(tx, id);
-    return toPerson(tx, row);
+    indexPerson(sc, id);
+    return toPerson(sc, row);
   });
 }
 
 /** Deletes a person; 409 with the number of todos while they are still linked in any role. */
 export function deletePerson(ctx: Ctx, id: number): void {
   ctx.db.transaction((tx) => {
-    getPersonRow(tx, id);
+    const sc = inTx(ctx, tx);
+    getPersonRow(sc, id);
     const { n } = tx.get<{ n: number }>(
-      sql`SELECT count(DISTINCT ${todoPeople.todoId}) AS n FROM ${todoPeople} WHERE ${todoPeople.personId} = ${id}`,
+      sql`SELECT count(DISTINCT ${todoPeople.todoId}) AS n FROM ${todoPeople}
+        WHERE ${todoPeople.accountId} = ${sc.accountId} AND ${todoPeople.personId} = ${id}`,
     );
     if (n > 0) {
       throw new ApiError(
@@ -359,9 +386,11 @@ export function deletePerson(ctx: Ctx, id: number): void {
         { linkedTodos: n },
       );
     }
-    tx.delete(people).where(eq(people.id, id)).run();
-    deleteOrphanTopics(tx);
-    removeFromIndex(tx, "person", id);
+    tx.delete(people)
+      .where(owned(sc, people, eq(people.id, id)))
+      .run();
+    deleteOrphanTopics(sc);
+    removeFromIndex(sc, "person", id);
   });
 }
 
@@ -379,11 +408,20 @@ function ambiguous(rows: PersonRow[]): ApiError {
  * The people for the given references. By id: must exist (422). By name: find-or-create on a
  * case-insensitive exact match; several namesakes give 409 "ambiguous person, use personId".
  */
-export function resolvePeople(db: Tx, at: string, refs: readonly PersonRef[], create: boolean): PersonRow[] {
+export function resolvePeople(
+  sc: Scoped,
+  at: string,
+  refs: readonly PersonRef[],
+  create: boolean,
+): PersonRow[] {
   const out: PersonRow[] = [];
   for (const ref of refs) {
     if ("personId" in ref) {
-      const row = db.select().from(people).where(eq(people.id, ref.personId)).get();
+      const row = sc.db
+        .select()
+        .from(people)
+        .where(owned(sc, people, eq(people.id, ref.personId)))
+        .get();
       if (!row) {
         throw new ApiError(
           "validation_failed",
@@ -396,11 +434,11 @@ export function resolvePeople(db: Tx, at: string, refs: readonly PersonRef[], cr
       out.push(row);
       continue;
     }
-    const matches = findNamesakes(db, ref.firstName, ref.lastName);
+    const matches = findNamesakes(sc, ref.firstName, ref.lastName);
     if (matches.length > 1) throw ambiguous(matches);
     const match = matches[0];
     if (match) out.push(match);
-    else if (create) out.push(insertPerson(db, at, ref.firstName, ref.lastName));
+    else if (create) out.push(insertPerson(sc, at, ref.firstName, ref.lastName));
   }
   const seen = new Set<number>();
   return out.filter((row) => (seen.has(row.id) ? false : (seen.add(row.id), true)));

@@ -11,13 +11,14 @@ import {
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { labels, todoLabels, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
-import { type Ctx, now, type Tx } from "./context.ts";
+import { type Ctx, inTx, now, type Scoped } from "./context.ts";
 import { recordEvents } from "./events.ts";
+import { insertOwnedRow, owned } from "./owned.ts";
 import { foldCase } from "./text.ts";
 
 export type LabelRow = typeof labels.$inferSelect;
 
-export const toLabel = (row: LabelRow): Label => ({
+export const toLabel = (row: Omit<LabelRow, "accountId">): Label => ({
   id: row.id,
   name: row.name,
   scope: row.scope,
@@ -29,18 +30,18 @@ export const toLabel = (row: LabelRow): Label => ({
   updatedAt: row.updatedAt,
 });
 
-export function listLabels(db: Tx): Label[] {
-  return sortLabels(db.select().from(labels).all().map(toLabel));
+export function listLabels(sc: Scoped): Label[] {
+  return sortLabels(sc.db.select().from(labels).where(owned(sc, labels)).all().map(toLabel));
 }
 
 /**
  * The label rows for the given names (case-insensitive), in the given order.
  * Unknown names: 422 listing every one of them.
  */
-export function resolveLabels(db: Tx, names: readonly string[]): LabelRow[] {
+export function resolveLabels(sc: Scoped, names: readonly string[]): LabelRow[] {
   if (names.length === 0) return [];
   const byName = new Map<string, LabelRow>();
-  for (const row of db.select().from(labels).all()) byName.set(row.nameKey, row);
+  for (const row of sc.db.select().from(labels).where(owned(sc, labels)).all()) byName.set(row.nameKey, row);
   const unknown = names.filter((name) => !byName.has(foldCase(name)));
   if (unknown.length > 0) {
     throw new ApiError(
@@ -52,11 +53,11 @@ export function resolveLabels(db: Tx, names: readonly string[]): LabelRow[] {
   return names.map((name) => byName.get(foldCase(name)) as LabelRow);
 }
 
-function assertNameFree(db: Tx, name: string, exceptId?: number): void {
-  const existing = db
+function assertNameFree(sc: Scoped, name: string, exceptId?: number): void {
+  const existing = sc.db
     .select()
     .from(labels)
-    .where(eq(labels.nameKey, foldCase(name)))
+    .where(owned(sc, labels, eq(labels.nameKey, foldCase(name))))
     .get();
   if (existing && existing.id !== exceptId) {
     throw new ApiError("conflict", `A label named "${existing.name}" already exists. Pick another name.`, {
@@ -66,12 +67,11 @@ function assertNameFree(db: Tx, name: string, exceptId?: number): void {
 }
 
 export function createLabel(ctx: Ctx, input: CreateLabel): Label {
-  assertNameFree(ctx.db, input.name);
+  assertNameFree(ctx, input.name);
   const { scope, value } = parseLabelName(input.name);
   const at = now(ctx);
-  const row = ctx.db
-    .insert(labels)
-    .values({
+  const id = ctx.db.transaction((tx) =>
+    insertOwnedRow(inTx(ctx, tx), labels, {
       name: input.name,
       nameKey: foldCase(input.name),
       scope,
@@ -81,10 +81,15 @@ export function createLabel(ctx: Ctx, input: CreateLabel): Label {
       rank: input.rank ?? null,
       createdAt: at,
       updatedAt: at,
-    })
-    .returning()
-    .get();
-  return toLabel(row);
+    }),
+  );
+  return toLabel(
+    ctx.db
+      .select()
+      .from(labels)
+      .where(owned(ctx, labels, eq(labels.id, id)))
+      .get() as LabelRow,
+  );
 }
 
 interface LabelLink {
@@ -93,27 +98,30 @@ interface LabelLink {
 }
 
 /** Every scoped label link (todo id with the label row). */
-function scopedLinks(db: Tx, todoIds?: readonly number[]): LabelLink[] {
-  return db
+function scopedLinks(sc: Scoped, todoIds?: readonly number[]): LabelLink[] {
+  return sc.db
     .select({ todoId: todoLabels.todoId, label: labels })
     .from(todoLabels)
-    .innerJoin(labels, eq(labels.id, todoLabels.labelId))
+    .innerJoin(labels, and(eq(labels.accountId, todoLabels.accountId), eq(labels.id, todoLabels.labelId)))
     .where(
-      todoIds === undefined
-        ? isNotNull(labels.scope)
-        : and(isNotNull(labels.scope), inArray(todoLabels.todoId, [...todoIds])),
+      owned(
+        sc,
+        todoLabels,
+        isNotNull(labels.scope),
+        todoIds === undefined ? undefined : inArray(todoLabels.todoId, [...todoIds]),
+      ),
     )
     .all();
 }
 
 /** Label names of each given todo, in display order. */
-function labelNamesByTodo(db: Tx, todoIds: readonly number[]): Map<number, string[]> {
+function labelNamesByTodo(sc: Scoped, todoIds: readonly number[]): Map<number, string[]> {
   if (todoIds.length === 0) return new Map();
-  const rows = db
+  const rows = sc.db
     .select({ todoId: todoLabels.todoId, label: labels })
     .from(todoLabels)
-    .innerJoin(labels, eq(labels.id, todoLabels.labelId))
-    .where(inArray(todoLabels.todoId, [...todoIds]))
+    .innerJoin(labels, and(eq(labels.accountId, todoLabels.accountId), eq(labels.id, todoLabels.labelId)))
+    .where(owned(sc, todoLabels, inArray(todoLabels.todoId, [...todoIds])))
     .all();
   const out = new Map<number, LabelRow[]>();
   for (const { todoId, label } of rows) out.set(todoId, [...(out.get(todoId) ?? []), label]);
@@ -126,23 +134,27 @@ function labelNamesByTodo(db: Tx, todoIds: readonly number[]): Map<number, strin
  * the events start from (default: the names right now).
  */
 function removeLabelsFromTodos(
-  tx: Tx,
+  sc: Scoped,
   actor: string,
   at: string,
   remove: ReadonlyMap<number, readonly number[]>,
-  before = labelNamesByTodo(tx, [...remove.keys()]),
+  before = labelNamesByTodo(sc, [...remove.keys()]),
 ): void {
+  const tx = sc.db;
   const todoIds = [...remove.keys()];
   if (todoIds.length === 0) return;
   for (const [todoId, labelIds] of remove) {
     tx.delete(todoLabels)
-      .where(and(eq(todoLabels.todoId, todoId), inArray(todoLabels.labelId, [...labelIds])))
+      .where(owned(sc, todoLabels, eq(todoLabels.todoId, todoId), inArray(todoLabels.labelId, [...labelIds])))
       .run();
   }
-  const after = labelNamesByTodo(tx, todoIds);
-  tx.update(todos).set({ updatedAt: at, lastActivityAt: at }).where(inArray(todos.id, todoIds)).run();
+  const after = labelNamesByTodo(sc, todoIds);
+  tx.update(todos)
+    .set({ updatedAt: at, lastActivityAt: at })
+    .where(owned(sc, todos, inArray(todos.id, todoIds)))
+    .run();
   recordEvents(
-    tx,
+    sc,
     actor,
     at,
     todoIds.map((todoId) => ({
@@ -157,17 +169,17 @@ function removeLabelsFromTodos(
  * Todos that have label `labelId` and another label of `scope` (case-insensitive), with the label
  * ids of that scope to remove from each.
  */
-function scopeConflicts(db: Tx, labelId: number, scope: string): Map<number, number[]> {
+function scopeConflicts(sc: Scoped, labelId: number, scope: string): Map<number, number[]> {
   const key = scopeKey(scope);
-  const withLabel = db
+  const withLabel = sc.db
     .select({ todoId: todoLabels.todoId })
     .from(todoLabels)
-    .where(eq(todoLabels.labelId, labelId))
+    .where(owned(sc, todoLabels, eq(todoLabels.labelId, labelId)))
     .all()
     .map((r) => r.todoId);
   if (withLabel.length === 0) return new Map();
   const out = new Map<number, number[]>();
-  for (const { todoId, label } of scopedLinks(db, withLabel)) {
+  for (const { todoId, label } of scopedLinks(sc, withLabel)) {
     if (label.id === labelId || scopeKey(label.scope as string) !== key) continue;
     out.set(todoId, [...(out.get(todoId) ?? []), label.id]);
   }
@@ -181,28 +193,33 @@ function scopeConflicts(db: Tx, labelId: number, scope: string): Map<number, num
  */
 export function updateLabel(ctx: Ctx, actor: string, id: number, input: UpdateLabel): Label {
   return ctx.db.transaction((tx) => {
-    const current = tx.select().from(labels).where(eq(labels.id, id)).get();
+    const sc = inTx(ctx, tx);
+    const current = tx
+      .select()
+      .from(labels)
+      .where(owned(sc, labels, eq(labels.id, id)))
+      .get();
     if (!current) throw notFound("Label", id);
     const at = now(ctx);
     const patch: Partial<LabelRow> = { updatedAt: at };
     let conflicts = new Map<number, number[]>();
     if (input.name !== undefined) {
-      assertNameFree(tx, input.name, id);
+      assertNameFree(sc, input.name, id);
       const { scope, value } = parseLabelName(input.name);
       Object.assign(patch, { name: input.name, nameKey: foldCase(input.name), scope, value });
       const sameScope =
         scope === null || (current.scope !== null && scopeKey(current.scope) === scopeKey(scope));
-      if (!sameScope) conflicts = scopeConflicts(tx, id, scope);
+      if (!sameScope) conflicts = scopeConflicts(sc, id, scope);
       if (conflicts.size > 0 && input.onScopeConflict !== "replace") {
         const titles = new Map(
           tx
             .select({ id: todos.id, title: todos.title })
             .from(todos)
-            .where(inArray(todos.id, [...conflicts.keys()]))
+            .where(owned(sc, todos, inArray(todos.id, [...conflicts.keys()])))
             .all()
             .map((t) => [t.id, t.title]),
         );
-        const names = labelNamesByTodo(tx, [...conflicts.keys()]);
+        const names = labelNamesByTodo(sc, [...conflicts.keys()]);
         const details: ScopeConflictDetails = {
           conflicts: [...conflicts.keys()]
             .toSorted((a, b) => a - b)
@@ -224,9 +241,14 @@ export function updateLabel(ctx: Ctx, actor: string, id: number, input: UpdateLa
     if (input.description !== undefined) patch.description = input.description;
     if (input.rank !== undefined) patch.rank = input.rank;
     // The events start from the names as the todos had them before the rename.
-    const before = labelNamesByTodo(tx, [...conflicts.keys()]);
-    const row = tx.update(labels).set(patch).where(eq(labels.id, id)).returning().get() as LabelRow;
-    removeLabelsFromTodos(tx, actor, at, conflicts, before);
+    const before = labelNamesByTodo(sc, [...conflicts.keys()]);
+    const row = tx
+      .update(labels)
+      .set(patch)
+      .where(owned(sc, labels, eq(labels.id, id)))
+      .returning()
+      .get() as LabelRow;
+    removeLabelsFromTodos(sc, actor, at, conflicts, before);
     return toLabel(row);
   });
 }
@@ -239,8 +261,9 @@ export function updateLabel(ctx: Ctx, actor: string, id: number, input: UpdateLa
  */
 export function repairScopeConflicts(ctx: Ctx): number {
   return ctx.db.transaction((tx) => {
+    const sc = inTx(ctx, tx);
     const groups = new Map<string, LabelLink[]>();
-    for (const link of scopedLinks(tx)) {
+    for (const link of scopedLinks(sc)) {
       const key = `${link.todoId}\u0000${scopeKey(link.label.scope as string)}`;
       groups.set(key, [...(groups.get(key) ?? []), link]);
     }
@@ -254,13 +277,16 @@ export function repairScopeConflicts(ctx: Ctx): number {
       );
       for (const { todoId, label } of losers) remove.set(todoId, [...(remove.get(todoId) ?? []), label.id]);
     }
-    removeLabelsFromTodos(tx, "system", now(ctx), remove);
+    removeLabelsFromTodos(sc, "system", now(ctx), remove);
     return remove.size;
   });
 }
 
 /** Deletes a label; it disappears from every todo (cascade). */
 export function deleteLabel(ctx: Ctx, id: number): void {
-  const result = ctx.db.delete(labels).where(eq(labels.id, id)).run();
+  const result = ctx.db
+    .delete(labels)
+    .where(owned(ctx, labels, eq(labels.id, id)))
+    .run();
   if (result.changes === 0) throw notFound("Label", id);
 }

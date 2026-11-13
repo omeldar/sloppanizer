@@ -8,7 +8,7 @@ import {
   UpdateNote,
 } from "@organizer/shared";
 import { createNote, deleteNote, getNote, listNotes, updateNote } from "../services/notes.ts";
-import { actorOf, type App, type Deps } from "./types.ts";
+import { actorOf, type App, ctxOf, type Deps } from "./types.ts";
 
 export function noteRoutes(app: App, deps: Deps): void {
   const tags = ["notes"];
@@ -22,17 +22,18 @@ export function noteRoutes(app: App, deps: Deps): void {
         response: { 200: NotePage },
       },
     },
-    async (request) => listNotes(deps.db, request.query),
+    async (request) => listNotes(ctxOf(request, deps), request.query),
   );
   app.post(
     `${API_PREFIX}/notes`,
     { schema: { tags, summary: "Write a note", body: CreateNote, response: { 201: Note } } },
-    async (request, reply) => reply.status(201).send(createNote(deps, actorOf(request), request.body)),
+    async (request, reply) =>
+      reply.status(201).send(createNote(ctxOf(request, deps), actorOf(request), request.body)),
   );
   app.get(
     `${API_PREFIX}/notes/:id`,
     { schema: { tags, params: IdParams, response: { 200: Note } } },
-    async (request) => getNote(deps.db, request.params.id),
+    async (request) => getNote(ctxOf(request, deps), request.params.id),
   );
   app.patch(
     `${API_PREFIX}/notes/:id`,
@@ -45,10 +46,10 @@ export function noteRoutes(app: App, deps: Deps): void {
         response: { 200: Note },
       },
     },
-    async (request) => updateNote(deps, request.params.id, request.body),
+    async (request) => updateNote(ctxOf(request, deps), request.params.id, request.body),
   );
   app.delete(`${API_PREFIX}/notes/:id`, { schema: { tags, params: IdParams } }, async (request, reply) => {
-    deleteNote(deps, request.params.id);
+    deleteNote(ctxOf(request, deps), request.params.id);
     return reply.status(204).send();
   });
 }

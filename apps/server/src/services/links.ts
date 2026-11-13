@@ -1,8 +1,9 @@
 import type { CreateLinks, LinkKind, Todo, TodoRef } from "@organizer/shared";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { eq, inArray, or } from "drizzle-orm";
 import { todoLinks, todos } from "../db/schema.ts";
 import { ApiError } from "../http/errors.ts";
-import { type Ctx, now, type Tx } from "./context.ts";
+import { type Ctx, inTx, now, type Scoped } from "./context.ts";
+import { insertOwnedRow, owned } from "./owned.ts";
 import { type EventInput, recordEvents } from "./events.ts";
 import { chunks } from "./sql.ts";
 import { getTodo } from "./todos.ts";
@@ -25,11 +26,19 @@ function storedRow(todoId: number, otherId: number, kind: LinkKind): Row {
   return { fromId: Math.min(todoId, otherId), toId: Math.max(todoId, otherId), kind: "relates" };
 }
 
-function findRow(tx: Tx, row: Row) {
-  return tx
+function findRow(sc: Scoped, row: Row) {
+  return sc.db
     .select()
     .from(todoLinks)
-    .where(and(eq(todoLinks.fromId, row.fromId), eq(todoLinks.toId, row.toId), eq(todoLinks.kind, row.kind)))
+    .where(
+      owned(
+        sc,
+        todoLinks,
+        eq(todoLinks.fromId, row.fromId),
+        eq(todoLinks.toId, row.toId),
+        eq(todoLinks.kind, row.kind),
+      ),
+    )
     .get();
 }
 
@@ -37,12 +46,12 @@ function findRow(tx: Tx, row: Row) {
  * The chain of todos from `start` to `goal` along blocks links, or null when there is none.
  * Data is small (a person's todos), so the links are loaded once and searched in memory.
  */
-function blocksPath(tx: Tx, start: number, goal: number): number[] | null {
+function blocksPath(sc: Scoped, start: number, goal: number): number[] | null {
   const next = new Map<number, number[]>();
-  for (const { fromId, toId } of tx
+  for (const { fromId, toId } of sc.db
     .select({ fromId: todoLinks.fromId, toId: todoLinks.toId })
     .from(todoLinks)
-    .where(eq(todoLinks.kind, "blocks"))
+    .where(owned(sc, todoLinks, eq(todoLinks.kind, "blocks")))
     .all()) {
     next.set(fromId, [...(next.get(fromId) ?? []), toId]);
   }
@@ -65,13 +74,13 @@ function blocksPath(tx: Tx, start: number, goal: number): number[] | null {
   return null;
 }
 
-function titlesOf(tx: Tx, ids: readonly number[]): Map<number, string> {
+function titlesOf(sc: Scoped, ids: readonly number[]): Map<number, string> {
   const out = new Map<number, string>();
   for (const part of chunks([...new Set(ids)])) {
-    for (const t of tx
+    for (const t of sc.db
       .select({ id: todos.id, title: todos.title })
       .from(todos)
-      .where(inArray(todos.id, part))
+      .where(owned(sc, todos, inArray(todos.id, part)))
       .all())
       out.set(t.id, t.title);
   }
@@ -80,12 +89,12 @@ function titlesOf(tx: Tx, ids: readonly number[]): Map<number, string> {
 
 /** links_changed events on both todos of every changed link, grouped per todo and kind. */
 function linkEvents(
-  tx: Tx,
+  sc: Scoped,
   todoId: number,
   changes: readonly { kind: LinkKind; otherId: number }[],
   field: "added" | "removed",
 ): EventInput[] {
-  const titles = titlesOf(tx, [todoId, ...changes.map((c) => c.otherId)]);
+  const titles = titlesOf(sc, [todoId, ...changes.map((c) => c.otherId)]);
   const ref = (id: number) => ({ id, title: titles.get(id) ?? null });
   const groups = new Map<string, { todoId: number; kind: LinkKind; refs: number[] }>();
   const add = (owner: number, kind: LinkKind, other: number) => {
@@ -109,11 +118,12 @@ function linkEvents(
   }));
 }
 
-function touch(tx: Tx, at: string, ids: readonly number[]): void {
+function touch(sc: Scoped, at: string, ids: readonly number[]): void {
   if (ids.length > 0)
-    tx.update(todos)
+    sc.db
+      .update(todos)
       .set({ updatedAt: at, lastActivityAt: at })
-      .where(inArray(todos.id, [...new Set(ids)]))
+      .where(owned(sc, todos, inArray(todos.id, [...new Set(ids)])))
       .run();
 }
 
@@ -124,11 +134,12 @@ function touch(tx: Tx, at: string, ids: readonly number[]): void {
  */
 export function addLinks(ctx: Ctx, actor: string, todoId: number, input: CreateLinks): Todo {
   return ctx.db.transaction((tx) => {
-    getTodo(tx, todoId);
+    const sc = inTx(ctx, tx);
+    getTodo(sc, todoId);
     const targets = [...new Set(input.links.map((l) => l.todoId))];
     if (targets.includes(todoId))
       throw new ApiError("validation_failed", "A todo cannot be linked to itself.");
-    const known = titlesOf(tx, targets);
+    const known = titlesOf(sc, targets);
     const unknown = targets.filter((id) => !known.has(id));
     if (unknown.length > 0) {
       throw new ApiError(
@@ -141,9 +152,9 @@ export function addLinks(ctx: Ctx, actor: string, todoId: number, input: CreateL
     const added: { kind: LinkKind; otherId: number }[] = [];
     for (const { kind, todoId: otherId } of input.links) {
       const row = storedRow(todoId, otherId, kind);
-      if (findRow(tx, row)) continue;
+      if (findRow(sc, row)) continue;
       if (row.kind === "blocks") {
-        const loop = blocksPath(tx, row.toId, row.fromId);
+        const loop = blocksPath(sc, row.toId, row.fromId);
         if (loop) {
           const chain = [row.fromId, ...loop].map((id) => `#${id}`).join(" blocks ");
           throw new ApiError("validation_failed", `That would make a loop: ${chain}.`, {
@@ -151,31 +162,33 @@ export function addLinks(ctx: Ctx, actor: string, todoId: number, input: CreateL
           });
         }
       }
-      tx.insert(todoLinks)
-        .values({ ...row, createdBy: actor, createdAt: at })
-        .run();
+      insertOwnedRow(sc, todoLinks, { ...row, createdBy: actor, createdAt: at });
       added.push({ kind, otherId });
     }
     if (added.length > 0) {
-      touch(tx, at, [todoId, ...added.map((a) => a.otherId)]);
-      recordEvents(tx, actor, at, linkEvents(tx, todoId, added, "added"));
+      touch(sc, at, [todoId, ...added.map((a) => a.otherId)]);
+      recordEvents(sc, actor, at, linkEvents(sc, todoId, added, "added"));
     }
-    return getTodo(tx, todoId);
+    return getTodo(sc, todoId);
   });
 }
 
 /** Removes one link seen from `todoId`; 404 when there is no such link. */
 export function removeLink(ctx: Ctx, actor: string, todoId: number, otherId: number, kind: LinkKind): void {
   ctx.db.transaction((tx) => {
-    getTodo(tx, todoId);
-    const existing = findRow(tx, storedRow(todoId, otherId, kind));
+    const sc = inTx(ctx, tx);
+    getTodo(sc, todoId);
+    const existing = findRow(sc, storedRow(todoId, otherId, kind));
     if (!existing) {
       throw new ApiError("not_found", `Todo ${todoId} has no "${kind}" link to #${otherId}.`);
     }
-    tx.delete(todoLinks).where(eq(todoLinks.id, existing.id)).run();
+    sc.db
+      .delete(todoLinks)
+      .where(owned(sc, todoLinks, eq(todoLinks.id, existing.id)))
+      .run();
     const at = now(ctx);
-    touch(tx, at, [todoId, otherId]);
-    recordEvents(tx, actor, at, linkEvents(tx, todoId, [{ kind, otherId }], "removed"));
+    touch(sc, at, [todoId, otherId]);
+    recordEvents(sc, actor, at, linkEvents(sc, todoId, [{ kind, otherId }], "removed"));
   });
 }
 
@@ -186,7 +199,7 @@ export interface TodoLinks {
 }
 
 /** Links of the given todos as small references, each list by id. */
-export function linksByTodo(db: Tx, ids: readonly number[]): Map<number, TodoLinks> {
+export function linksByTodo(sc: Scoped, ids: readonly number[]): Map<number, TodoLinks> {
   const out = new Map<number, TodoLinks>();
   const entry = (id: number) => {
     let links = out.get(id);
@@ -200,20 +213,20 @@ export function linksByTodo(db: Tx, ids: readonly number[]): Map<number, TodoLin
   const rows: Row[] = [];
   for (const part of chunks(ids)) {
     rows.push(
-      ...db
+      ...sc.db
         .select({ fromId: todoLinks.fromId, toId: todoLinks.toId, kind: todoLinks.kind })
         .from(todoLinks)
-        .where(or(inArray(todoLinks.fromId, part), inArray(todoLinks.toId, part)))
+        .where(owned(sc, todoLinks, or(inArray(todoLinks.fromId, part), inArray(todoLinks.toId, part))))
         .all(),
     );
   }
   const refs = new Map<number, TodoRef>();
   const other = [...new Set(rows.flatMap((r) => [r.fromId, r.toId]))];
   for (const part of chunks(other)) {
-    for (const t of db
+    for (const t of sc.db
       .select({ id: todos.id, title: todos.title, status: todos.status })
       .from(todos)
-      .where(inArray(todos.id, part))
+      .where(owned(sc, todos, inArray(todos.id, part)))
       .all())
       refs.set(t.id, t);
   }

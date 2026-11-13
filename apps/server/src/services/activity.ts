@@ -3,7 +3,8 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { events, todos } from "../db/schema.ts";
 import { notFound } from "../http/errors.ts";
 import { commentRows, toComment } from "./comments.ts";
-import type { Tx } from "./context.ts";
+import type { Scoped } from "./context.ts";
+import { owned } from "./owned.ts";
 import { projectRefs } from "./projects.ts";
 
 /** At most this many items per thread (the newest ones). */
@@ -41,12 +42,12 @@ function withCurrentTitles(value: unknown, titles: ReadonlyMap<number, string>):
  * Event data as clients see it: description texts become their lengths, project ids become
  * { id, name|null } (null name = deleted project), people_changed always has a role.
  */
-function normalize(rows: readonly EventRow[], db: Tx): ActivityEvent[] {
+function normalize(rows: readonly EventRow[], sc: Scoped): ActivityEvent[] {
   const parsed = rows.map((row) => ({ row, data: JSON.parse(row.data) as unknown }));
   const ids = parsed
     .filter(({ row }) => row.kind === "project_changed")
     .flatMap(({ data }) => (isRecord(data) ? [projectId(data.from), projectId(data.to)] : []));
-  const projects = projectRefs(db, ids);
+  const projects = projectRefs(sc, ids);
   const todoIds = [
     ...new Set(
       parsed.flatMap(({ row, data }) =>
@@ -57,10 +58,10 @@ function normalize(rows: readonly EventRow[], db: Tx): ActivityEvent[] {
   const titles = new Map(
     todoIds.length === 0
       ? []
-      : db
+      : sc.db
           .select({ id: todos.id, title: todos.title })
           .from(todos)
-          .where(inArray(todos.id, todoIds))
+          .where(owned(sc, todos, inArray(todos.id, todoIds)))
           .all()
           .map((t) => [t.id, t.title] as const),
   );
@@ -104,19 +105,25 @@ const itemTime = (item: ActivityItem): string =>
 const itemId = (item: ActivityItem): number => (item.type === "event" ? item.event.id : item.comment.id);
 
 /** Comments and history of a todo in one thread, oldest first; same time: events first, then by id. */
-export function getActivity(db: Tx, todoId: number): Activity {
-  if (!db.select({ id: todos.id }).from(todos).where(eq(todos.id, todoId)).get())
+export function getActivity(sc: Scoped, todoId: number): Activity {
+  if (
+    !sc.db
+      .select({ id: todos.id })
+      .from(todos)
+      .where(owned(sc, todos, eq(todos.id, todoId)))
+      .get()
+  )
     throw notFound("Todo", todoId);
-  const eventRows = db
+  const eventRows = sc.db
     .select()
     .from(events)
-    .where(eq(events.todoId, todoId))
+    .where(owned(sc, events, eq(events.todoId, todoId)))
     .orderBy(desc(events.createdAt), desc(events.id))
     .limit(ACTIVITY_CAP)
     .all();
   const items: ActivityItem[] = [
-    ...normalize(eventRows, db).map((event) => ({ type: "event" as const, event })),
-    ...commentRows(db, todoId).map((row) => ({ type: "comment" as const, comment: toComment(row) })),
+    ...normalize(eventRows, sc).map((event) => ({ type: "event" as const, event })),
+    ...commentRows(sc, todoId).map((row) => ({ type: "comment" as const, comment: toComment(row) })),
   ];
   items.sort(
     (a, b) =>

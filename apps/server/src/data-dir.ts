@@ -2,9 +2,8 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-export const DB_FILE = "organizer.db";
+export const DB_FILE = "sloppanizer.db";
 export const SECRET_FILE = "secret";
-export const ATTACHMENTS_DIR = "attachments";
 
 /** Creates the data dir (0700) if needed and tightens its mode. */
 export function ensureDataDir(dataDir: string): void {
@@ -12,15 +11,14 @@ export function ensureDataDir(dataDir: string): void {
   chmodSync(dataDir, 0o700);
 }
 
-/** Creates <data dir>/attachments (0700) if needed and returns its absolute path. */
-export function ensureAttachmentsDir(dataDir: string): string {
-  const dir = join(dataDir, ATTACHMENTS_DIR);
+/** Creates a server folder (files, backups) with mode 0700 if needed and returns its path. */
+export function ensurePrivateDir(dir: string): string {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   chmodSync(dir, 0o700);
   return dir;
 }
 
-/** The cookie signing key; generated (0600) on first start. */
+/** The access token signing key when SLOPPANIZER_SECRET is unset; generated (0600) on first start. */
 export function loadSecret(dataDir: string): string {
   const path = join(dataDir, SECRET_FILE);
   try {

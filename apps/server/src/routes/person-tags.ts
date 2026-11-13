@@ -6,7 +6,7 @@ import {
   listPersonTags,
   updatePersonTag,
 } from "../services/person-tags.ts";
-import type { App, Deps } from "./types.ts";
+import { type App, ctxOf, type Deps } from "./types.ts";
 
 export function personTagRoutes(app: App, deps: Deps): void {
   const tags = ["people"];
@@ -19,7 +19,7 @@ export function personTagRoutes(app: App, deps: Deps): void {
         response: { 200: z.array(PersonTag) },
       },
     },
-    async () => listPersonTags(deps.db),
+    async (request) => listPersonTags(ctxOf(request, deps)),
   );
   app.post(
     `${API_PREFIX}/person-tags`,
@@ -31,18 +31,18 @@ export function personTagRoutes(app: App, deps: Deps): void {
         response: { 201: PersonTag },
       },
     },
-    async (request, reply) => reply.status(201).send(createPersonTag(deps, request.body)),
+    async (request, reply) => reply.status(201).send(createPersonTag(ctxOf(request, deps), request.body)),
   );
   app.patch(
     `${API_PREFIX}/person-tags/:id`,
     { schema: { tags, params: IdParams, body: UpdatePersonTag, response: { 200: PersonTag } } },
-    async (request) => updatePersonTag(deps, request.params.id, request.body),
+    async (request) => updatePersonTag(ctxOf(request, deps), request.params.id, request.body),
   );
   app.delete(
     `${API_PREFIX}/person-tags/:id`,
     { schema: { tags, summary: "Delete a person tag (removed from everyone)", params: IdParams } },
     async (request, reply) => {
-      deletePersonTag(deps, request.params.id);
+      deletePersonTag(ctxOf(request, deps), request.params.id);
       return reply.status(204).send();
     },
   );

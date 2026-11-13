@@ -1,13 +1,18 @@
 import type Database from "better-sqlite3";
+import { ID_TABLES } from "../db/schema.ts";
 import { authorKindOf } from "./comments.ts";
-import { EXPORT_TABLES, withoutLocalColumns } from "./export.ts";
-import { LOCAL_SETTING_KEYS } from "./settings.ts";
-
-/** Tables with AUTOINCREMENT ids that appear in Markdown (#123, attachment links). */
-export const SEQUENCE_TABLES = ["todos", "attachments"] as const;
+import { dbTable, EXPORT_TABLES, withoutLocalColumns } from "./export.ts";
+import { LOCAL_SETTING_KEYS, OBSOLETE_SETTING_KEYS } from "./settings.ts";
 
 export type ExportData = Record<string, Record<string, unknown>[]>;
-export type Sequences = Partial<Record<(typeof SEQUENCE_TABLES)[number], number>>;
+/**
+ * Highest id ever given per id table (manifest.sequences). Single-user exports (format 3) name only
+ * todos and attachments, format 4 every id table; a table without an entry counts from its largest id.
+ */
+export type Sequences = Partial<Record<string, number>>;
+
+/** Settings keys a restore never takes from a file. */
+const SKIPPED_SETTING_KEYS: readonly unknown[] = [...LOCAL_SETTING_KEYS, ...OBSOLETE_SETTING_KEYS];
 
 const quote = (name: string): string => `"${name.replaceAll('"', '""')}"`;
 
@@ -25,10 +30,13 @@ function insertValues(table: string, row: Record<string, unknown>): Record<strin
   return values;
 }
 
-/** Column names of a table in the current schema. */
+/**
+ * Column names a data.json table may have: the columns of its database table in the current schema,
+ * without account_id (the restore stamps it).
+ */
 export function tableColumns(sqlite: Database.Database, table: string): Set<string> {
-  const rows = sqlite.prepare(`PRAGMA table_info(${quote(table)})`).all() as { name: string }[];
-  return new Set(rows.map((r) => r.name));
+  const rows = sqlite.prepare(`PRAGMA table_info(${quote(dbTable(table))})`).all() as { name: string }[];
+  return new Set(rows.map((r) => r.name).filter((name) => name !== "account_id"));
 }
 
 /** A row that cannot be inserted, with its table and id for the problem list. */
@@ -44,37 +52,46 @@ export class RowError extends Error {
 }
 
 /**
- * Replaces every export table with the rows of an export, inside the caller's transaction:
- * deletes in reverse order (settings except the local keys), inserts every row with its original
- * id (local settings in the file are skipped), and sets the todo and attachment sequences to the
- * higher of the exported sequence and the largest id, so ids are never handed out again. Foreign
- * keys are checked at commit (defer_foreign_keys), because a todo may point at a parent with a
- * higher id. Columns missing in old formats get their defaults (or DERIVED_COLUMNS); local columns
- * (LOCAL_COLUMNS) in the file are skipped, the caller refills them (repairNameKeys, linkCommentAuthors).
+ * Replaces one account's data with the rows of an export, inside the caller's transaction. Other
+ * accounts are not touched: every delete and insert carries the account id. Deletes in reverse order
+ * (settings except the local keys), inserts every row with account_id stamped and its original id
+ * (local and obsolete settings in the file are skipped), and sets every id table's sequence of the
+ * account to the higher of the exported sequence and the largest id, so ids are never handed out
+ * again. Foreign keys are checked at commit (defer_foreign_keys), because a todo may point at a parent
+ * with a higher id. Columns missing in old formats get their defaults (or DERIVED_COLUMNS); local
+ * columns (LOCAL_COLUMNS) in the file are skipped, the caller refills them (repairNameKeys,
+ * linkCommentAuthors).
  */
-export function replaceAllData(sqlite: Database.Database, data: ExportData, sequences: Sequences = {}): void {
-  if (!sqlite.inTransaction) throw new Error("replaceAllData needs a transaction");
+export function replaceAccountData(
+  sqlite: Database.Database,
+  accountId: number,
+  data: ExportData,
+  sequences: Sequences = {},
+): void {
+  if (!sqlite.inTransaction) throw new Error("replaceAccountData needs a transaction");
   sqlite.pragma("defer_foreign_keys = ON");
   const local = LOCAL_SETTING_KEYS.map(() => "?").join(", ");
   for (const table of EXPORT_TABLES.toReversed()) {
     if (table === "settings")
-      sqlite.prepare(`DELETE FROM settings WHERE key NOT IN (${local})`).run(...LOCAL_SETTING_KEYS);
-    else sqlite.prepare(`DELETE FROM ${quote(table)}`).run();
+      sqlite
+        .prepare(`DELETE FROM account_settings WHERE account_id = ? AND key NOT IN (${local})`)
+        .run(accountId, ...LOCAL_SETTING_KEYS);
+    else sqlite.prepare(`DELETE FROM ${quote(table)} WHERE account_id = ?`).run(accountId);
   }
   for (const table of EXPORT_TABLES) {
     const columns = tableColumns(sqlite, table);
     const statements = new Map<string, Database.Statement>();
     for (const row of data[table] ?? []) {
-      if (table === "settings" && (LOCAL_SETTING_KEYS as readonly unknown[]).includes(row.key)) continue;
+      if (table === "settings" && SKIPPED_SETTING_KEYS.includes(row.key)) continue;
       const unknown = Object.keys(row).filter((name) => !columns.has(name));
       if (unknown.length > 0) throw new RowError(table, row.id, `unknown column ${unknown.join(", ")}`);
-      const values = insertValues(table, row);
+      const values: Record<string, unknown> = { ...insertValues(table, row), account_id: accountId };
       const names = Object.keys(values);
       const key = names.join("\u0000");
       let statement = statements.get(key);
       if (!statement) {
         statement = sqlite.prepare(
-          `INSERT INTO ${quote(table)} (${names.map(quote).join(", ")}) VALUES (${names.map(() => "?").join(", ")})`,
+          `INSERT INTO ${quote(dbTable(table))} (${names.map(quote).join(", ")}) VALUES (${names.map(() => "?").join(", ")})`,
         );
         statements.set(key, statement);
       }
@@ -85,12 +102,16 @@ export function replaceAllData(sqlite: Database.Database, data: ExportData, sequ
       }
     }
   }
-  for (const table of SEQUENCE_TABLES) {
-    const { maxId } = sqlite.prepare(`SELECT coalesce(max(id), 0) AS maxId FROM ${quote(table)}`).get() as {
-      maxId: number;
-    };
-    const seq = Math.max(sequences[table] ?? 0, maxId);
-    sqlite.prepare("DELETE FROM sqlite_sequence WHERE name = ?").run(table);
-    if (seq > 0) sqlite.prepare("INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)").run(table, seq);
+  sqlite.prepare("DELETE FROM account_sequences WHERE account_id = ?").run(accountId);
+  const setSequence = sqlite.prepare(
+    "INSERT INTO account_sequences (account_id, table_name, last_id) VALUES (?, ?, ?)",
+  );
+  for (const table of ID_TABLES) {
+    const { maxId } = sqlite
+      .prepare(`SELECT coalesce(max(id), 0) AS maxId FROM ${quote(table)} WHERE account_id = ?`)
+      .get(accountId) as { maxId: number };
+    const exported = sequences[table];
+    const seq = Math.max(typeof exported === "number" && Number.isInteger(exported) ? exported : 0, maxId);
+    if (seq > 0) setSequence.run(accountId, table, seq);
   }
 }

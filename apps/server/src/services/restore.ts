@@ -1,11 +1,9 @@
 import type { BackupFile, RestorePreview, RestoreResult } from "@organizer/shared";
 import { createHash, randomBytes } from "node:crypto";
 import {
-  chmodSync,
   closeSync,
   existsSync,
   fsyncSync,
-  mkdirSync,
   openSync,
   readdirSync,
   readFileSync,
@@ -15,18 +13,24 @@ import {
   writeSync,
 } from "node:fs";
 import { join } from "node:path";
-import { ATTACHMENTS_DIR, writePrivateFile } from "../data-dir.ts";
+import { writePrivateFile } from "../data-dir.ts";
 import { type Db, openDb, schemaVersion } from "../db/index.ts";
 import { ApiError } from "../http/errors.ts";
 import { detectType, OCTET_STREAM, sanitizeName } from "./attachments.ts";
-import { now } from "./context.ts";
-import { attachmentFileName, buildExport, EXPORT_TABLES, fileStamp } from "./export.ts";
-import { type FolderDeps, freeName, writeFileAtomically } from "./folder-export.ts";
+import { type Ctx, now, type Scoped } from "./context.ts";
+import { attachmentFileName, buildExport, dbTable, EXPORT_TABLES, fileStamp } from "./export.ts";
+import { freeName, privateDir, writeFileAtomically } from "./files.ts";
 import { linkCommentAuthors } from "./comments.ts";
 import { repairScopeConflicts } from "./labels.ts";
 import { repairNameKeys } from "./name-keys.ts";
-import { type ExportData, replaceAllData, RowError, type Sequences, tableColumns } from "./restore-data.ts";
-import { rebuildSearchIndex } from "./search-index.ts";
+import {
+  type ExportData,
+  replaceAccountData,
+  RowError,
+  type Sequences,
+  tableColumns,
+} from "./restore-data.ts";
+import { rebuildAccountIndex } from "./search-index.ts";
 import { getSetting, setSetting } from "./settings.ts";
 import { inflateEntry, readCentralDirectory, readEntry, ZipError, type ZipEntryInfo } from "./zip-reader.ts";
 
@@ -49,31 +53,54 @@ export const RESTORE_LIMITS: RestoreLimits = {
 
 /** A staged upload stays this long. */
 export const STAGE_TTL_MS = 60 * 60_000;
-/** Safety copies kept in <data dir>/backups. */
+/** Safety copies kept per account in <backups>/accounts/<account id>. */
 export const BACKUPS_KEEP = 5;
 export const RESTORE_IN_PROGRESS = "restoreInProgress";
 
 const RESTORE_DIR = "restore";
-const BACKUPS_DIR = "backups";
-const BACKUP_FILE = /^organizer-before-restore-(\d{8}-\d{6})(?:-(\d+))?\.zip$/;
+const BACKUP_FILE = /^sloppanizer-before-restore-(\d{8}-\d{6})(?:-(\d+))?\.zip$/;
 const MAX_PROBLEMS = 20;
+const BUSY = "The server is busy with another restore. Try again in a few minutes.";
+/** The account of the scratch database a trial import runs in. */
+const SCRATCH_ACCOUNT = 1;
 
-/** Tables of each export format. */
+/** Tables of each export format. Formats 1 to 3 come from the single-user organizer, 4 from Sloppanizer. */
 const FORMAT_TABLES: Record<number, readonly string[]> = {
   1: ["projects", "labels", "people", "todos", "todo_labels", "todo_people", "events", "settings"],
   2: EXPORT_TABLES.filter((t) => t !== "todo_links"),
   // Format 3 adds todo_links (and manifest.sequences).
   3: EXPORT_TABLES,
+  // Format 4: one account, sequences of every id table, the account in the manifest.
+  4: EXPORT_TABLES,
+};
+/** The app that writes each format. */
+const FORMAT_APP: Record<number, "organizer" | "sloppanizer"> = {
+  1: "organizer",
+  2: "organizer",
+  3: "organizer",
+  4: "sloppanizer",
 };
 
-export interface RestoreDeps extends FolderDeps {
+/** What a restore needs from the server, besides the account's context. */
+export interface RestoreEnv {
+  version: string;
+  /** Staged uploads and scratch databases live in <data dir>/restore. */
+  dataDir: string;
+  /** Attachments, one folder per account. */
+  filesDir: string;
+  /** Safety copies go to <backups>/accounts/<account id>. */
+  backupDir: string;
+  filesLimitBytes: number;
   limits: RestoreLimits;
-  /** One restore at a time (per app). */
+  /** One restore at a time on the server. */
   restoreLock: { busy: boolean };
 }
 
+/** The caller's account (its rows, files and safety copies are the only ones a restore touches). */
+export type RestoreCtx = Ctx & RestoreEnv & { account: { username: string; displayName: string } };
+
 interface Manifest {
-  app: string;
+  app: "organizer" | "sloppanizer";
   format: number;
   exportedAt: string;
   appVersion: string;
@@ -120,17 +147,15 @@ class Problems {
   }
 }
 
-function privateDir(path: string): string {
-  mkdirSync(path, { recursive: true, mode: 0o700 });
-  chmodSync(path, 0o700);
-  return path;
-}
-
 const restoreDir = (dataDir: string) => privateDir(join(dataDir, RESTORE_DIR));
-const backupsDir = (dataDir: string) => privateDir(join(dataDir, BACKUPS_DIR));
-const stagingDir = (dataDir: string, uploadId: string) =>
-  join(dataDir, `${ATTACHMENTS_DIR}.restore-${uploadId}`);
-const oldDir = (dataDir: string, uploadId: string) => join(dataDir, `${ATTACHMENTS_DIR}.old-${uploadId}`);
+const backupsDir = (env: Pick<RestoreEnv, "backupDir">, accountId: number) =>
+  privateDir(join(env.backupDir, "accounts", String(accountId)));
+/** The live files folder of an account and the folders a restore swaps it with (same file system). */
+const liveDir = (filesDir: string, accountId: number) => join(filesDir, String(accountId));
+const stagingDir = (filesDir: string, accountId: number, uploadId: string) =>
+  join(filesDir, `.restore-${accountId}-${uploadId}`);
+const oldDir = (filesDir: string, accountId: number, uploadId: string) =>
+  join(filesDir, `.old-${accountId}-${uploadId}`);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -160,8 +185,8 @@ function readArchive(
   if (declared > limits.totalBytes) problems.add("The archive is larger than 4 GB when unpacked.");
   const manifestEntry = entries.get("manifest.json");
   const dataEntry = entries.get("data.json");
-  if (!manifestEntry) problems.add("manifest.json is missing. Is this an organizer export?");
-  if (!dataEntry) problems.add("data.json is missing. Is this an organizer export?");
+  if (!manifestEntry) problems.add("manifest.json is missing. Is this a Sloppanizer export?");
+  if (!dataEntry) problems.add("data.json is missing. Is this a Sloppanizer export?");
   if (dataEntry && dataEntry.size > limits.dataJsonBytes) problems.add("data.json is larger than 512 MB.");
   if (problems.any || !manifestEntry || !dataEntry) return null;
 
@@ -174,18 +199,26 @@ function readArchive(
     problems.add(error instanceof ZipError ? error.message : "manifest.json or data.json is not valid JSON.");
     return null;
   }
-  if (!isRecord(manifest) || manifest.app !== "organizer") {
-    problems.add('manifest.json does not say app "organizer". Is this an organizer export?');
+  if (!isRecord(manifest) || (manifest.app !== "sloppanizer" && manifest.app !== "organizer")) {
+    problems.add(
+      'manifest.json does not say app "sloppanizer" or "organizer". Is this a Sloppanizer export?',
+    );
     return null;
   }
-  if (!FORMAT_TABLES[manifest.format]) {
+  if (FORMAT_APP[manifest.format] !== manifest.app) {
     problems.add(
-      `Export format ${String(manifest.format)} is not known. Formats 1, 2 and 3 can be restored.`,
+      `Export format ${String(manifest.format)} of app "${manifest.app}" is not known. Formats 1 to 3 (organizer) and 4 (Sloppanizer) can be restored.`,
     );
     return null;
   }
   if (typeof manifest.schemaVersion !== "number" || manifest.schemaVersion > currentSchema) {
-    problems.add("This export comes from a newer organizer. Update this one first.");
+    problems.add(
+      "This export comes from a newer Sloppanizer. It can be restored once the server is updated.",
+    );
+    return null;
+  }
+  if (manifest.sequences !== undefined && !isRecord(manifest.sequences)) {
+    problems.add("manifest.json has sequences that are not a table of numbers.");
     return null;
   }
   if (typeof manifest.exportedAt !== "string" || typeof manifest.appVersion !== "string") {
@@ -223,9 +256,9 @@ function checkTables(db: Db, archive: Archive, problems: Problems): void {
       continue;
     }
     const types = new Map(
-      (db.$client.prepare(`PRAGMA table_info("${table}")`).all() as { name: string; type: string }[]).map(
-        (c) => [c.name, c.type],
-      ),
+      (
+        db.$client.prepare(`PRAGMA table_info("${dbTable(table)}")`).all() as { name: string; type: string }[]
+      ).map((c) => [c.name, c.type]),
     );
     const columns = tableColumns(db.$client, table);
     for (const row of rows) {
@@ -252,16 +285,25 @@ function checkTables(db: Db, archive: Archive, problems: Problems): void {
   }
 }
 
-/** Loads the data into a scratch database, so FK, CHECK and UNIQUE problems show with table and id. */
-function trialImport(dataDir: string, uploadId: string, archive: Archive, problems: Problems): void {
-  const file = join(restoreDir(dataDir), `${uploadId}.db`);
+/**
+ * Loads the data into a scratch database with one scratch account, so FK, CHECK and UNIQUE problems show
+ * with table and id before the real account is touched.
+ */
+function trialImport(file: string, archive: Archive, problems: Problems): void {
   const scratch = openDb(file);
   const sqlite = scratch.$client;
   const rollback = new Error("rollback");
   try {
     sqlite.transaction(() => {
+      const at = new Date(0).toISOString();
+      sqlite
+        .prepare(
+          `INSERT INTO accounts (id, username, display_name, time_zone, status, webauthn_user_id, created_at, updated_at)
+           VALUES (?, 'scratch', 'Scratch', 'UTC', 'active', 'scratch', ?, ?)`,
+        )
+        .run(SCRATCH_ACCOUNT, at, at);
       try {
-        replaceAllData(sqlite, archive.data, archive.manifest.sequences);
+        replaceAccountData(sqlite, SCRATCH_ACCOUNT, archive.data, archive.manifest.sequences);
       } catch (error) {
         problems.add(
           error instanceof RowError
@@ -384,33 +426,51 @@ function cleanAttachmentRows(archive: Archive, heads: ReadonlyMap<number, Buffer
   }
 }
 
-function liveCounts(db: Db, tables: readonly string[]): Record<string, number> {
+/** Rows of the account per data.json table. */
+function liveCounts(sc: Pick<Ctx, "db" | "accountId">, tables: readonly string[]): Record<string, number> {
   return Object.fromEntries(
-    tables.map((t) => [t, (db.$client.prepare(`SELECT count(*) AS n FROM "${t}"`).get() as { n: number }).n]),
+    tables.map((t) => [
+      t,
+      (
+        sc.db.$client
+          .prepare(`SELECT count(*) AS n FROM "${dbTable(t)}" WHERE account_id = ?`)
+          .get(sc.accountId) as { n: number }
+      ).n,
+    ]),
   );
 }
 
-// ---------- staged uploads ----------
+const GIB = 1024 ** 3;
+const sizeText = (bytes: number): string =>
+  bytes >= GIB ? `${(bytes / GIB).toFixed(1).replace(/\.0$/, "")} GB` : `${Math.ceil(bytes / MiB)} MB`;
 
-const stagedZip = (dataDir: string, id: string) => join(restoreDir(dataDir), `${id}.zip`);
-const stagedInfo = (dataDir: string, id: string) => join(restoreDir(dataDir), `${id}.json`);
+// ---------- staged uploads (per account: <data dir>/restore/<account id>-<upload id>.*) ----------
 
-function removeStaged(dataDir: string, id: string): void {
-  for (const file of [stagedZip(dataDir, id), stagedInfo(dataDir, id)]) rmSync(file, { force: true });
+const stageKey = (accountId: number, uploadId: string) => `${accountId}-${uploadId}`;
+const stagedZip = (dataDir: string, key: string) => join(restoreDir(dataDir), `${key}.zip`);
+const stagedInfo = (dataDir: string, key: string) => join(restoreDir(dataDir), `${key}.json`);
+
+function removeStaged(dataDir: string, key: string): void {
+  for (const file of [stagedZip(dataDir, key), stagedInfo(dataDir, key)]) rmSync(file, { force: true });
 }
 
-/** Removes every staged upload (expired ones only, unless `all`) and scratch databases. */
-export function cleanStaged(dataDir: string, at: Date, all = false): void {
+const STAGED_FILE = /^(\d+)-([0-9a-f]{32})\.(zip|json|db|db-wal|db-shm)$/;
+
+/**
+ * Removes expired staged uploads of every account (and all of `dropAccount`'s, when given) and scratch
+ * databases. Zips without their info file are leftovers of a crash during an upload.
+ */
+export function cleanStaged(dataDir: string, at: Date, dropAccount?: number): void {
   const dir = restoreDir(dataDir);
   for (const name of readdirSync(dir)) {
-    const match = /^([0-9a-f]{32})\.(zip|json|db|db-wal|db-shm)$/.exec(name);
+    const match = STAGED_FILE.exec(name);
     if (!match) continue;
-    const id = match[1] as string;
-    if (match[2]?.startsWith("db")) {
+    const key = `${match[1]}-${match[2]}`;
+    if (match[3]?.startsWith("db")) {
       rmSync(join(dir, name), { force: true });
       continue;
     }
-    if (match[2] !== "json") continue;
+    if (match[3] !== "json") continue;
     let expired = true;
     try {
       const info = JSON.parse(readFileSync(join(dir, name), "utf8")) as StagedInfo;
@@ -418,45 +478,55 @@ export function cleanStaged(dataDir: string, at: Date, all = false): void {
     } catch {
       // unreadable: treat as expired
     }
-    if (all || expired) removeStaged(dataDir, id);
+    if (expired || Number(match[1]) === dropAccount) removeStaged(dataDir, key);
   }
-  // Zips without their info file are leftovers of a crash during an upload.
   for (const name of readdirSync(dir)) {
-    const match = /^([0-9a-f]{32})\.zip$/.exec(name);
-    if (match && !existsSync(join(dir, `${match[1]}.json`))) rmSync(join(dir, name), { force: true });
+    const match = STAGED_FILE.exec(name);
+    if (match?.[3] === "zip" && !existsSync(join(dir, `${match[1]}-${match[2]}.json`)))
+      rmSync(join(dir, name), { force: true });
   }
 }
 
-/** Checks an uploaded export zip and stages it (one at a time); 422 with problems when it cannot be restored. */
-export function stageUpload(deps: RestoreDeps, name: string | undefined, zip: Buffer): RestorePreview {
-  if (deps.restoreLock.busy) throw new ApiError("conflict", "A restore is running. Wait until it is done.");
-  const at = deps.clock();
-  cleanStaged(deps.dataDir, at, true);
+/**
+ * Checks an uploaded export zip and stages it for the account (one upload per account; another one
+ * replaces it); 422 with problems when it cannot be restored, also when its files pass the account's limit.
+ */
+export function stageUpload(ctx: RestoreCtx, name: string | undefined, zip: Buffer): RestorePreview {
+  if (ctx.restoreLock.busy) throw new ApiError("conflict", BUSY);
+  const at = ctx.clock();
+  cleanStaged(ctx.dataDir, at, ctx.accountId);
   const uploadId = randomBytes(16).toString("hex");
+  const key = stageKey(ctx.accountId, uploadId);
   const problems = new Problems();
   if (zip.length === 0) problems.add("The file is empty.");
-  const archive = problems.any ? null : readArchive(zip, deps.limits, schemaVersion(deps.db), problems);
+  const archive = problems.any ? null : readArchive(zip, ctx.limits, schemaVersion(ctx.db), problems);
   if (!archive) throw problems.error();
-  checkTables(deps.db, archive, problems);
-  if (!problems.any) trialImport(deps.dataDir, uploadId, archive, problems);
+  checkTables(ctx.db, archive, problems);
+  if (!problems.any) trialImport(join(restoreDir(ctx.dataDir), `${key}.db`), archive, problems);
   const attachments = problems.any ? null : checkAttachments(archive, problems);
+  if (attachments && attachments.bytes > ctx.filesLimitBytes) {
+    problems.add(
+      `The files in this export use ${sizeText(attachments.bytes)}, more than this account's limit of ${sizeText(ctx.filesLimitBytes)}. Ask the admin.`,
+    );
+  }
   if (problems.any || !attachments) throw problems.error();
 
   const tables = FORMAT_TABLES[archive.manifest.format] ?? [];
   const preview: RestorePreview = {
     uploadId,
     fileName: (name ?? "").split(/[/\\]/).pop()?.slice(0, 200) || "export.zip",
+    source: archive.manifest.app,
     format: archive.manifest.format,
     exportedAt: new Date(archive.manifest.exportedAt).toISOString(),
     appVersion: archive.manifest.appVersion,
     schemaVersion: archive.manifest.schemaVersion,
     inFile: Object.fromEntries(tables.map((t) => [t, archive.data[t]?.length ?? 0])),
-    now: liveCounts(deps.db, tables),
+    now: liveCounts(ctx, tables),
     attachments: { count: attachments.count, bytes: attachments.bytes, missing: attachments.missing },
     warnings: attachments.warnings,
     expiresAt: new Date(at.getTime() + STAGE_TTL_MS).toISOString(),
   };
-  const zipFile = stagedZip(deps.dataDir, uploadId);
+  const zipFile = stagedZip(ctx.dataDir, key);
   const fd = openSync(zipFile, "w", 0o600);
   try {
     writeSync(fd, zip);
@@ -464,31 +534,37 @@ export function stageUpload(deps: RestoreDeps, name: string | undefined, zip: Bu
   } finally {
     closeSync(fd);
   }
-  writePrivateFile(stagedInfo(deps.dataDir, uploadId), JSON.stringify({ preview } satisfies StagedInfo));
+  writePrivateFile(stagedInfo(ctx.dataDir, key), JSON.stringify({ preview } satisfies StagedInfo));
   return preview;
 }
 
-/** The preview of a staged upload; 404 when unknown or expired (an expired one is removed). */
-export function getStaged(deps: RestoreDeps, uploadId: string): RestorePreview {
+type StagedCtx = Pick<RestoreCtx, "dataDir" | "clock" | "accountId">;
+
+/**
+ * The preview of the account's staged upload; 404 when unknown, expired (an expired one is removed) or
+ * another account's.
+ */
+export function getStaged(ctx: StagedCtx, uploadId: string): RestorePreview {
+  const key = stageKey(ctx.accountId, uploadId);
   let info: StagedInfo;
   try {
-    info = JSON.parse(readFileSync(stagedInfo(deps.dataDir, uploadId), "utf8")) as StagedInfo;
+    info = JSON.parse(readFileSync(stagedInfo(ctx.dataDir, key), "utf8")) as StagedInfo;
   } catch {
     throw new ApiError("not_found", "This upload does not exist (anymore). Upload the file again.");
   }
   if (
-    Date.parse(info.preview.expiresAt) <= deps.clock().getTime() ||
-    !existsSync(stagedZip(deps.dataDir, uploadId))
+    Date.parse(info.preview.expiresAt) <= ctx.clock().getTime() ||
+    !existsSync(stagedZip(ctx.dataDir, key))
   ) {
-    removeStaged(deps.dataDir, uploadId);
+    removeStaged(ctx.dataDir, key);
     throw new ApiError("not_found", "This upload has expired. Upload the file again.");
   }
   return info.preview;
 }
 
-export function discardStaged(deps: RestoreDeps, uploadId: string): void {
-  getStaged(deps, uploadId);
-  removeStaged(deps.dataDir, uploadId);
+export function discardStaged(ctx: StagedCtx, uploadId: string): void {
+  getStaged(ctx, uploadId);
+  removeStaged(ctx.dataDir, stageKey(ctx.accountId, uploadId));
 }
 
 // ---------- safety copies ----------
@@ -499,8 +575,9 @@ function newestBackupFirst(a: string, b: string): number {
   return stampB.localeCompare(stampA) || Number(nB) - Number(nA);
 }
 
-export function listBackups(dataDir: string): BackupFile[] {
-  const dir = backupsDir(dataDir);
+/** The account's safety copies, newest first. */
+export function listBackups(env: Pick<RestoreEnv, "backupDir">, accountId: number): BackupFile[] {
+  const dir = backupsDir(env, accountId);
   return readdirSync(dir)
     .filter((name) => BACKUP_FILE.test(name))
     .toSorted(newestBackupFirst)
@@ -510,27 +587,28 @@ export function listBackups(dataDir: string): BackupFile[] {
     });
 }
 
-/** Path of a safety copy by its exact file name; 404 for anything else. */
-export function backupPath(dataDir: string, fileName: string): string {
-  const path = join(backupsDir(dataDir), fileName);
+/** Path of one of the account's safety copies by its exact file name; 404 for anything else. */
+export function backupPath(env: Pick<RestoreEnv, "backupDir">, accountId: number, fileName: string): string {
+  const path = join(backupsDir(env, accountId), fileName);
   if (!BACKUP_FILE.test(fileName) || !existsSync(path)) {
     throw new ApiError("not_found", `There is no safety copy named ${fileName}.`);
   }
   return path;
 }
 
-/** An export of the current data into <data dir>/backups (lastExportAt untouched), newest 5 kept. */
-async function writeSafetyCopy(deps: RestoreDeps): Promise<BackupFile> {
-  const dir = backupsDir(deps.dataDir);
-  const at = deps.clock();
-  const { stream } = buildExport(deps, {
-    attachmentsDir: deps.attachmentsDir,
-    appVersion: deps.version,
+/** An export of the account's current data into its backups folder (lastExportAt untouched), newest 5 kept. */
+async function writeSafetyCopy(ctx: RestoreCtx): Promise<BackupFile> {
+  const dir = backupsDir(ctx, ctx.accountId);
+  const at = ctx.clock();
+  const { stream } = buildExport(ctx, {
+    filesDir: liveDir(ctx.filesDir, ctx.accountId),
+    appVersion: ctx.version,
+    account: ctx.account,
     recordExport: false,
   });
-  const fileName = freeName(dir, `organizer-before-restore-${fileStamp(at, deps.timeZone)}.zip`);
+  const fileName = freeName(dir, `sloppanizer-before-restore-${fileStamp(at, ctx.timeZone)}.zip`);
   const bytes = await writeFileAtomically(stream, join(dir, fileName));
-  for (const old of listBackups(deps.dataDir).slice(BACKUPS_KEEP))
+  for (const old of listBackups(ctx, ctx.accountId).slice(BACKUPS_KEEP))
     rmSync(join(dir, old.fileName), { force: true });
   return { fileName, createdAt: at.toISOString(), bytes };
 }
@@ -539,22 +617,27 @@ async function writeSafetyCopy(deps: RestoreDeps): Promise<BackupFile> {
 
 interface InProgress {
   uploadId: string;
-  stagingDir: string;
 }
 
-/** Step 4 of a restore: the staged files become the attachments folder. Safe to run again after a crash. */
-function swapAttachments(dataDir: string, db: Db, progress: InProgress): void {
-  const live = join(dataDir, ATTACHMENTS_DIR);
-  const old = oldDir(dataDir, progress.uploadId);
-  if (existsSync(progress.stagingDir)) {
+/**
+ * Step 4 of a restore: the staged files become the account's files folder. Safe to run again after a
+ * crash.
+ */
+function swapFiles(filesDir: string, db: Db, accountId: number, progress: InProgress): void {
+  const live = liveDir(filesDir, accountId);
+  const staging = stagingDir(filesDir, accountId, progress.uploadId);
+  const old = oldDir(filesDir, accountId, progress.uploadId);
+  if (existsSync(staging)) {
     if (existsSync(live)) {
       rmSync(old, { recursive: true, force: true });
       renameSync(live, old);
     }
-    renameSync(progress.stagingDir, live);
+    renameSync(staging, live);
   }
   rmSync(old, { recursive: true, force: true });
-  db.$client.prepare("DELETE FROM settings WHERE key = ?").run(RESTORE_IN_PROGRESS);
+  db.$client
+    .prepare("DELETE FROM account_settings WHERE account_id = ? AND key = ?")
+    .run(accountId, RESTORE_IN_PROGRESS);
 }
 
 /** Writes each checked file to <dir>/<id> (0600, synced). */
@@ -577,27 +660,29 @@ function folderSink(dir: string): FileSink {
 }
 
 /**
- * Replaces all data with the staged export: (1) a safety copy of the current data, (2) the files
- * into a staging folder (checked again), (3) one transaction for the rows, sequences, name keys,
- * scope repair, search index and the restoreInProgress marker, (4) the folder swap, (5) the staged upload goes.
- * Tokens, the secret and device settings are not touched.
+ * Replaces the account's data with its staged export: (1) a safety copy of its current data, (2) the
+ * files into a staging folder (checked again), (3) one transaction for its rows, sequences, name keys,
+ * scope repair, search index and the restoreInProgress marker, (4) the folder swap, (5) the staged
+ * upload goes. Other accounts, the account's sign-in data and its tokens are not touched.
  */
-export async function applyRestore(deps: RestoreDeps, uploadId: string): Promise<RestoreResult> {
-  if (deps.restoreLock.busy) throw new ApiError("conflict", "A restore is running. Wait until it is done.");
-  getStaged(deps, uploadId);
-  deps.restoreLock.busy = true;
-  const staging = stagingDir(deps.dataDir, uploadId);
+export async function applyRestore(ctx: RestoreCtx, uploadId: string): Promise<RestoreResult> {
+  if (ctx.restoreLock.busy) throw new ApiError("conflict", BUSY);
+  getStaged(ctx, uploadId);
+  ctx.restoreLock.busy = true;
+  const key = stageKey(ctx.accountId, uploadId);
+  const staging = stagingDir(ctx.filesDir, ctx.accountId, uploadId);
+  const sc: Scoped = ctx;
   try {
     const problems = new Problems();
     const archive = readArchive(
-      readFileSync(stagedZip(deps.dataDir, uploadId)),
-      deps.limits,
-      schemaVersion(deps.db),
+      readFileSync(stagedZip(ctx.dataDir, key)),
+      ctx.limits,
+      schemaVersion(ctx.db),
       problems,
     );
     if (!archive) throw problems.error();
 
-    const safetyCopy = await writeSafetyCopy(deps);
+    const safetyCopy = await writeSafetyCopy(ctx);
 
     rmSync(staging, { recursive: true, force: true });
     privateDir(staging);
@@ -606,54 +691,57 @@ export async function applyRestore(deps: RestoreDeps, uploadId: string): Promise
     if (problems.any) throw problems.error();
     cleanAttachmentRows(archive, heads);
 
-    const sqlite = deps.db.$client;
-    const progress: InProgress = { uploadId, stagingDir: staging };
+    const sqlite = ctx.db.$client;
+    const progress: InProgress = { uploadId };
     sqlite.transaction(() => {
-      replaceAllData(sqlite, archive.data, archive.manifest.sequences);
-      repairNameKeys(sqlite);
-      linkCommentAuthors(sqlite);
-      repairScopeConflicts(deps);
-      rebuildSearchIndex(deps.db);
+      replaceAccountData(sqlite, ctx.accountId, archive.data, archive.manifest.sequences);
+      repairNameKeys(sqlite, ctx.accountId);
+      linkCommentAuthors(sqlite, ctx.accountId);
+      repairScopeConflicts(ctx);
+      rebuildAccountIndex(sc);
       const broken = sqlite.pragma("foreign_key_check") as unknown[];
       if (broken.length > 0)
         throw new ApiError(
           "validation_failed",
           "The restored data has broken references. Nothing was changed.",
         );
-      setSetting(deps.db, RESTORE_IN_PROGRESS, progress);
+      setSetting(sc, RESTORE_IN_PROGRESS, progress);
     })();
 
-    swapAttachments(deps.dataDir, deps.db, progress);
-    removeStaged(deps.dataDir, uploadId);
+    swapFiles(ctx.filesDir, ctx.db, ctx.accountId, progress);
+    removeStaged(ctx.dataDir, key);
     const tables = FORMAT_TABLES[archive.manifest.format] ?? [];
     return {
-      restoredAt: now(deps),
+      restoredAt: now(ctx),
       counts: Object.fromEntries(tables.map((t) => [t, archive.data[t]?.length ?? 0])),
       safetyCopy,
     };
   } catch (error) {
-    if (!getSetting<InProgress>(deps.db, RESTORE_IN_PROGRESS))
-      rmSync(staging, { recursive: true, force: true });
+    if (!getSetting<InProgress>(sc, RESTORE_IN_PROGRESS)) rmSync(staging, { recursive: true, force: true });
     throw error;
   } finally {
-    deps.restoreLock.busy = false;
+    ctx.restoreLock.busy = false;
   }
 }
 
 /**
- * Start-up recovery, before anything uses the attachments folder: a restore that committed but did
- * not finish the folder swap is finished; otherwise leftover staging folders and expired uploads go.
+ * Start-up recovery, before anything uses the files folders: restores that committed but did not finish
+ * the folder swap are finished (any account); otherwise leftover staging folders and expired uploads go.
+ * Returns how many restores it finished.
  */
-export function recoverRestore(dataDir: string, db: Db, at: Date): "finished" | "clean" {
-  const progress = getSetting<InProgress>(db, RESTORE_IN_PROGRESS);
-  if (progress) {
-    swapAttachments(dataDir, db, progress);
-    return "finished";
+export function recoverRestore(env: Pick<RestoreEnv, "dataDir" | "filesDir">, db: Db, at: Date): number {
+  const pending = db.$client
+    .prepare("SELECT account_id AS accountId, value FROM account_settings WHERE key = ?")
+    .all(RESTORE_IN_PROGRESS) as { accountId: number; value: string }[];
+  for (const { accountId, value } of pending) {
+    swapFiles(env.filesDir, db, accountId, JSON.parse(value) as InProgress);
   }
-  for (const name of readdirSync(dataDir)) {
-    if (name.startsWith(`${ATTACHMENTS_DIR}.restore-`))
-      rmSync(join(dataDir, name), { recursive: true, force: true });
+  if (existsSync(env.filesDir)) {
+    for (const name of readdirSync(env.filesDir)) {
+      if (name.startsWith(".restore-") || name.startsWith(".old-"))
+        rmSync(join(env.filesDir, name), { recursive: true, force: true });
+    }
   }
-  if (existsSync(join(dataDir, RESTORE_DIR))) cleanStaged(dataDir, at);
-  return "clean";
+  if (existsSync(join(env.dataDir, RESTORE_DIR))) cleanStaged(env.dataDir, at);
+  return pending.length;
 }

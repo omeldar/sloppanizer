@@ -22,7 +22,7 @@ import {
   nextUp,
   updateTodo,
 } from "../services/todos.ts";
-import { actorOf, type App, type Deps } from "./types.ts";
+import { actorOf, type App, ctxOf, type Deps } from "./types.ts";
 
 export function todoRoutes(app: App, deps: Deps): void {
   const tags = ["todos"];
@@ -36,12 +36,13 @@ export function todoRoutes(app: App, deps: Deps): void {
         response: { 200: TodoPage },
       },
     },
-    async (request) => listTodos(deps, request.query),
+    async (request) => listTodos(ctxOf(request, deps), request.query),
   );
   app.post(
     `${API_PREFIX}/todos`,
     { schema: { tags, summary: "Create a todo", body: CreateTodo, response: { 201: Todo } } },
-    async (request, reply) => reply.status(201).send(createTodo(deps, actorOf(request), request.body)),
+    async (request, reply) =>
+      reply.status(201).send(createTodo(ctxOf(request, deps), actorOf(request), request.body)),
   );
   app.post(
     `${API_PREFIX}/todos/bulk`,
@@ -54,13 +55,13 @@ export function todoRoutes(app: App, deps: Deps): void {
       },
     },
     async (request) => ({
-      updated: bulkUpdate(deps, actorOf(request), request.body.ids, request.body.patch),
+      updated: bulkUpdate(ctxOf(request, deps), actorOf(request), request.body.ids, request.body.patch),
     }),
   );
   app.get(
     `${API_PREFIX}/todos/:id`,
     { schema: { tags, params: IdParams, response: { 200: Todo } } },
-    async (request) => getTodo(deps.db, request.params.id),
+    async (request) => getTodo(ctxOf(request, deps), request.params.id),
   );
   app.patch(
     `${API_PREFIX}/todos/:id`,
@@ -73,10 +74,10 @@ export function todoRoutes(app: App, deps: Deps): void {
         response: { 200: Todo },
       },
     },
-    async (request) => updateTodo(deps, actorOf(request), request.params.id, request.body),
+    async (request) => updateTodo(ctxOf(request, deps), actorOf(request), request.params.id, request.body),
   );
   app.delete(`${API_PREFIX}/todos/:id`, { schema: { tags, params: IdParams } }, async (request, reply) => {
-    deleteTodo(deps, actorOf(request), request.params.id);
+    deleteTodo(ctxOf(request, deps), actorOf(request), request.params.id);
     return reply.status(204).send();
   });
   app.get(
@@ -89,11 +90,11 @@ export function todoRoutes(app: App, deps: Deps): void {
         response: { 200: NextUp },
       },
     },
-    async (request) => nextUp(deps, request.query),
+    async (request) => nextUp(ctxOf(request, deps), request.query),
   );
   app.get(
     `${API_PREFIX}/stats`,
     { schema: { tags: ["next up"], summary: "Counters for the status bar", response: { 200: Stats } } },
-    async () => stats(deps),
+    async (request) => stats(ctxOf(request, deps)),
   );
 }

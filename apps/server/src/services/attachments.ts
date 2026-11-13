@@ -1,11 +1,12 @@
 import { API_PREFIX, type Attachment, INLINE_IMAGE_TYPES } from "@organizer/shared";
 import { createHash, randomBytes } from "node:crypto";
-import { closeSync, fsyncSync, openSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
+import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
 import { join } from "node:path";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { attachments } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
-import { type Ctx, now, type Tx } from "./context.ts";
+import { type Ctx, inTx, now, type Scoped } from "./context.ts";
+import { insertOwnedRow, owned } from "./owned.ts";
 
 export type AttachmentRow = typeof attachments.$inferSelect;
 
@@ -78,6 +79,37 @@ export const toAttachment = (row: AttachmentRow): Attachment => ({
   createdAt: row.createdAt,
 });
 
+/**
+ * The folder of an account's files, <files dir>/<account id> (0700), made on first use. Attachment files
+ * sit in it by id, so an account can only ever reach its own files.
+ */
+export function accountFilesDir(filesDir: string, accountId: number): string {
+  const dir = join(filesDir, String(accountId));
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return dir;
+}
+
+/** Bytes of the account's attachments (the rows; files are the same size). */
+export function accountFilesBytes(sc: Scoped): number {
+  return sc.db.get<{ n: number }>(
+    sql`SELECT coalesce(sum(size), 0) AS n FROM ${attachments} WHERE account_id = ${sc.accountId}`,
+  ).n;
+}
+
+const GIB = 1024 ** 3;
+const MIB = 1024 ** 2;
+const sizeText = (bytes: number): string =>
+  bytes >= GIB && bytes % GIB === 0 ? `${bytes / GIB} GB` : `${Math.round(bytes / MIB)} MB`;
+
+/** 413 when the account's files would pass its limit with `adding` more bytes. */
+export function assertFilesQuota(sc: Scoped, limitBytes: number, adding: number): void {
+  if (accountFilesBytes(sc) + adding <= limitBytes) return;
+  throw new ApiError(
+    "too_large",
+    `This account's files use ${sizeText(limitBytes)}, its limit. Delete unused files or ask the admin.`,
+  );
+}
+
 /** Writes the bytes to a private temp file in the folder and flushes them to disk. */
 function writeTemp(dir: string, bytes: Buffer): string {
   const path = join(dir, `.upload-${randomBytes(8).toString("hex")}`);
@@ -106,12 +138,13 @@ function syncDir(dir: string): void {
 }
 
 /**
- * Stores an upload at <attachments dir>/<id> (0600; no user input in the path): temp file, fsync,
- * then row and rename in one transaction. When anything fails, no file and no row are left.
+ * Stores an upload of the account at <account files dir>/<id> (0600; no user input in the path): temp
+ * file, fsync, then quota check, row and rename in one transaction. When anything fails, no file and no
+ * row are left.
  */
 export function storeAttachment(
   ctx: Ctx,
-  dir: string,
+  files: { dir: string; limitBytes: number },
   actor: string,
   rawName: string | undefined,
   bytes: Buffer,
@@ -120,25 +153,24 @@ export function storeAttachment(
     throw new ApiError("validation_failed", "The file is empty. Pick a file with content.");
   const { mime, ext } = detectType(bytes);
   const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const { dir } = files;
   const temp = writeTemp(dir, bytes);
   let finalPath: string | null = null;
   try {
     const attachment = ctx.db.transaction((tx) => {
-      const row = tx
-        .insert(attachments)
-        .values({
-          name: sanitizeName(rawName, ext),
-          mimeType: mime,
-          size: bytes.length,
-          sha256,
-          createdBy: actor,
-          createdAt: now(ctx),
-        })
-        .returning()
-        .get();
-      finalPath = join(dir, String(row.id));
+      const sc = inTx(ctx, tx);
+      assertFilesQuota(sc, files.limitBytes, bytes.length);
+      const id = insertOwnedRow(sc, attachments, {
+        name: sanitizeName(rawName, ext),
+        mimeType: mime,
+        size: bytes.length,
+        sha256,
+        createdBy: actor,
+        createdAt: now(ctx),
+      });
+      finalPath = join(dir, String(id));
       renameSync(temp, finalPath);
-      return toAttachment(row);
+      return toAttachment(attachmentRow(sc, id));
     });
     syncDir(dir);
     return attachment;
@@ -149,21 +181,28 @@ export function storeAttachment(
   }
 }
 
-function attachmentRow(db: Tx, id: number): AttachmentRow {
-  const row = db.select().from(attachments).where(eq(attachments.id, id)).get();
+function attachmentRow(sc: Scoped, id: number): AttachmentRow {
+  const row = sc.db
+    .select()
+    .from(attachments)
+    .where(owned(sc, attachments, eq(attachments.id, id)))
+    .get();
   if (!row) throw notFound("Attachment", id);
   return row;
 }
 
-export const getAttachment = (db: Tx, id: number): Attachment => toAttachment(attachmentRow(db, id));
+export const getAttachment = (sc: Scoped, id: number): Attachment => toAttachment(attachmentRow(sc, id));
 
-/** The row and file path of an attachment; 404 with a clear message when the file is gone. */
+/**
+ * The row and file path of an attachment of the account (`dir` = its files folder); 404 with a clear
+ * message when the file is gone.
+ */
 export function attachmentFile(
-  db: Tx,
+  sc: Scoped,
   dir: string,
   id: number,
 ): { row: AttachmentRow; path: string; size: number } {
-  const row = attachmentRow(db, id);
+  const row = attachmentRow(sc, id);
   const path = join(dir, String(row.id));
   try {
     return { row, path, size: statSync(path).size };

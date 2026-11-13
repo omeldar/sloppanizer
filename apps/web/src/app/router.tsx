@@ -171,8 +171,9 @@ const routes = [
 
 export const routeTree = rootRoute.addChildren(routes);
 
-export function makeRouter() {
-  return createRouter({ routeTree, defaultPreload: false, scrollRestoration: true });
+/** `basepath` is the account's "/u/<username>": every route and Link stays inside that account. */
+export function makeRouter(basepath = "/") {
+  return createRouter({ routeTree, basepath, defaultPreload: false, scrollRestoration: true });
 }
 
 declare module "@tanstack/react-router" {

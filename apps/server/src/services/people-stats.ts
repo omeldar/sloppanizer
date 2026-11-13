@@ -16,6 +16,7 @@ import {
 import { and, eq, gte, lt, type SQL } from "drizzle-orm";
 import { people, todoPeople, todos } from "../db/schema.ts";
 import type { Ctx } from "./context.ts";
+import { owned } from "./owned.ts";
 import { byName, filterPeople, getPersonRow, loadPeople, toPersonBrief } from "./people.ts";
 import { hasLabel, projectCondition } from "./todos.ts";
 
@@ -54,8 +55,8 @@ function linksInSet(ctx: Ctx, filters: TodoFilters, personId?: number): Link[] {
       doneAt: todos.doneAt,
     })
     .from(todoPeople)
-    .innerJoin(todos, eq(todos.id, todoPeople.todoId))
-    .where(and(...conditions))
+    .innerJoin(todos, and(eq(todos.accountId, todoPeople.accountId), eq(todos.id, todoPeople.todoId)))
+    .where(owned(ctx, todoPeople, ...conditions))
     .all();
 }
 
@@ -127,7 +128,8 @@ const roleKey = (stat: PersonStat, role: PersonRole) =>
 export function peopleStats(ctx: Ctx, query: PeopleStatsQuery): PeopleStats {
   const today = toLocalDate(ctx.clock(), ctx.timeZone);
   const byPerson = groupByPerson(linksInSet(ctx, query));
-  const chosen = filterPeople(loadPeople(ctx.db, ctx.db.select().from(people).all()), query).filter((p) =>
+  const everyone = ctx.db.select().from(people).where(owned(ctx, people)).all();
+  const chosen = filterPeople(loadPeople(ctx, everyone), query).filter((p) =>
     (byPerson.get(p.id) ?? []).some((l) => l.role === query.role),
   );
   const stats = chosen.map((p) => {
@@ -185,7 +187,7 @@ function lastMonths(today: string): string[] {
 
 /** One person's numbers with the last 12 months. 404 for an unknown person; zeros without todos. */
 export function personStats(ctx: Ctx, personId: number, query: PersonStatsQuery): PersonStatDetail {
-  const row = getPersonRow(ctx.db, personId);
+  const row = getPersonRow(ctx, personId);
   const today = toLocalDate(ctx.clock(), ctx.timeZone);
   const links = linksInSet(ctx, query, personId);
   const months = lastMonths(today).map((month) => ({ month, requested: 0, done: 0, contact: 0 }));

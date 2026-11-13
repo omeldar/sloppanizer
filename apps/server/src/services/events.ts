@@ -1,6 +1,7 @@
 import type { EventKind } from "@organizer/shared";
 import { events } from "../db/schema.ts";
-import type { Tx } from "./context.ts";
+import type { Scoped } from "./context.ts";
+import { insertOwned } from "./owned.ts";
 
 export interface EventInput {
   todoId: number;
@@ -9,17 +10,16 @@ export interface EventInput {
 }
 
 /** Records todo history (who changed what, from and to). */
-export function recordEvents(db: Tx, actor: string, at: string, list: readonly EventInput[]): void {
-  if (list.length === 0) return;
-  db.insert(events)
-    .values(
-      list.map((e) => ({
-        todoId: e.todoId,
-        actor,
-        kind: e.kind,
-        data: JSON.stringify(e.data),
-        createdAt: at,
-      })),
-    )
-    .run();
+export function recordEvents(sc: Scoped, actor: string, at: string, list: readonly EventInput[]): void {
+  insertOwned(
+    sc,
+    events,
+    list.map((e) => ({
+      todoId: e.todoId,
+      actor,
+      kind: e.kind,
+      data: JSON.stringify(e.data),
+      createdAt: at,
+    })),
+  );
 }

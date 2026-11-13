@@ -188,13 +188,19 @@
   color: var(--text);
 }
 
-a.fileName {
+button.fileName {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   text-decoration: underline;
   text-decoration-color: var(--text-3);
   text-underline-offset: 3px;
 }
 
-a.fileName:hover {
+button.fileName:hover {
   color: var(--amber-text);
 }
 

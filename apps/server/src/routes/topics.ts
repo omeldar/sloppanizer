@@ -1,7 +1,7 @@
 import { API_PREFIX, IdParams, Team, Topic, TopicQuery, UpdateTopic } from "@organizer/shared";
 import { z } from "zod";
 import { deleteTopic, listTeams, listTopics, renameTopic } from "../services/topics.ts";
-import type { App, Deps } from "./types.ts";
+import { type App, ctxOf, type Deps } from "./types.ts";
 
 export function topicRoutes(app: App, deps: Deps): void {
   const tags = ["people"];
@@ -15,7 +15,7 @@ export function topicRoutes(app: App, deps: Deps): void {
         response: { 200: z.array(Topic) },
       },
     },
-    async (request) => listTopics(deps.db, request.query),
+    async (request) => listTopics(ctxOf(request, deps), request.query),
   );
   app.patch(
     `${API_PREFIX}/topics/:id`,
@@ -28,13 +28,13 @@ export function topicRoutes(app: App, deps: Deps): void {
         response: { 200: Topic },
       },
     },
-    async (request) => renameTopic(deps, request.params.id, request.body.name),
+    async (request) => renameTopic(ctxOf(request, deps), request.params.id, request.body.name),
   );
   app.delete(
     `${API_PREFIX}/topics/:id`,
     { schema: { tags, summary: "Delete a topic (removed from everyone)", params: IdParams } },
     async (request, reply) => {
-      deleteTopic(deps, request.params.id);
+      deleteTopic(ctxOf(request, deps), request.params.id);
       return reply.status(204).send();
     },
   );
@@ -47,6 +47,6 @@ export function topicRoutes(app: App, deps: Deps): void {
         response: { 200: z.array(Team) },
       },
     },
-    async () => listTeams(deps.db),
+    async (request) => listTeams(ctxOf(request, deps)),
   );
 }

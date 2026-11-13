@@ -29,7 +29,7 @@ function upload(
     url: `/api/v1/attachments${query}`,
     headers: {
       "content-type": contentType,
-      ...(token ? { authorization: `Bearer ${token}` } : { cookie: t.cookie }),
+      ...(token ? { authorization: `Bearer ${token}` } : t.account.headers()),
     },
     payload: bytes,
   });
@@ -56,8 +56,8 @@ describe("attachment uploads", () => {
       createdBy: "you",
       createdAt: "2026-11-11T10:00:00.000Z",
     });
-    expect(readdirSync(t.deps.attachmentsDir)).toEqual(["1"]);
-    expect(statSync(join(t.deps.attachmentsDir, "1")).mode & 0o777).toBe(0o600);
+    expect(readdirSync(t.filesDir)).toEqual(["1"]);
+    expect(statSync(join(t.filesDir, "1")).mode & 0o777).toBe(0o600);
     expect((await t.call("GET", "/api/v1/attachments/1/meta")).json()).toEqual(a);
   });
 
@@ -85,7 +85,7 @@ describe("attachment uploads", () => {
     const bare = await t.app.inject({
       method: "POST",
       url: "/api/v1/attachments?name=bare.png",
-      headers: { cookie: t.cookie },
+      headers: t.account.headers(),
       payload: PNG,
     });
     expect(bare.statusCode).toBe(201);
@@ -111,7 +111,7 @@ describe("attachment uploads", () => {
     expect(big.json().error).toEqual({ code: "too_large", message: "Files can be up to 25 MB." });
     // Bigger than the 1 MiB JSON limit is fine here.
     expect((await upload(t, Buffer.alloc(2 * 1024 * 1024, 1), "two-mb.bin")).statusCode).toBe(201);
-    expect(readdirSync(t.deps.attachmentsDir)).toEqual(["1"]);
+    expect(readdirSync(t.filesDir)).toEqual(["1"]);
   });
 
   it("keeps JSON parsing of other routes unchanged", async () => {
@@ -119,7 +119,7 @@ describe("attachment uploads", () => {
     const asText = await t.app.inject({
       method: "POST",
       url: "/api/v1/todos",
-      headers: { cookie: t.cookie, "content-type": "text/plain" },
+      headers: { ...t.account.headers(), "content-type": "text/plain" },
       payload: '{"title":"x"}',
     });
     expect(asText.statusCode).toBe(422);
@@ -127,7 +127,7 @@ describe("attachment uploads", () => {
     const big = await t.app.inject({
       method: "POST",
       url: "/api/v1/todos",
-      headers: { cookie: t.cookie, "content-type": "application/json" },
+      headers: { ...t.account.headers(), "content-type": "application/json" },
       payload: JSON.stringify({ title: "x", descriptionMd: "y".repeat(1_100_000) }),
     });
     expect(big.statusCode).toBe(413);
@@ -210,7 +210,7 @@ describe("attachment downloads", () => {
     expect((await t.call("GET", "/api/v1/attachments/9")).statusCode).toBe(404);
     expect((await t.call("GET", "/api/v1/attachments/9/meta")).statusCode).toBe(404);
     const a = await stored(t, PNG);
-    rmSync(join(t.deps.attachmentsDir, String(a.id)));
+    rmSync(join(t.filesDir, String(a.id)));
     const res = await t.call("GET", a.url);
     expect(res.statusCode).toBe(404);
     expect(res.json().error.message).toBe(

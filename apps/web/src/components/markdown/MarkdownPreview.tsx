@@ -1,4 +1,4 @@
-import { type ChecklistItem, parseChecklist, STATUS_LABELS } from "@organizer/shared";
+import { API_PREFIX, type ChecklistItem, parseChecklist, STATUS_LABELS } from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
 import { type ComponentProps, createContext, type ReactNode, useContext, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -6,11 +6,13 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { useTodo } from "../../lib/queries.ts";
 import { HoverCard } from "../HoverCard.tsx";
+import { useDownload } from "../useDownload.ts";
+import { AuthImage } from "./AuthImage.tsx";
 import styles from "./Markdown.module.css";
 import { remarkTodoLinks, todoIdFromHref } from "./remarkTodoLinks.ts";
 
 /** Only files stored by this app render as images; anything else stays a plain link. */
-export const ATTACHMENT_PREFIX = "/api/v1/attachments/";
+export const ATTACHMENT_PREFIX = `${API_PREFIX}/attachments/`;
 
 export function isAttachmentSrc(src: unknown): src is string {
   return typeof src === "string" && src.startsWith(ATTACHMENT_PREFIX) && !src.includes("..");
@@ -92,6 +94,7 @@ function Checkbox({ node: _node, ...props }: ComponentProps<"input"> & { node?: 
 function Anchor({ node: _node, href, children, ...props }: ComponentProps<"a"> & { node?: unknown }) {
   const todoId = todoIdFromHref(href);
   if (todoId !== null) return <TodoRef id={todoId}>{children}</TodoRef>;
+  if (isAttachmentSrc(href)) return <FileLink href={href}>{children}</FileLink>;
   return (
     <a {...props} href={href} target="_blank" rel="noreferrer noopener">
       {children}
@@ -110,9 +113,32 @@ function Image({ node: _node, src, alt }: ComponentProps<"img"> & { node?: unkno
       <span>{alt}</span>
     );
   }
+  return <AuthImage src={src} alt={alt ?? ""} />;
+}
+
+/** The file name at the end of an attachment link, for the saved file. */
+export function fileNameOf(href: string): string {
+  const last = href.split("/").pop() || "file";
+  try {
+    return decodeURIComponent(last);
+  } catch {
+    return last;
+  }
+}
+
+/** A stored file: downloads with the tab's token (a plain link would carry none). */
+function FileLink({ href, children }: { href: string; children: ReactNode }) {
+  const download = useDownload();
+  const name = fileNameOf(href);
   return (
-    <a href={src} target="_blank" rel="noreferrer noopener" className={styles.imageLink}>
-      <img src={src} alt={alt ?? ""} loading="lazy" />
+    <a
+      href={href}
+      onClick={(event) => {
+        event.preventDefault();
+        download(href.slice(API_PREFIX.length), name);
+      }}
+    >
+      {children}
     </a>
   );
 }

@@ -7,7 +7,7 @@ import {
   PersonStatsQuery,
 } from "@organizer/shared";
 import { peopleStats, personStats } from "../services/people-stats.ts";
-import type { App, Deps } from "./types.ts";
+import { type App, ctxOf, type Deps } from "./types.ts";
 
 export function peopleStatsRoutes(app: App, deps: Deps): void {
   const tags = ["people"];
@@ -21,7 +21,7 @@ export function peopleStatsRoutes(app: App, deps: Deps): void {
         response: { 200: PeopleStats },
       },
     },
-    async (request) => peopleStats(deps, request.query),
+    async (request) => peopleStats(ctxOf(request, deps), request.query),
   );
   app.get(
     `${API_PREFIX}/stats/people/:id`,
@@ -34,6 +34,6 @@ export function peopleStatsRoutes(app: App, deps: Deps): void {
         response: { 200: PersonStatDetail },
       },
     },
-    async (request) => personStats(deps, request.params.id, request.query),
+    async (request) => personStats(ctxOf(request, deps), request.params.id, request.query),
   );
 }

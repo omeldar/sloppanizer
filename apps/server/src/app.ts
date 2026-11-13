@@ -1,4 +1,3 @@
-import fastifyCookie from "@fastify/cookie";
 import fastifySwagger from "@fastify/swagger";
 import fastifySwaggerUi from "@fastify/swagger-ui";
 import Fastify, { type FastifyServerOptions } from "fastify";
@@ -11,13 +10,15 @@ import {
 import { join } from "node:path";
 import packageJson from "../package.json" with { type: "json" };
 import { type Clock, systemClock } from "./clock.ts";
-import type { Config } from "./config.ts";
-import { ensureAttachmentsDir, ensureDataDir, DB_FILE, loadSecret } from "./data-dir.ts";
+import { type Config, proxyMatcher } from "./config.ts";
+import { DB_FILE, ensureDataDir, ensurePrivateDir, loadSecret } from "./data-dir.ts";
+import { accounts } from "./db/auth-schema.ts";
 import { openDb } from "./db/index.ts";
 import { registerErrorHandling } from "./http/errors.ts";
 import { registerSecurity } from "./http/security.ts";
 import { registerWeb } from "./http/web.ts";
 import { attachmentRoutes } from "./routes/attachments.ts";
+import { registerAccountApi } from "./routes/auth.ts";
 import { commentRoutes } from "./routes/comments.ts";
 import { exportRoutes } from "./routes/export.ts";
 import { labelRoutes } from "./routes/labels.ts";
@@ -35,6 +36,8 @@ import { todoRoutes } from "./routes/todos.ts";
 import { tokenRoutes } from "./routes/tokens.ts";
 import { topicRoutes } from "./routes/topics.ts";
 import type { Deps } from "./routes/types.ts";
+import { createAuthServices } from "./services/auth/index.ts";
+import { backupBeforeMigrate } from "./services/instance-backup.ts";
 import { repairScopeConflicts } from "./services/labels.ts";
 import { repairNameKeys } from "./services/name-keys.ts";
 import { RESTORE_LIMITS, type RestoreLimits, recoverRestore } from "./services/restore.ts";
@@ -50,26 +53,34 @@ export interface BuildOptions {
   limits?: Partial<RestoreLimits>;
 }
 
-/** Builds the HTTP app: opens the data dir and database, registers security, API, docs and web app. */
+/**
+ * Builds the HTTP app: opens the data dir and database (a copy of it first when a migration is due),
+ * repairs derived data of every account, registers security, the API, docs and the local web app.
+ */
 export async function buildApp(options: BuildOptions) {
   const { config } = options;
   ensureDataDir(config.dataDir);
-  const secret = loadSecret(config.dataDir);
-  const db = openDb(join(config.dataDir, DB_FILE));
   const clock = options.clock ?? systemClock;
-  // Before anything touches the attachments folder: finish or clean up an interrupted restore.
-  const recovered = recoverRestore(config.dataDir, db, clock());
-  // Fills the case-free name keys (empty after migration 0006) and merges names that differ only in case.
+  const dbFile = join(config.dataDir, DB_FILE);
+  backupBeforeMigrate(dbFile, ensurePrivateDir(config.backupDir), clock, config.timeZone);
+  const db = openDb(dbFile);
+  const auth = createAuthServices(config, config.secret ?? loadSecret(config.dataDir), clock);
+  const filesDir = ensurePrivateDir(config.filesDir);
+  // Before anything touches a files folder: finish or clean up interrupted restores.
+  const recovered = recoverRestore({ dataDir: config.dataDir, filesDir }, db, clock());
+  // Fills the case-free name keys and merges names of one account that differ only in case.
   const mergedNames = repairNameKeys(db.$client);
-  // The index is derived data: rebuilding at every start heals it (and covers a restore).
+  // The index is derived data: rebuilding at every start heals it.
   rebuildSearchIndex(db);
   const deps: Deps = {
     db,
     clock,
-    timeZone: config.timeZone,
+    fallbackTimeZone: config.timeZone,
     version: VERSION,
     dataDir: config.dataDir,
-    attachmentsDir: ensureAttachmentsDir(config.dataDir),
+    filesDir,
+    backupDir: config.backupDir,
+    filesLimitBytes: config.filesLimitBytes,
     limits: { ...RESTORE_LIMITS, ...options.limits },
     restoreLock: { busy: false },
   };
@@ -78,29 +89,33 @@ export async function buildApp(options: BuildOptions) {
     logger: options.logger ?? false,
     bodyLimit: 1_048_576,
     routerOptions: { ignoreTrailingSlash: true },
+    trustProxy: proxyMatcher(config.trustedProxies),
   }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   app.addHook("onClose", async () => db.$client.close());
-  if (recovered === "finished") app.log.warn("finished the file swap of an interrupted restore");
+  if (recovered > 0) app.log.warn(`finished the file swap of ${recovered} interrupted restores`);
   if (mergedNames > 0)
     app.log.warn(`merged ${mergedNames} labels, topics or person tags that differed only in case`);
-  const repaired = repairScopeConflicts(deps);
+  let repaired = 0;
+  for (const { id } of db.select({ id: accounts.id }).from(accounts).all()) {
+    repaired += repairScopeConflicts({ db, clock, timeZone: config.timeZone, accountId: id });
+  }
   if (repaired > 0) app.log.warn(`removed duplicate scope labels from ${repaired} todos`);
 
-  await app.register(fastifyCookie, { secret });
-  registerSecurity(app, { db, clock: deps.clock, allowedHosts: config.allowedHosts });
+  registerSecurity(app, { db, clock, auth });
   registerErrorHandling(app);
 
   await app.register(fastifySwagger, {
     openapi: {
       info: {
-        title: "organizer API",
+        title: "Sloppanizer API",
         version: VERSION,
         description:
-          "Personal todos and notes. Auth: the browser session cookie, or Authorization: Bearer org_... " +
-          "(read tokens: GET only). Errors: { error: { code, message, details? } }.",
+          "Todos, notes and people, one account per caller. Auth: Authorization: Bearer <access token or " +
+          "spz_ API token> (read tokens: GET only). Errors: { error: { code, message, details? } }.",
       },
+      ...(config.publicUrl ? { servers: [{ url: config.publicUrl }] } : {}),
       components: { securitySchemes: { bearer: { type: "http", scheme: "bearer" } } },
       security: [{ bearer: [] }],
     },
@@ -126,7 +141,8 @@ export async function buildApp(options: BuildOptions) {
   exportRoutes(app, deps);
   settingsRoutes(app, deps);
   restoreRoutes(app, deps);
+  registerAccountApi(app, deps, auth);
   await registerWeb(app, config.webDir);
 
-  return { app, deps };
+  return { app, deps, auth };
 }

@@ -1,12 +1,11 @@
 import type { SearchHit } from "@organizer/shared";
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { type ReactNode, useState } from "react";
 import { useCommands } from "../../app/commands.tsx";
 import { Dialog } from "../../components/Dialog.tsx";
 import { Kbd } from "../../components/ui.tsx";
-import { downloadExport } from "../../lib/export.ts";
+import { useDownloadExport } from "../../components/useDownload.ts";
 import { useProjects, useSearch, useTodo } from "../../lib/queries.ts";
 import { useIsSession } from "../settings/SessionOnly.tsx";
 import { toggleTheme } from "../../lib/theme.ts";
@@ -35,7 +34,7 @@ const ID_QUERY = /^#?(\d+)$/;
 
 function PaletteBody({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
-  const client = useQueryClient();
+  const downloadExport = useDownloadExport();
   const { openQuickAdd, openNewNote, openNewPerson, todoCommands } = useCommands();
   const projects = useProjects();
   const session = useIsSession();
@@ -197,7 +196,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
               <Item value="switch theme dark light" onSelect={run(toggleTheme)}>
                 Switch theme
               </Item>
-              <Item value="download export zip backup" onSelect={run(() => downloadExport(client))}>
+              <Item value="download export zip backup" onSelect={run(downloadExport)}>
                 Download export
               </Item>
               {session && (

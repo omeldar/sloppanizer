@@ -1,20 +1,9 @@
-import { API_PREFIX, ErrorBody, type ErrorCode } from "@organizer/shared";
 import type { z } from "zod";
+import { ApiError, NETWORK_MESSAGE, responseError, safeJson } from "./apiError.ts";
+import { apiUrl } from "./config.ts";
+import { accessToken, renewAccessToken, sessionEnded } from "./session.ts";
 
-/** A failed API call, with the server's code and message when it sent one. */
-export class ApiError extends Error {
-  readonly status: number;
-  readonly code: ErrorCode | "network" | "bad_response";
-  readonly details: unknown;
-
-  constructor(status: number, code: ApiError["code"], message: string, details?: unknown) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.code = code;
-    this.details = details;
-  }
-}
+export { ApiError } from "./apiError.ts";
 
 export type Query = Record<string, string | number | readonly string[] | undefined | null>;
 
@@ -40,9 +29,22 @@ interface RequestOptions {
   /** Sent as is (file uploads); the server checks the type itself. */
   raw?: Blob;
   query?: Query;
+  accept?: string;
 }
 
-/** Calls `/api/v1<path>` with the browser session and parses the answer with the contract schema. */
+/**
+ * Asks the user to confirm it is them (the "Confirm it is you" dialog) when the server wants a fresh
+ * sign-in for a sensitive action. Resolves true once confirmed, false when they cancel.
+ */
+export type ReauthHandler = () => Promise<boolean>;
+let reauthHandler: ReauthHandler | null = null;
+
+/** The app's reauth dialog registers here; null removes it. */
+export function setReauthHandler(handler: ReauthHandler | null): void {
+  reauthHandler = handler;
+}
+
+/** Calls `/api/v1<path>` with this tab's account and parses the answer with the contract schema. */
 export async function api<S extends z.ZodType>(
   schema: S,
   path: string,
@@ -66,49 +68,85 @@ export async function apiVoid(path: string, options: RequestOptions = {}): Promi
   await send(path, options);
 }
 
-async function send(path: string, { method = "GET", body, raw, query }: RequestOptions): Promise<unknown> {
-  let response: Response;
-  const headers: Record<string, string> = { accept: "application/json" };
+/** A file from the API (downloads, images) with the same sign-in handling as every call. */
+export async function apiFile(
+  path: string,
+  options: RequestOptions = {},
+): Promise<{ blob: Blob; fileName: string | null }> {
+  const response = await authorizedFetch(path, { ...options, accept: options.accept ?? "*/*" });
+  return {
+    blob: await response.blob(),
+    fileName: dispositionName(response.headers.get("content-disposition")),
+  };
+}
+
+/** The file name of a Content-Disposition header (RFC 6266, also the filename* form), or null. */
+export function dispositionName(header: string | null): string | null {
+  if (!header) return null;
+  const extended = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/.exec(header)?.[1];
+  if (extended) {
+    try {
+      return decodeURIComponent(extended.trim());
+    } catch {
+      // Broken percent encoding: try the plain form.
+    }
+  }
+  const plain = /filename\s*=\s*(?:"([^"]*)"|([^;]+))/.exec(header);
+  const name = (plain?.[1] ?? plain?.[2])?.trim();
+  return name ? name : null;
+}
+
+async function send(path: string, options: RequestOptions): Promise<unknown> {
+  const response = await authorizedFetch(path, options);
+  const text = await response.text();
+  return text ? safeJson(text) : null;
+}
+
+/**
+ * Sends the request with the tab's access token. A 401 gets one new token and one retry; a second 401
+ * ends the session. A 403 reauth_required opens the confirm dialog and, once confirmed, repeats the call
+ * once. Any other failure becomes an ApiError with the server's message.
+ */
+async function authorizedFetch(path: string, options: RequestOptions): Promise<Response> {
+  const url = `${apiUrl(path)}${queryString(options.query)}`;
+  let token = await accessToken();
+  let response = await fetchOnce(url, options, token);
+  // On /auth/* a 401 means wrong credentials (a reauth password, say), not an expired token.
+  if (response.status === 401 && token && !path.startsWith("/auth/")) {
+    token = await renewAccessToken(token);
+    response = await fetchOnce(url, options, token);
+    if (response.status === 401) sessionEnded();
+  }
+  if (response.status === 403 && reauthHandler) {
+    const text = await response.clone().text();
+    const error = responseError(403, safeJson(text));
+    if (error.code === "reauth_required" && (await reauthHandler())) {
+      response = await fetchOnce(url, options, await accessToken());
+    }
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    throw responseError(response.status, text ? safeJson(text) : null);
+  }
+  return response;
+}
+
+async function fetchOnce(url: string, options: RequestOptions, token: string | null): Promise<Response> {
+  const { method = "GET", body, raw } = options;
+  const headers: Record<string, string> = { accept: options.accept ?? "application/json" };
   if (raw !== undefined) headers["content-type"] = "application/octet-stream";
   else if (body !== undefined) headers["content-type"] = "application/json";
+  if (token) headers.authorization = `Bearer ${token}`;
   try {
-    response = await fetch(`${API_PREFIX}${path}${queryString(query)}`, {
+    return await fetch(url, {
       method,
-      credentials: "same-origin",
+      // Bearer tokens only: no cookies go to the API, so there is nothing to forge across sites.
+      credentials: "omit",
       headers,
       body: raw ?? (body === undefined ? undefined : JSON.stringify(body)),
     });
   } catch {
-    throw new ApiError(0, "network", "Sloppanizer is not reachable. Check your connection, then try again.");
-  }
-  const text = await response.text();
-  const json: unknown = text ? safeJson(text) : null;
-  if (!response.ok) {
-    const error = ErrorBody.safeParse(json);
-    if (error.success) {
-      throw new ApiError(
-        response.status,
-        error.data.error.code,
-        error.data.error.message,
-        error.data.error.details,
-      );
-    }
-    throw new ApiError(
-      response.status,
-      response.status === 401 ? "unauthorized" : "internal",
-      response.status === 401
-        ? "Your session has ended. Reload the page to start a new one."
-        : `The server answered with status ${response.status}. Try again; if it keeps happening, check the server log.`,
-    );
-  }
-  return json;
-}
-
-function safeJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
+    throw new ApiError(0, "network", NETWORK_MESSAGE);
   }
 }
 

@@ -1,0 +1,395 @@
+/* Sign-in, sign-up, setup and reset: one panel on the plain background, usable from 360 px up. */
+
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  text-decoration: none;
+}
+
+.center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 48px 16px 64px;
+}
+
+.panel {
+  width: min(460px, 100%);
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+}
+
+.panel[data-wide] {
+  width: min(560px, 100%);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-h1);
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.lede {
+  margin: 6px 0 0;
+  color: var(--text-2);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.actions > :first-child:last-child {
+  margin-left: auto;
+}
+
+.wide {
+  width: 100%;
+  justify-content: center;
+}
+
+.or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.or::before,
+.or::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+
+.alert {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--red);
+  border-radius: var(--radius-panel);
+  background: var(--red-tint);
+  color: var(--text);
+}
+
+.info {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: var(--sunken);
+  color: var(--text);
+}
+
+.info a,
+.alert a {
+  color: inherit;
+}
+
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.links a,
+.linkButton {
+  color: var(--text);
+}
+
+.linkButton {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-small);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.passwordRow {
+  display: flex;
+  gap: 6px;
+}
+
+.passwordRow > input {
+  flex: 1;
+  min-width: 0;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Step indicator in the status bar's segment style. */
+.steps {
+  display: flex;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.steps li {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border-right: 1px solid var(--line);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.steps li:last-child {
+  border-right: 0;
+}
+
+.steps li[data-state="done"] {
+  color: var(--text-2);
+}
+
+.steps li[data-state="current"] {
+  background: var(--sunken);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--amber-line);
+}
+
+/* Sign-in method choice: two rows like strips, the chosen one framed. */
+.methods {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.methods legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.method {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--strip);
+  cursor: pointer;
+}
+
+.method[data-on] {
+  border-color: var(--amber-line);
+}
+
+.method input {
+  grid-row: span 2;
+  margin: 3px 0 0;
+  accent-color: var(--amber);
+}
+
+.methodNote {
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+/* Authenticator setup: the QR code on white (scanners want dark on light), the secret in groups. */
+.totp {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.qr {
+  width: 168px;
+  height: 168px;
+  padding: 8px;
+  border-radius: var(--radius-panel);
+  background: #ffffff;
+}
+
+.qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.secret {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.secretValue {
+  display: block;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  word-spacing: 0.2em;
+  overflow-wrap: anywhere;
+}
+
+/* Recovery codes: a mono grid to copy or download. */
+.codes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--line);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.codes li {
+  padding: 7px 10px;
+  background: var(--sunken);
+  color: var(--text);
+}
+
+.codeActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.check input {
+  accent-color: var(--amber);
+}
+
+.waiting {
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  margin-top: 20px;
+  padding: 12px 12px 12px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--strip);
+  overflow: hidden;
+}
+
+.waiting::before {
+  content: "";
+  margin: -12px 0;
+  background: var(--amber);
+}
+
+.waiting p {
+  margin: 0;
+}
+
+.waitingTitle {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--amber-text);
+}
+
+@media (max-width: 480px) {
+  .center {
+    padding: 20px 12px 40px;
+  }
+  .panel {
+    padding: 18px 16px;
+  }
+  .totp {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .qr {
+    justify-self: center;
+  }
+  .codes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .steps li {
+    padding: 5px 6px;
+  }
+}
+
+.note {
+  width: 100%;
+  min-height: 64px;
+  padding: 6px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+
+.note:focus-visible {
+  outline-offset: 0;
+  border-color: var(--amber);
+}
