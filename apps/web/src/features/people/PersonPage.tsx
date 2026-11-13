@@ -259,20 +259,25 @@ function NameForm({
         }
       }}
     >
-      <TextInput
-        aria-label="First name"
-        value={firstName}
-        onChange={(e) => setFirstName(e.target.value)}
-        maxLength={100}
-        // oxlint-disable-next-line jsx-a11y/no-autofocus -- opened on purpose with e
-        autoFocus
-      />
-      <TextInput
-        aria-label="Last name"
-        value={lastName}
-        onChange={(e) => setLastName(e.target.value)}
-        maxLength={100}
-      />
+      {/* Two labelled fields, each with its text selected: typing replaces that part of the name only. */}
+      <Field label="First name">
+        <TextInput
+          value={firstName}
+          onChange={(e) => setFirstName(e.target.value)}
+          onFocus={(e) => e.currentTarget.select()}
+          maxLength={100}
+          // oxlint-disable-next-line jsx-a11y/no-autofocus -- opened on purpose with e
+          autoFocus
+        />
+      </Field>
+      <Field label="Last name">
+        <TextInput
+          value={lastName}
+          onChange={(e) => setLastName(e.target.value)}
+          onFocus={(e) => e.currentTarget.select()}
+          maxLength={100}
+        />
+      </Field>
       <Button type="submit" variant="primary" size="sm">
         Save name
       </Button>
