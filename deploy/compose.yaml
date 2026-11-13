@@ -1,0 +1,48 @@
+# Sloppanizer API on the VPS, behind the Caddy container on the shared `proxy` network.
+# Secrets come from the environment (a .env next to this file, never committed):
+#   SLOPPANIZER_DATA_KEY   required, openssl rand -base64 32 (keep a copy in a password manager)
+#   SLOPPANIZER_SETUP_CODE optional, else the setup code is printed in the container log
+name: sloppanizer
+
+services:
+  api:
+    image: ghcr.io/omeldar/sloppanizer:latest
+    container_name: sloppanizer
+    restart: unless-stopped
+    environment:
+      SLOPPANIZER_DATA_KEY: ${SLOPPANIZER_DATA_KEY:?set SLOPPANIZER_DATA_KEY}
+      SLOPPANIZER_SETUP_CODE: ${SLOPPANIZER_SETUP_CODE:-}
+      SLOPPANIZER_PUBLIC_URL: https://organizerapi.omeldar.cloud
+      SLOPPANIZER_WEB_ORIGINS: https://organizer.omeldar.com
+      SLOPPANIZER_RP_ID: organizer.omeldar.com
+      # Only Caddy reaches the container; Docker bridge networks live in this range.
+      SLOPPANIZER_TRUSTED_PROXIES: 172.16.0.0/12
+    volumes:
+      - data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    networks:
+      - proxy
+
+  # Pulls a new image when CI publishes one and restarts only the labelled container.
+  # The API backs up the database before migrating and migrates on start.
+  watchtower:
+    image: nickfedor/watchtower:latest
+    container_name: sloppanizer-watchtower
+    restart: unless-stopped
+    command: --label-enable --cleanup --interval ${WATCHTOWER_INTERVAL:-300}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  data:
+
+networks:
+  proxy:
+    name: ${CADDY_NETWORK:-proxy}
+    external: true

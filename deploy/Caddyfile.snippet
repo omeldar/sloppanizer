@@ -1,0 +1,5 @@
+# Add to /opt/stacks/caddy/Caddyfile, then:
+#   docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+organizerapi.omeldar.cloud {
+	reverse_proxy sloppanizer:4711
+}

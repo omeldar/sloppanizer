@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/coverage
+**/*.db
+**/*.db-*
+**/.env*
+.git
+.github
+tmp
+apps/web
+apps/mcp
+apps/server/test
+deploy
