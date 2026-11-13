@@ -5,15 +5,454 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
     <meta name="theme-color" content="#0E1116" />
-    <meta name="description" content="Personal todos and notes" />
-    <title>organizer</title>
+    <title>Sloppanizer: know what to do next</title>
+    <meta
+      name="description"
+      content="A keyboard-first organizer for todos, notes and the people behind them. Next up ranks your open work and tells you why."
+    />
+    <link rel="canonical" href="https://organizer.omeldar.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://organizer.omeldar.com/" />
+    <meta property="og:title" content="Sloppanizer: know what to do next" />
+    <meta
+      property="og:description"
+      content="A keyboard-first organizer for todos, notes and the people behind them. Next up ranks your open work and tells you why."
+    />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <script src="/theme-init.js"></script>
+    <link rel="stylesheet" href="./src/landing/landing.css" />
+    <script src="/landing.js"></script>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <a class="skip" href="#top">Skip to the content</a>
+    <header class="bar">
+      <div class="wrap bar-inner">
+        <a class="wordmark" href="/" aria-label="Sloppanizer home">
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+            <rect x="1" y="2" width="16" height="3.6" rx="0.6" fill="currentColor" opacity="0.35" />
+            <rect x="1" y="7.2" width="16" height="3.6" rx="0.6" fill="currentColor" opacity="0.6" />
+            <rect x="1" y="12.4" width="16" height="3.6" rx="0.6" fill="currentColor" />
+            <rect x="1" y="12.4" width="2.4" height="3.6" class="mark-band" />
+          </svg>
+          <span>Sloppanizer</span>
+        </a>
+        <nav class="anchors" aria-label="Sections">
+          <a href="#features">Features</a>
+          <a href="#keyboard">Keyboard</a>
+          <a href="#assistants">Assistants</a>
+          <a href="#accounts">Accounts</a>
+        </nav>
+        <div class="bar-actions">
+          <button type="button" class="theme" data-theme-toggle aria-label="Switch to the light theme">
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+              <circle cx="7" cy="7" r="5.25" fill="none" stroke="currentColor" stroke-width="1.4" />
+              <path d="M7 1.75a5.25 5.25 0 0 1 0 10.5z" fill="currentColor" />
+            </svg>
+          </button>
+          <a class="button" href="/login">Log in</a>
+          <a class="button button-amber" href="/signup">Sign up</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <svg class="grid" aria-hidden="true" focusable="false">
+          <defs>
+            <pattern id="grid-cell" width="32" height="32" patternUnits="userSpaceOnUse">
+              <path d="M32 0H0V32" fill="none" stroke="currentColor" stroke-width="1" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#grid-cell)" />
+        </svg>
+        <div class="wrap hero-inner">
+          <div class="hero-text">
+            <h1 id="hero-title">Know what to do next.</h1>
+            <p class="lede">
+              Sloppanizer is a keyboard-first organizer for todos, notes and the people behind them. Next up
+              ranks your open work and tells you why.
+            </p>
+            <div class="actions">
+              <a class="button button-amber button-big" href="/signup">Sign up</a>
+              <a class="button button-big" href="/login">Log in</a>
+            </div>
+            <p class="small">Sign-ups are approved by hand.</p>
+          </div>
+
+          <figure class="console" aria-label="Example of the Next up list">
+            <div class="console-head">
+              <span class="console-title">Next up</span>
+              <span class="segments" aria-hidden="true">
+                <span data-on>Smart</span><span>Priority</span><span>Due</span><span>Oldest</span>
+              </span>
+            </div>
+            <ol class="bay ranked">
+              <li class="strip" data-priority="critical" data-next>
+                <span class="band"></span>
+                <span class="rank">1</span>
+                <span class="id">#142</span>
+                <span class="body">
+                  <span class="line">
+                    <span class="title">Renew SSL certs on the build server</span>
+                    <span class="pill"
+                      ><span class="scope">priority</span><span class="value">critical</span></span
+                    >
+                    <span class="people">Anna Meier</span>
+                  </span>
+                  <span class="reasons"
+                    ><span class="reason" data-kind="overdue">overdue 2d</span
+                    ><span class="reason" data-kind="blocks">blocks 2</span></span
+                  >
+                </span>
+                <span class="col due" data-state="overdue">Nov 11</span>
+              </li>
+              <li class="strip" data-priority="high">
+                <span class="band"></span>
+                <span class="rank">2</span>
+                <span class="id">#118</span>
+                <span class="body">
+                  <span class="line">
+                    <span class="title">Answer the firewall request for the lab</span>
+                    <span class="pill"
+                      ><span class="scope">area</span><span class="value">network</span></span
+                    >
+                    <span class="people">Jonas Brandt</span>
+                  </span>
+                  <span class="reasons"
+                    ><span class="reason" data-kind="due_today">due today</span
+                    ><span class="reason">untouched 9d</span></span
+                  >
+                </span>
+                <span class="col due" data-state="today">today</span>
+              </li>
+              <li class="strip" data-priority="medium">
+                <span class="band"></span>
+                <span class="rank">3</span>
+                <span class="id">#97</span>
+                <span class="body">
+                  <span class="line">
+                    <span class="title">Write the backup restore guide</span>
+                    <span class="pill"><span class="scope">type</span><span class="value">docs</span></span>
+                  </span>
+                  <span class="reasons"
+                    ><span class="reason">planned today</span><span class="reason">open 34d</span></span
+                  >
+                </span>
+                <span class="col due">Nov 20</span>
+              </li>
+              <li class="strip" data-priority="low">
+                <span class="band"></span>
+                <span class="rank">4</span>
+                <span class="id">#61</span>
+                <span class="body">
+                  <span class="line">
+                    <span class="title">Sort the old project notes</span>
+                    <span class="pill"
+                      ><span class="scope">priority</span><span class="value">low</span></span
+                    >
+                  </span>
+                  <span class="reasons"><span class="reason">untouched 63d</span></span>
+                </span>
+                <span class="col due">no due</span>
+              </li>
+            </ol>
+            <div class="statusbar" aria-hidden="true">
+              <span class="seg seg-mode">normal</span>
+              <span class="seg seg-red"><b>2</b> overdue</span>
+              <span class="seg"><b>41</b> open</span>
+              <span class="seg"><b>3</b> planned today</span>
+            </div>
+          </figure>
+        </div>
+      </section>
+
+      <section class="feature" id="features" aria-labelledby="strips-title">
+        <div class="wrap feature-inner">
+          <div class="feature-text">
+            <h2 id="strips-title">Todos as flight strips</h2>
+            <p>
+              Every todo is one strip: a priority band on the left, the title, scoped labels such as
+              <span class="mono">priority::high</span> (one value per scope), who asked for it and who to talk
+              to. Due date and age sit in fixed columns, so a long list still reads at a glance. Done todos
+              show how long they took.
+            </p>
+          </div>
+          <ol class="bay demo" aria-label="Example strips">
+            <li class="strip" data-priority="high">
+              <span class="band"></span>
+              <span class="id">#203</span>
+              <span class="body">
+                <span class="line">
+                  <span class="title">Plan the network switch swap</span>
+                  <span class="pill"><span class="scope">priority</span><span class="value">high</span></span>
+                  <span class="pill"><span class="scope">area</span><span class="value">network</span></span>
+                </span>
+                <span class="meta">requested by Jonas Brandt, contact Ines Berger</span>
+              </span>
+              <span class="col due">Nov 18</span>
+              <span class="col age">12d</span>
+            </li>
+            <li class="strip" data-priority="medium">
+              <span class="band"></span>
+              <span class="id">#188</span>
+              <span class="body">
+                <span class="line">
+                  <span class="title">Order spare disks</span>
+                  <span class="pill"><span class="scope">type</span><span class="value">purchase</span></span>
+                </span>
+                <span class="meta">requested by Anna Meier</span>
+              </span>
+              <span class="col due">Dec 2</span>
+              <span class="col age">5d</span>
+            </li>
+            <li class="strip" data-priority="medium" data-done>
+              <span class="band"></span>
+              <span class="id">#174</span>
+              <span class="body">
+                <span class="line">
+                  <span class="title">Move the wiki to the new host</span>
+                  <span class="pill"><span class="scope">area</span><span class="value">infra</span></span>
+                </span>
+                <span class="meta">done, took 3d 4h</span>
+              </span>
+              <span class="col due">Nov 8</span>
+              <span class="col age">done</span>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="feature" aria-labelledby="next-title">
+        <div class="wrap feature-inner">
+          <div class="feature-text">
+            <h2 id="next-title">Next up shows its reasons</h2>
+            <p>
+              Next up adds points for what matters and puts the result in order. Each strip says why it is
+              where it is, so you can trust the order or overrule it.
+            </p>
+          </div>
+          <dl class="reason-list">
+            <div>
+              <dt><span class="reason">priority::critical</span></dt>
+              <dd>The priority label you set.</dd>
+            </div>
+            <div>
+              <dt><span class="reason" data-kind="overdue">overdue 2d</span></dt>
+              <dd>Past its due date, and by how much.</dd>
+            </div>
+            <div>
+              <dt><span class="reason" data-kind="due_today">due in 3d</span></dt>
+              <dd>Due soon.</dd>
+            </div>
+            <div>
+              <dt><span class="reason">planned today</span></dt>
+              <dd>You planned it for today in the week view.</dd>
+            </div>
+            <div>
+              <dt><span class="reason">open 41d</span></dt>
+              <dd>Waiting a long time since it was made.</dd>
+            </div>
+            <div>
+              <dt><span class="reason">untouched 63d</span></dt>
+              <dd>Nobody has changed it for weeks.</dd>
+            </div>
+            <div>
+              <dt><span class="reason" data-kind="blocks">blocks 2</span></dt>
+              <dd>Other todos wait for this one.</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="feature" aria-labelledby="people-title">
+        <div class="wrap feature-inner">
+          <div class="feature-text">
+            <h2 id="people-title">Whom do I ask about firewall rules?</h2>
+            <p>
+              People are part of the work: who asked for a todo and who knows the answer. Keep their team, the
+              topics they know and your own private tags. The statistics show who asks for how much and how
+              long it takes.
+            </p>
+          </div>
+          <ol class="bay demo people-demo" aria-label="Example people">
+            <li class="strip person">
+              <span class="body">
+                <span class="line"
+                  ><span class="title">Ines Berger</span><span class="team">Network team</span></span
+                >
+                <span class="meta">firewall rules, vpn, wifi</span>
+              </span>
+              <span class="col num"><b>4</b> contact</span>
+              <span class="col num"><b>2</b> asked</span>
+            </li>
+            <li class="strip person">
+              <span class="body">
+                <span class="line"
+                  ><span class="title">Jonas Brandt</span><span class="team">Lab operations</span></span
+                >
+                <span class="meta">lab access, test devices</span>
+              </span>
+              <span class="col num"><b>1</b> contact</span>
+              <span class="col num"><b>17</b> asked</span>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="feature" aria-labelledby="notes-title">
+        <div class="wrap feature-inner">
+          <div class="feature-text">
+            <h2 id="notes-title">Notes, threads and files</h2>
+            <p>
+              Markdown everywhere, with a live preview. Each todo has a thread of comments next to its
+              history. Paste a screenshot and it is stored with the todo. Checklists, subtasks, links between
+              todos (blocks, blocked by, relates to) and repeating todos are built in.
+            </p>
+          </div>
+          <div class="panel note" aria-label="Example todo description">
+            <pre class="mono-block"><span class="dim">## Steps</span>
+- [x] Export the current config
+- [x] Order the new switch <span class="dim">#188</span>
+- [ ] Book a window with Ines
+- [ ] Swap and test
+
+<span class="dim">Blocked by</span> #188 <span class="dim">repeats</span> every month</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="feature" aria-labelledby="board-title">
+        <div class="wrap feature-inner">
+          <div class="feature-text">
+            <h2 id="board-title">Board and week planner</h2>
+            <p>
+              Move todos between columns on the board, or plan them on the days of your week. Drag them with
+              the mouse, or use the keys: every move works from the keyboard too.
+            </p>
+          </div>
+          <div class="board" aria-label="Example board">
+            <div class="column">
+              <span class="column-head">Open <b>3</b></span>
+              <span class="card" data-priority="high"><span class="id">#203</span> Plan the switch swap</span>
+              <span class="card" data-priority="medium"><span class="id">#188</span> Order spare disks</span>
+              <span class="card" data-priority="low"><span class="id">#61</span> Sort old notes</span>
+            </div>
+            <div class="column">
+              <span class="column-head">In progress <b>1</b></span>
+              <span class="card" data-priority="critical"><span class="id">#142</span> Renew SSL certs</span>
+            </div>
+            <div class="column">
+              <span class="column-head">Done <b>1</b></span>
+              <span class="card" data-done><span class="id">#174</span> Move the wiki</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="feature" id="keyboard" aria-labelledby="keys-title">
+        <div class="wrap feature-inner">
+          <div class="feature-text">
+            <h2 id="keys-title">Keyboard first</h2>
+            <p>
+              Everything has a key, and <span class="mono">?</span> lists them on every page. The status bar
+              shows the mode like a text editor does, so you always know what a key will do.
+            </p>
+          </div>
+          <dl class="keys">
+            <div>
+              <dt><kbd>ctrl</kbd><kbd>k</kbd></dt>
+              <dd>Search and commands</dd>
+            </div>
+            <div>
+              <dt><kbd>c</kbd></dt>
+              <dd>New todo</dd>
+            </div>
+            <div>
+              <dt><kbd>j</kbd><kbd>k</kbd></dt>
+              <dd>Move down and up</dd>
+            </div>
+            <div>
+              <dt><kbd>x</kbd></dt>
+              <dd>Mark done</dd>
+            </div>
+            <div>
+              <dt><kbd>g</kbd><kbd>n</kbd></dt>
+              <dd>Go to Next up</dd>
+            </div>
+            <div>
+              <dt><kbd>?</kbd></dt>
+              <dd>Show every shortcut</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="feature" id="assistants" aria-labelledby="mcp-title">
+        <div class="wrap feature-inner">
+          <div class="feature-text">
+            <h2 id="mcp-title">Works with your assistant</h2>
+            <p>
+              Connect any MCP client with a token of its own. The MCP tools for assistants read and change
+              your todos, notes and people, and every change shows up in the history with the token's name.
+              Read-only tokens are possible too.
+            </p>
+          </div>
+          <div class="panel" aria-label="Example output of the next_up tool">
+            <pre class="mono-block"><span class="dim">next_up</span>
+Next up (smart), today 2026-11-13:
+1. #142 in_progress | Renew SSL certs on the build server | priority::critical | project infra | due 2026-11-11 (overdue 2d) | open 18d | req: Anna Meier | score 182 | why: overdue 2d, blocks 2
+2. #118 open | Answer the firewall request for the lab | area::network | inbox | due 2026-11-13 (today) | open 9d | req: Jonas Brandt | score 121 | why: due today, untouched 9d</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="feature" id="accounts" aria-labelledby="accounts-title">
+        <div class="wrap feature-inner">
+          <div class="feature-text">
+            <h2 id="accounts-title">Private and work, apart</h2>
+            <p>
+              Keep separate accounts with nothing shared between them, and switch in one click. Each browser
+              tab shows one account, so two tabs can show both at once.
+            </p>
+          </div>
+          <ul class="facts">
+            <li class="switcher" aria-label="Example account switcher">
+              <span class="account"
+                ><span class="dot" data-color="teal"></span>Private<span class="user">anna</span
+                ><span class="check" aria-hidden="true">current</span></span
+              >
+              <span class="account"
+                ><span class="dot" data-color="violet"></span>Work<span class="user">anna-work</span></span
+              >
+            </li>
+            <li>Sign in with a password and an authenticator code, or with a passkey.</li>
+            <li>Recovery codes for the day your phone is gone.</li>
+            <li>
+              Export everything as a zip at any time: data to restore from, plus one Markdown file per todo.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="closing" aria-labelledby="closing-title">
+        <div class="wrap closing-inner">
+          <h2 id="closing-title">Start with a clean list.</h2>
+          <p>Sign up, wait for the approval, then sign in and add your first todo with <kbd>c</kbd>.</p>
+          <div class="actions">
+            <a class="button button-amber button-big" href="/signup">Sign up</a>
+            <a class="button button-big" href="/login">Log in</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap footer-inner">
+        <span class="footer-name">Sloppanizer</span>
+        <a href="https://github.com/omeldar/sloppanizer">Source on GitHub</a>
+        <a href="/login">Log in</a>
+        <a href="/signup">Sign up</a>
+      </div>
+    </footer>
   </body>
 </html>

@@ -18,7 +18,9 @@
     "jsx-a11y/aria-role": ["error", { "ignoreNonDOM": true }],
     // We use valid ARIA on purpose: role="group" for rows of toggle buttons, role="status" for live
     // messages, a listbox for the topic combobox. The native tags would bring form or widget behaviour.
-    "jsx-a11y/prefer-tag-over-role": "off"
+    "jsx-a11y/prefer-tag-over-role": "off",
+    // Markdown renders through the sanitizer; raw HTML strings never reach the DOM.
+    "react/no-danger": "error"
   },
   "overrides": [
     {
