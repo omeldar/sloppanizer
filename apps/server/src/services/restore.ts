@@ -313,11 +313,18 @@ function checkAttachments(archive: Archive, problems: Problems, sink?: FileSink)
       continue;
     }
     used.add(name);
+    // Refused before unpacking: data.json and the zip directory must agree on the size.
+    if (entry.size !== row.size) {
+      problems.add(
+        `The file of attachment ${row.id} (${row.name}) has ${entry.size} bytes in the archive, but data.json says ${String(row.size)}.`,
+      );
+      continue;
+    }
     const hash = createHash("sha256");
     let size: number;
     sink?.start(row.id);
     try {
-      size = inflateEntry(archive.zip, entry, Math.max(row.size, 0) + 1, (chunk) => {
+      size = inflateEntry(archive.zip, entry, entry.size, (chunk) => {
         hash.update(chunk);
         sink?.write(chunk);
       });

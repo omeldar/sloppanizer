@@ -21,7 +21,8 @@ export interface ZipEntryInfo {
 const EOCD = 0x06054b50;
 const CENTRAL = 0x02014b50;
 const LOCAL = 0x04034b50;
-const CHUNK = 64 * 1024;
+/** Compressed bytes per inflate step: deflate grows at most about 1000 times, so one step gives at most ~16 MB. */
+const CHUNK = 16 * 1024;
 
 export function readCentralDirectory(zip: Buffer): ZipEntryInfo[] {
   if (zip.length < 22) throw new ZipError("The file is not a zip archive.");
@@ -73,9 +74,11 @@ export function readCentralDirectory(zip: Buffer): ZipEntryInfo[] {
 }
 
 /**
- * Inflates one entry and hands the output to `onChunk` in pieces. Throws ZipError when the real
- * output passes `maxBytes`, differs from the size in the directory, or the data is damaged.
- * Returns the number of bytes produced.
+ * Inflates one entry and hands the output to `onChunk` in pieces. The output may not pass the size
+ * in the directory nor `maxBytes`: an entry that declares more than `maxBytes` is refused before
+ * anything is unpacked, and unpacking stops as soon as the real output passes the declared size (a
+ * zip bomb declares a small size). Throws ZipError then, when the output is shorter than declared,
+ * or when the data is damaged. Returns the number of bytes produced.
  */
 export function inflateEntry(
   zip: Buffer,
@@ -91,10 +94,12 @@ export function inflateEntry(
   const data = zip.subarray(start, start + entry.compressedSize);
   if (data.length !== entry.compressedSize)
     throw new ZipError(`The zip archive is cut off (entry ${entry.name}).`);
+  if (entry.size > maxBytes) throw new ZipError(`${entry.name} is larger than allowed when unpacked.`);
   let total = 0;
   const take = (chunk: Uint8Array) => {
     total += chunk.length;
-    if (total > maxBytes) throw new ZipError(`${entry.name} is larger than allowed when unpacked.`);
+    if (total > entry.size)
+      throw new ZipError(`The zip archive is damaged (entry ${entry.name} is larger than its size).`);
     onChunk(chunk);
   };
   if (entry.method === 0) {

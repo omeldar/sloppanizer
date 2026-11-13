@@ -174,6 +174,20 @@ describe("restore upload and preview", () => {
     const wrong = rework(zip, (_m, _d, files) => (files[name] = strToU8("tampered!!!")));
     expect(problems(await upload(t, wrong)).join()).toMatch(/does not match its size or checksum/);
 
+    // A bomb: data.json claims a huge file, the zip directory a tiny one, the data inflates to much more.
+    // It is refused before anything is unpacked.
+    const bomb = rework(zip, (_m, d, files) => {
+      files[name] = new Uint8Array(4 * 1024 * 1024);
+      d.attachments.find((a: { id: number }) => a.id === file.id).size = 4 * 1024 ** 3;
+    });
+    const lying = Buffer.from(bomb);
+    const central = lying.lastIndexOf(Buffer.from(name)) - 46;
+    expect(lying.readUInt32LE(central)).toBe(0x02014b50);
+    lying.writeUInt32LE(11, central + 24);
+    expect(problems(await upload(t, lying)).join()).toMatch(
+      /has 11 bytes in the archive, but data\.json says 4294967296/,
+    );
+
     const missing = rework(zip, (_m, _d, files) => delete files[name]);
     expect(problems(await upload(t, missing)).join()).toMatch(/attachment \d+ \(shot\.png\) is missing/);
 
