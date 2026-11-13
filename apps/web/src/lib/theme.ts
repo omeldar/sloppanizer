@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 export type Theme = "dark" | "light";
-export const THEME_KEY = "organizer.theme";
+export const THEME_KEY = "sloppanizer.theme";
 
 /** Stored choice, else the system preference (first start), else dark. */
 export function initialTheme(): Theme {

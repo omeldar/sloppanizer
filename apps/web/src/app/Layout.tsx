@@ -120,7 +120,7 @@ function Sidebar() {
     <nav className={styles.sidebar} aria-label="Main">
       <Link to="/" className={styles.brand}>
         <BrandMark />
-        <span>organizer</span>
+        <span>Sloppanizer</span>
       </Link>
       <ul className={styles.nav}>
         <NavItem to="/" label="Next up" keys="g n" exact />

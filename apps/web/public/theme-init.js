@@ -2,7 +2,7 @@
 (function () {
   var theme = null;
   try {
-    theme = localStorage.getItem("organizer.theme");
+    theme = localStorage.getItem("sloppanizer.theme");
   } catch {
     // Storage blocked: use the system setting.
   }

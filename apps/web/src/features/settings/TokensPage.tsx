@@ -121,7 +121,7 @@ function TokensView() {
       {tokens.isPending && <Loading />}
       {tokens.isError && <ErrorState error={tokens.error} onRetry={() => void tokens.refetch()} />}
       {tokens.data && active.length === 0 && (
-        <EmptyState>No active tokens. Choose New token to let a program reach organizer.</EmptyState>
+        <EmptyState>No active tokens. Choose New token to let a program reach Sloppanizer.</EmptyState>
       )}
       {active.length > 0 && (
         <TokenTable

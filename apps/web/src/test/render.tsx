@@ -1,4 +1,4 @@
-import type { Label, Person, PersonBrief, Todo } from "@organizer/shared";
+import type { AccountBrief, Label, Me, Person, PersonBrief, Todo } from "@organizer/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
@@ -48,6 +48,19 @@ export function renderWithApp(ui: ReactNode) {
 }
 
 const T = "2026-11-01T09:00:00.000Z";
+
+export const TEST_ACCOUNT: AccountBrief = {
+  id: 1,
+  username: "anna",
+  displayName: "Anna Private",
+  color: "#2EC5CE",
+  role: "user",
+};
+
+/** GET /me of the test account: the browser session with write access unless overridden. */
+export function makeMe(overrides: Partial<Me> = {}): Me {
+  return { actor: "you", via: "session", scope: "write", account: TEST_ACCOUNT, ...overrides };
+}
 
 export function makeLabel(name: string, overrides: Partial<Label> = {}): Label {
   const index = name.lastIndexOf("::");

@@ -1,9 +1,9 @@
+import { PROJECT_COLORS } from "@organizer/shared";
 import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { Dialog, DialogBody, DialogActions } from "../../components/Dialog.tsx";
 import { Button, Field, TextInput } from "../../components/ui.tsx";
 import { errorMessage } from "../../lib/api.ts";
-import { PROJECT_COLORS } from "../../lib/color.ts";
 import { useCreateProject } from "../../lib/queries.ts";
 import styles from "./Projects.module.css";
 
@@ -25,7 +25,7 @@ function NewProjectForm({ onDone }: { onDone: () => void }) {
   const create = useCreateProject();
   const navigate = useNavigate();
   const [name, setName] = useState("");
-  const [color, setColor] = useState(PROJECT_COLORS[1] as string);
+  const [color, setColor] = useState<string>(PROJECT_COLORS[1]);
   const [error, setError] = useState<string | null>(null);
 
   const submit = async (event: FormEvent) => {

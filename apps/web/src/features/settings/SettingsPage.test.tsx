@@ -1,9 +1,8 @@
-import type { FolderExport, RestorePreview, Settings } from "@organizer/shared";
+import type { RestorePreview, Settings } from "@organizer/shared";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatBytes } from "../../lib/format.ts";
-import { mockApi, type RecordedCall, renderWithApp } from "../../test/render.tsx";
+import { makeMe, mockApi, type RecordedCall, renderWithApp } from "../../test/render.tsx";
 import { MAX_RESTORE_BYTES } from "./Restore.tsx";
 import { SettingsPage } from "./SettingsPage.tsx";
 
@@ -13,24 +12,16 @@ const T = "2026-11-12T09:00:00.000Z";
 const UPLOAD = "a".repeat(32);
 
 const settings: Settings = {
-  exportDir: "/home/me/.local/share/organizer/exports",
-  folderExportKeep: 4,
-  dataDir: "/home/me/.local/share/organizer",
   lastExportAt: null,
-  lastFolderExport: null,
   version: "0.1.0",
+  filesBytes: 52_000,
+  filesLimitBytes: 2 * 1024 ** 3,
 };
-
-const zip = (name: string, bytes: number): FolderExport => ({
-  at: T,
-  path: `${settings.exportDir}/${name}`,
-  fileName: name,
-  bytes,
-});
 
 const preview: RestorePreview = {
   uploadId: UPLOAD,
   fileName: "organizer-export.zip",
+  source: "organizer",
   format: 3,
   exportedAt: "2026-11-01T08:00:00.000Z",
   appVersion: "0.1.0",
@@ -45,12 +36,11 @@ const preview: RestorePreview = {
 type Handler = (call: RecordedCall) => { status?: number; body?: unknown } | undefined;
 
 function setup(via: "session" | "token" = "session", extra: Handler = () => undefined) {
-  let zips = [zip("organizer-export-20261111-080000.zip", 48_000)];
   const calls = mockApi((call) => {
     const answer = extra(call);
     if (answer) return answer;
     const { method, path } = call;
-    if (path === "/api/v1/me") return { body: { actor: "you", via, scope: "write" } };
+    if (path === "/api/v1/me") return { body: makeMe({ via }) };
     if (path === "/api/v1/stats") {
       return {
         body: {
@@ -65,12 +55,6 @@ function setup(via: "session" | "token" = "session", extra: Handler = () => unde
       };
     }
     if (path === "/api/v1/settings") return { body: settings };
-    if (method === "GET" && path === "/api/v1/export/folder") return { body: zips };
-    if (method === "POST" && path === "/api/v1/export/folder") {
-      const written = zip("organizer-export-20261112-090000.zip", 50_000);
-      zips = [written, ...zips];
-      return { status: 201, body: written };
-    }
     if (path === "/api/v1/restore/backups") return { body: [] };
     if (method === "POST" && path.startsWith("/api/v1/restore?")) return { status: 201, body: preview };
     if (method === "DELETE" && path === `/api/v1/restore/${UPLOAD}`) return { status: 204 };
@@ -85,28 +69,25 @@ function pickFile(file: File) {
 
 const exportZip = () => new File(["PK"], "organizer-export.zip", { type: "application/zip" });
 
-describe("settings: write to folder", () => {
-  it("shows the fixed folder and its zips, and writes a new one", async () => {
-    const user = userEvent.setup();
+describe("settings: export", () => {
+  it("offers the zip download only: no folder on the server", async () => {
     const { calls } = setup();
-    const folder = await screen.findByRole("textbox", { name: "Export folder" });
-    expect((folder as HTMLInputElement).value).toBe(settings.exportDir);
-    expect((folder as HTMLInputElement).readOnly).toBe(true);
-    expect(screen.getByText(/keeps the newest 4/)).toBeTruthy();
-    const list = await screen.findByRole("list", { name: "Zips in the export folder" });
-    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
-
-    await user.click(screen.getByRole("button", { name: "Write to folder" }));
-    await screen.findByText(`Wrote organizer-export-20261112-090000.zip (${formatBytes(50_000)})`);
-    expect(calls.some((c) => c.method === "POST" && c.path === "/api/v1/export/folder")).toBe(true);
-    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(2));
+    await screen.findByRole("button", { name: "Download export" });
+    await screen.findByRole("heading", { name: "Restore" });
+    expect(screen.queryByRole("button", { name: "Write to folder" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Export folder" })).toBeNull();
+    expect(calls.some((c) => c.path.startsWith("/api/v1/export/folder"))).toBe(false);
   });
 
-  it("hides the folder and restore from a token and never asks for them", async () => {
+  it("shows how much of the account's files limit is used", async () => {
+    setup();
+    expect(await screen.findByText(/use 50\.8 KB of this account's 2\.0 GB\./)).toBeTruthy();
+  });
+
+  it("hides restore and tokens from a token and never asks for them", async () => {
     const { calls } = setup("token");
     await screen.findByRole("button", { name: "Download export" });
-    await screen.findByText(/through the browser session|access/);
-    expect(screen.queryByRole("button", { name: "Write to folder" })).toBeNull();
+    await screen.findByText(/access/);
     expect(screen.queryByRole("heading", { name: "Restore" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Manage API tokens" })).toBeNull();
     const asked = calls.map((c) => c.path);
@@ -226,7 +207,11 @@ describe("settings: restore", () => {
     const readsBefore = settingsReads();
 
     const dialog = await screen.findByRole("dialog", { name: "Replace all data?" });
-    expect(within(dialog).getByText(/A safety copy of your current data is saved first/)).toBeTruthy();
+    expect(
+      within(dialog).getByText(
+        /of this account with the ones from the file\. A safety copy of the account's current data is saved first/,
+      ),
+    ).toBeTruthy();
     const confirm = within(dialog).getByRole("button", { name: "Replace all data" });
     await user.type(within(dialog).getByLabelText(/Type "replace"/), "replac");
     expect((confirm as HTMLButtonElement).disabled).toBe(true);

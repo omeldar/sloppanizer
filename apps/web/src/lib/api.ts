@@ -79,11 +79,7 @@ async function send(path: string, { method = "GET", body, raw, query }: RequestO
       body: raw ?? (body === undefined ? undefined : JSON.stringify(body)),
     });
   } catch {
-    throw new ApiError(
-      0,
-      "network",
-      "organizer is not reachable. Check that the server is running, then try again.",
-    );
+    throw new ApiError(0, "network", "Sloppanizer is not reachable. Check your connection, then try again.");
   }
   const text = await response.text();
   const json: unknown = text ? safeJson(text) : null;

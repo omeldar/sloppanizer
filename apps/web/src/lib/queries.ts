@@ -13,7 +13,6 @@ import {
   type CreateToken,
   type BulkPatch,
   BulkUpdateResult,
-  FolderExport,
   RestorePreview,
   RestoreResult,
   Label,
@@ -66,7 +65,6 @@ export const keys = {
   search: (query: SearchParams) => ["search", query] as const,
   tokens: ["tokens"] as const,
   settings: ["settings"] as const,
-  folderExports: ["folderExports"] as const,
   backups: ["backups"] as const,
   // Under "stats", so todo changes (invalidateTodoViews) refresh them too.
   peopleStats: (query: PeopleStatsParams) => ["stats", "people", query] as const,
@@ -545,17 +543,9 @@ export function useRevokeToken() {
   });
 }
 
-/** Session only: export folder, data dir, last exports. */
+/** Session only: version, last export and the files quota of this account. */
 export const useSettings = (enabled = true) =>
   useQuery({ queryKey: keys.settings, queryFn: () => api(Settings, "/settings"), enabled });
-
-/** The zips in the export folder, newest first. */
-export const useFolderExports = (enabled = true) =>
-  useQuery({
-    queryKey: keys.folderExports,
-    queryFn: () => api(z.array(FolderExport), "/export/folder"),
-    enabled,
-  });
 
 /** Safety copies written before restores, newest first. */
 export const useBackups = (enabled = true) =>
@@ -564,20 +554,6 @@ export const useBackups = (enabled = true) =>
     queryFn: () => api(z.array(BackupFile), "/restore/backups"),
     enabled,
   });
-
-/** Writes an export zip into the export folder (a plain function so the palette can call it and close). */
-export async function writeFolderExport(client: QueryClient): Promise<FolderExport> {
-  const written = await api(FolderExport, "/export/folder", { method: "POST" });
-  void client.invalidateQueries({
-    predicate: (query) => ["settings", "folderExports", "stats"].includes(String(query.queryKey[0])),
-  });
-  return written;
-}
-
-export function useWriteFolderExport() {
-  const client = useQueryClient();
-  return useMutation({ mutationFn: () => writeFolderExport(client) });
-}
 
 /** Uploads an export zip to check it; the server keeps it staged for an hour. */
 export const uploadRestore = (file: Blob, name: string) =>

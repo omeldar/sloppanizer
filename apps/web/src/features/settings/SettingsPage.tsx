@@ -3,10 +3,9 @@ import { Link } from "@tanstack/react-router";
 import { PageHeader } from "../../components/ui.tsx";
 import { Button } from "../../components/ui.tsx";
 import { downloadExport } from "../../lib/export.ts";
-import { absoluteTime, relativeTime } from "../../lib/format.ts";
-import { useMe, useStats } from "../../lib/queries.ts";
+import { absoluteTime, formatBytes, relativeTime } from "../../lib/format.ts";
+import { useMe, useSettings, useStats } from "../../lib/queries.ts";
 import { setTheme, type Theme, useTheme } from "../../lib/theme.ts";
-import { FolderExportBlock } from "./FolderExport.tsx";
 import { RestoreSection } from "./Restore.tsx";
 import styles from "./Settings.module.css";
 
@@ -69,8 +68,9 @@ export function SettingsPage() {
               : "Not exported yet"}
           </span>
         </div>
-        {session && <FolderExportBlock />}
       </section>
+
+      {session && <FilesSection />}
 
       {session && <RestoreSection />}
 
@@ -94,5 +94,23 @@ export function SettingsPage() {
         </section>
       )}
     </div>
+  );
+}
+
+/** Attachments of this account against its limit; the admin can raise it. */
+function FilesSection() {
+  const settings = useSettings();
+  const data = settings.data;
+  return (
+    <section className={styles.section} aria-labelledby="files-heading">
+      <h2 className={styles.heading} id="files-heading">
+        Files
+      </h2>
+      <p className={styles.text}>
+        {data
+          ? `Pasted images and attached files use ${formatBytes(data.filesBytes)} of this account's ${formatBytes(data.filesLimitBytes)}.`
+          : "Pasted images and attached files count against this account's limit."}
+      </p>
+    </section>
   );
 }

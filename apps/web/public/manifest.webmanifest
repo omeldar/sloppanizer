@@ -1,7 +1,7 @@
 {
-  "name": "organizer",
-  "short_name": "organizer",
-  "description": "Personal todos and notes",
+  "name": "Sloppanizer",
+  "short_name": "Sloppanizer",
+  "description": "Keyboard-first todos, notes and people",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

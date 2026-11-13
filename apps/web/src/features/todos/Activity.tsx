@@ -16,7 +16,7 @@ import {
 } from "../../lib/queries.ts";
 import styles from "./Activity.module.css";
 
-const SHOW_CHANGES_KEY = "organizer.activity.changes";
+const SHOW_CHANGES_KEY = "sloppanizer.activity.changes";
 
 function readShowChanges(): boolean {
   try {

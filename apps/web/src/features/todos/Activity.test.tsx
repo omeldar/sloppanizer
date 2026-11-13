@@ -1,8 +1,8 @@
-import type { ActivityItem, Comment } from "@organizer/shared";
+import type { ActivityItem, Comment, Me } from "@organizer/shared";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { makeBrief, makeTodo, mockApi, renderWithApp } from "../../test/render.tsx";
+import { makeBrief, makeMe, makeTodo, mockApi, renderWithApp } from "../../test/render.tsx";
 import { Activity, canChangeComment, visibleItems } from "./Activity.tsx";
 
 const T = "2026-11-10T09:00:00.000Z";
@@ -42,7 +42,7 @@ const items: ActivityItem[] = [
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.unstubAllGlobals());
 
-function setup(me: { actor: string; via: "session" | "token"; scope: "read" | "write" }) {
+function setup(me: Me) {
   return mockApi(({ method, path, body }) => {
     if (path === "/api/v1/me") return { body: me };
     if (path === "/api/v1/todos/1/activity") return { body: { todoId: 1, items } };
@@ -57,7 +57,7 @@ const todo = makeTodo({ id: 1, contacts: [makeBrief("Max", "Muster", 5)] });
 
 describe("Activity thread", () => {
   it("shows history lines in plain words and comments as Markdown, oldest first", async () => {
-    setup({ actor: "you", via: "session", scope: "write" });
+    setup(makeMe());
     renderWithApp(<Activity todo={todo} />);
     expect(await screen.findByText("changed status from Open to Done")).toBeTruthy();
     expect(screen.getByText("added contact Max Muster")).toBeTruthy();
@@ -72,17 +72,17 @@ describe("Activity thread", () => {
   });
 
   it("hides the history with Show changes off and remembers the choice", async () => {
-    setup({ actor: "you", via: "session", scope: "write" });
+    setup(makeMe());
     renderWithApp(<Activity todo={todo} />);
     await screen.findByText("created the todo");
     await userEvent.click(screen.getByRole("checkbox", { name: "Show changes" }));
     expect(screen.queryByText("created the todo")).toBeNull();
     expect(screen.getByText("Checked the logs")).toBeTruthy();
-    expect(localStorage.getItem("organizer.activity.changes")).toBe("false");
+    expect(localStorage.getItem("sloppanizer.activity.changes")).toBe("false");
   });
 
   it("lets the browser session edit and delete every comment", async () => {
-    setup({ actor: "you", via: "session", scope: "write" });
+    setup(makeMe());
     renderWithApp(<Activity todo={todo} />);
     await screen.findByText("Checked the logs");
     expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(2);
@@ -90,7 +90,7 @@ describe("Activity thread", () => {
   });
 
   it("sends a comment with ctrl+enter and clears the box", async () => {
-    const calls = setup({ actor: "you", via: "session", scope: "write" });
+    const calls = setup(makeMe());
     renderWithApp(<Activity todo={todo} />);
     const box = await screen.findByLabelText("New comment");
     await userEvent.click(box);
@@ -104,13 +104,13 @@ describe("Activity thread", () => {
 describe("comment permissions", () => {
   const mine = { actor: "assistant" };
   it("allows a write token only its own comments", () => {
-    const token = { actor: "assistant", via: "token", scope: "write" } as const;
+    const token = makeMe({ actor: "assistant", via: "token" });
     expect(canChangeComment(mine, token)).toBe(true);
     expect(canChangeComment({ actor: "you" }, token)).toBe(false);
   });
 
   it("allows nothing for a read token or before /me answered", () => {
-    expect(canChangeComment(mine, { actor: "assistant", via: "token", scope: "read" })).toBe(false);
+    expect(canChangeComment(mine, makeMe({ actor: "assistant", via: "token", scope: "read" }))).toBe(false);
     expect(canChangeComment(mine, undefined)).toBe(false);
   });
 

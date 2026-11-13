@@ -8,7 +8,7 @@ import { CommandsProvider } from "../../../app/commands.tsx";
 import { routeTree } from "../../../app/router.tsx";
 import { ToastProvider } from "../../../components/toast/ToastProvider.tsx";
 import { KeyboardProvider } from "../../../keyboard/KeyboardProvider.tsx";
-import { makeTodo, mockApi } from "../../../test/render.tsx";
+import { makeMe, makeTodo, mockApi } from "../../../test/render.tsx";
 import { pastedTitles } from "./SubtaskInput.tsx";
 import { stepTarget } from "./Subtasks.tsx";
 
@@ -49,7 +49,7 @@ function renderParent(overrides: Partial<Todo> = {}) {
       return { body: { items: [first, second], total: 2, limit: 200, offset: 0 } };
     }
     if (path === "/api/v1/todos/1/activity") return { body: { todoId: 1, items: [] } };
-    if (path === "/api/v1/me") return { body: { actor: "you", via: "session", scope: "write" } };
+    if (path === "/api/v1/me") return { body: makeMe() };
     if (path === "/api/v1/projects" || path === "/api/v1/labels") return { body: [] };
     if (method === "POST" && path === "/api/v1/todos/1/subtasks") return { status: 201, body: [] };
     if (method === "POST" && path === "/api/v1/todos/bulk") return { body: { updated: [] } };

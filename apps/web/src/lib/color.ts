@@ -20,15 +20,3 @@ const LIGHT_INK = "#FFFFFF";
 export function inkOn(fill: string): string {
   return contrast(fill, DARK_INK) >= contrast(fill, LIGHT_INK) ? DARK_INK : LIGHT_INK;
 }
-
-/** Colors offered for projects and person tags. */
-export const PROJECT_COLORS = [
-  "#8B95A5",
-  "#4C9AFF",
-  "#36B37E",
-  "#FFB224",
-  "#F2555A",
-  "#A77BF3",
-  "#2EC5CE",
-  "#E5739F",
-];

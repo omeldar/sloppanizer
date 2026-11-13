@@ -7,7 +7,7 @@ import { CommandsProvider } from "../../app/commands.tsx";
 import { routeTree } from "../../app/router.tsx";
 import { ToastProvider } from "../../components/toast/ToastProvider.tsx";
 import { KeyboardProvider } from "../../keyboard/KeyboardProvider.tsx";
-import { makeTodo, mockApi } from "../../test/render.tsx";
+import { makeMe, makeTodo, mockApi } from "../../test/render.tsx";
 
 // The route loads this page lazily. Loading it here, with the test file, keeps the import (and the
 // editor) out of the first test's time limit.
@@ -37,7 +37,7 @@ function renderTodo(onToggle: (body: unknown) => { status?: number; body?: unkno
     }
     if (path === "/api/v1/todos/1") return { body: todo };
     if (path === "/api/v1/todos/1/activity") return { body: { todoId: 1, items: [] } };
-    if (path === "/api/v1/me") return { body: { actor: "you", via: "session", scope: "write" } };
+    if (path === "/api/v1/me") return { body: makeMe() };
     if (path === "/api/v1/projects" || path === "/api/v1/labels") return { body: [] };
     return { status: 404, body: { error: { code: "not_found", message: "Not here." } } };
   });

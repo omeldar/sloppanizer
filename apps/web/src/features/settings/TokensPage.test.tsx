@@ -2,17 +2,17 @@ import type { ApiToken } from "@organizer/shared";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mockApi, renderWithApp } from "../../test/render.tsx";
+import { makeMe, mockApi, renderWithApp } from "../../test/render.tsx";
 import { expiresAtFor, isActive, TokensPage } from "./TokensPage.tsx";
 
 const T = "2026-11-01T09:00:00.000Z";
-const RAW = `org_${"A1b2".repeat(10)}`;
+const RAW = `spz_${"A1b2".repeat(10)}`;
 
 function token(id: number, name: string, overrides: Partial<ApiToken> = {}): ApiToken {
   return {
     id,
     name,
-    prefix: `org_${String(id).padStart(8, "x")}`,
+    prefix: `spz_${String(id).padStart(8, "x")}`,
     scope: "read",
     createdAt: T,
     lastUsedAt: null,
@@ -31,8 +31,7 @@ function setup(via: "session" | "token" = "session") {
     token(3, "Expired one", { expiresAt: "2026-01-01T00:00:00.000Z" }),
   ];
   const calls = mockApi(({ method, path, body }) => {
-    if (path === "/api/v1/me")
-      return { body: { actor: via === "session" ? "you" : "bot", via, scope: "write" } };
+    if (path === "/api/v1/me") return { body: makeMe({ actor: via === "session" ? "you" : "bot", via }) };
     if (method === "GET" && path === "/api/v1/tokens") return { body: list };
     if (method === "POST" && path === "/api/v1/tokens") {
       const input = body as { name: string; scope: "read" | "write"; expiresAt: string | null };

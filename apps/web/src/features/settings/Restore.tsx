@@ -105,8 +105,9 @@ export function RestoreSection() {
         Restore
       </h2>
       <p className={styles.text}>
-        Replace all data with an export zip, for example after moving to a new machine. The file is checked
-        first and nothing changes until you confirm. API tokens and this browser's session stay.
+        Replace this account's data with an export zip, for example one from the single-user version. Only
+        this account changes; other accounts stay as they are. The file is checked first and nothing changes
+        until you confirm. API tokens and this browser's session stay.
       </p>
 
       {(state.step === "idle" || state.step === "problems") && (
@@ -207,7 +208,8 @@ function Preview({
         <div>
           <dt>From</dt>
           <dd>
-            organizer {preview.appVersion}, export format {preview.format}
+            {preview.source === "sloppanizer" ? "Sloppanizer" : "organizer (single user)"}{" "}
+            {preview.appVersion}, export format {preview.format}
           </dd>
         </div>
       </dl>
@@ -268,7 +270,7 @@ function ConfirmDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="Replace all data?"
-      description="This replaces all todos, notes, people and files with the ones from the file. A safety copy of your current data is saved first."
+      description="This replaces all todos, notes, people and files of this account with the ones from the file. A safety copy of the account's current data is saved first."
       width={480}
     >
       {open && <ConfirmForm preview={preview} onCancel={() => onOpenChange(false)} />}

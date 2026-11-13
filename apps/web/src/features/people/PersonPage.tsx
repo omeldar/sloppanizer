@@ -3,6 +3,7 @@ import {
   type Person,
   type PersonRole,
   priorityOf,
+  PROJECT_COLORS,
   STATUS_LABELS,
   type Todo,
   type Topic,
@@ -31,7 +32,6 @@ import {
 } from "../../components/ui.tsx";
 import { useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { ApiError, errorMessage } from "../../lib/api.ts";
-import { PROJECT_COLORS } from "../../lib/color.ts";
 import { absoluteTime, toDate } from "../../lib/format.ts";
 import {
   useCreatePersonTag,

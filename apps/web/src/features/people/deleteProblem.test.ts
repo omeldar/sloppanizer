@@ -11,8 +11,8 @@ describe("deleting a linked person", () => {
   });
 
   it("passes other errors through", () => {
-    expect(deleteProblem(new ApiError(0, "network", "organizer is not reachable."))).toBe(
-      "organizer is not reachable.",
+    expect(deleteProblem(new ApiError(0, "network", "Sloppanizer is not reachable."))).toBe(
+      "Sloppanizer is not reachable.",
     );
   });
 });
