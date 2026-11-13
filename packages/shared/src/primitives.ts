@@ -68,11 +68,29 @@ export const TOKEN_SCOPES = ["read", "write"] as const;
 export const TokenScope = z.enum(TOKEN_SCOPES);
 export type TokenScope = z.infer<typeof TokenScope>;
 
-/** Raw API token: "org_" plus 40 base62 characters. */
-export const TOKEN_PATTERN = /^org_[0-9A-Za-z]{40}$/;
+/** Raw API token: "spz_" plus 40 base62 characters. Access and refresh tokens are server-only formats. */
+export const TOKEN_PATTERN = /^spz_[0-9A-Za-z]{40}$/;
 export const TOKEN_PREFIX_LENGTH = 12;
 
 export const API_PREFIX = "/api/v1";
+
+/** Colors offered for projects, person tags and accounts. The first is the default. */
+export const PROJECT_COLORS = [
+  "#8B95A5",
+  "#4C9AFF",
+  "#36B37E",
+  "#FFB224",
+  "#F2555A",
+  "#A77BF3",
+  "#2EC5CE",
+  "#E5739F",
+] as const;
+
+/**
+ * Migrations of the single-user versions (0000 to 0007 plus the drizzle base). The squashed Sloppanizer
+ * baseline counts as SCHEMA_BASE + 1, so every older export has a lower schemaVersion.
+ */
+export const SCHEMA_BASE = 8;
 
 export const DEFAULT_PROJECT_COLOR = "#8B95A5";
 export const DEFAULT_LABEL_COLOR = "#8B95A5";

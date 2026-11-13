@@ -12,3 +12,4 @@ export * from "./activity.ts";
 export * from "./recurrence.ts";
 export * from "./checklist.ts";
 export * from "./web-headers.ts";
+export * from "./auth.ts";

@@ -10,16 +10,20 @@ import {
   TodoStatus,
   TokenScope,
 } from "./primitives.ts";
+import { AccountBrief } from "./auth.ts";
 import { RecurrenceRule } from "./recurrence.ts";
 
 export const Health = z.strictObject({ ok: z.literal(true), version: z.string() });
 export type Health = z.infer<typeof Health>;
 
 export const Me = z.strictObject({
-  /** "you" for the browser session, else the token name. */
+  /** "you" for the signed-in browser session, else the token name. */
   actor: z.string(),
+  /** "session" = a signed-in browser session (access token), "token" = an API token. */
   via: z.enum(["session", "token"]),
   scope: TokenScope,
+  /** The account every call of this caller is scoped to. */
+  account: AccountBrief,
 });
 export type Me = z.infer<typeof Me>;
 
@@ -448,29 +452,13 @@ export type PersonStatMonth = z.infer<typeof PersonStatMonth>;
 export const PersonStatDetail = z.strictObject({ stat: PersonStat, months: z.array(PersonStatMonth) });
 export type PersonStatDetail = z.infer<typeof PersonStatDetail>;
 
-/** An export zip written to the export folder. */
-export const FolderExport = z.strictObject({
-  at: Timestamp,
-  /** Full path of the zip inside WSL. */
-  path: z.string(),
-  fileName: z.string(),
-  bytes: Count,
-});
-export type FolderExport = z.infer<typeof FolderExport>;
-
-/** An entry of GET /export/folder: the full path only for the browser session (tokens do not see paths). */
-export const FolderExportListItem = FolderExport.extend({ path: z.string().optional() });
-export type FolderExportListItem = z.infer<typeof FolderExportListItem>;
-
 export const Settings = z.strictObject({
-  /** Fixed folder for "Write to folder": <data dir>/exports. */
-  exportDir: z.string(),
-  /** How many zips the export folder keeps (older ones are deleted after a write). */
-  folderExportKeep: z.number().int().positive(),
-  dataDir: z.string(),
   lastExportAt: Timestamp.nullable(),
-  lastFolderExport: FolderExport.nullable(),
   version: z.string(),
+  /** Bytes of this account's uploaded files. */
+  filesBytes: Count,
+  /** The account's files limit (uploads and restores over it are refused). */
+  filesLimitBytes: Count,
 });
 export type Settings = z.infer<typeof Settings>;
 
@@ -482,6 +470,8 @@ export type BackupFile = z.infer<typeof BackupFile>;
 export const RestorePreview = z.strictObject({
   uploadId: z.string(),
   fileName: z.string(),
+  /** "organizer" = an export of the single-user version (formats 1 to 3), "sloppanizer" = format 4. */
+  source: z.enum(["organizer", "sloppanizer"]),
   format: z.number().int().positive(),
   exportedAt: Timestamp,
   appVersion: z.string(),
@@ -505,3 +495,22 @@ export type RestoreResult = z.infer<typeof RestoreResult>;
 /** Body of the 422 when an export zip cannot be restored (the first 20 problems). */
 export const RestoreProblemDetails = z.strictObject({ problems: z.array(z.string()) });
 export type RestoreProblemDetails = z.infer<typeof RestoreProblemDetails>;
+
+/** Export format written by this version (manifest.json `format`). Formats 1 to 3 come from the single-user app. */
+export const EXPORT_FORMAT = 4;
+
+/** manifest.json of an export zip (format 4). data.json rows carry no account id: any export fits any account. */
+export const ExportManifest = z.strictObject({
+  app: z.literal("sloppanizer"),
+  format: z.literal(EXPORT_FORMAT),
+  exportedAt: Timestamp,
+  appVersion: z.string(),
+  schemaVersion: z.number().int().positive(),
+  account: z.strictObject({ username: z.string(), displayName: z.string() }),
+  /** Rows per table. */
+  counts: z.record(z.string(), Count),
+  /** Highest id ever given per id table of the account (ids are never reused). */
+  sequences: z.record(z.string(), Count),
+  attachments: z.strictObject({ count: Count, bytes: Count, missing: z.array(Id) }),
+});
+export type ExportManifest = z.infer<typeof ExportManifest>;

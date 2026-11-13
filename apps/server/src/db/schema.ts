@@ -1,8 +1,8 @@
 import { PERSON_ROLES } from "@organizer/shared";
 import { sql } from "drizzle-orm";
 import {
-  type AnySQLiteColumn,
   check,
+  foreignKey,
   index,
   integer,
   primaryKey,
@@ -12,47 +12,89 @@ import {
   unique,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import { accounts } from "./auth-schema.ts";
 
 /**
- * Database schema. Every change goes through a migration (`pnpm --filter @organizer/server db:generate`).
+ * User data. Every change goes through a migration (`pnpm --filter @organizer/server db:generate`).
  * Timestamps are ISO 8601 UTC strings with milliseconds, calendar dates are `YYYY-MM-DD`.
- * labels.name, topics.name and person_tags.name are COLLATE NOCASE: drizzle-kit cannot express that,
- * so the migration SQL adds it by hand. NOCASE folds ASCII only, so these tables also have name_key
- * (services/text.ts foldCase: NFC and lowercase for every script), unique, set by the services on every
- * write. In the database name_key may be NULL (migration 0006 adds it to filled tables, a restore leaves
- * it out); services/name-keys.ts repairNameKeys fills it and merges duplicates at every start and after
- * a restore. The schema says notNull so that every insert has to set it. The search index (search_fts, FTS5) lives only in a custom
- * migration; services/search-index.ts keeps it up to date.
+ *
+ * Every row belongs to one account (account_id, ON DELETE CASCADE from accounts). Tables with an id have
+ * the primary key (account_id, id): ids are counted per account (account_sequences, services/owned.ts
+ * nextId), so each account starts at #1 and an old single-user export keeps every id. References between
+ * user tables are composite foreign keys that include account_id, so the database refuses a link between
+ * two accounts' rows. Nullable references (todos.project_id, parent_id, recurrence_prev_id,
+ * notes.project_id) use NO ACTION: a composite SET NULL would also null account_id, so the services clear
+ * them before a delete in the same transaction.
+ *
+ * Hand edits in the baseline migration (drizzle-kit cannot express them): labels.name, topics.name and
+ * person_tags.name are COLLATE NOCASE; their name_key (services/text.ts foldCase, unique per account) is
+ * nullable in SQL (a restore leaves it out, services/name-keys.ts fills it) but notNull here so every insert
+ * sets it; todos.recurrence has CHECK json_valid; the search index (search_fts, FTS5) exists only in SQL,
+ * services/search-index.ts keeps it up to date.
  */
 
-export const projects = sqliteTable("projects", {
-  id: integer("id").primaryKey(),
-  slug: text("slug").notNull().unique(),
-  name: text("name").notNull(),
-  description: text("description").notNull().default(""),
-  color: text("color").notNull().default("#8B95A5"),
-  archivedAt: text("archived_at"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+const accountId = () =>
+  integer("account_id")
+    .notNull()
+    .references(() => accounts.id, { onDelete: "cascade" });
 
-export const labels = sqliteTable("labels", {
-  id: integer("id").primaryKey(),
-  name: text("name").notNull().unique(),
-  nameKey: text("name_key").notNull().unique(),
-  scope: text("scope"),
-  value: text("value").notNull(),
-  color: text("color").notNull(),
-  description: text("description").notNull().default(""),
-  rank: integer("rank"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+/** Per account and id table: the highest id ever given (never reused). */
+export const accountSequences = sqliteTable(
+  "account_sequences",
+  {
+    accountId: accountId(),
+    tableName: text("table_name").notNull(),
+    lastId: integer("last_id").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.accountId, t.tableName] })],
+);
+
+export const projects = sqliteTable(
+  "projects",
+  {
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    color: text("color").notNull().default("#8B95A5"),
+    archivedAt: text("archived_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.id] }),
+    unique("projects_slug_unique").on(t.accountId, t.slug),
+  ],
+);
+
+export const labels = sqliteTable(
+  "labels",
+  {
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    name: text("name").notNull(),
+    nameKey: text("name_key").notNull(),
+    scope: text("scope"),
+    value: text("value").notNull(),
+    color: text("color").notNull(),
+    description: text("description").notNull().default(""),
+    rank: integer("rank"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.id] }),
+    unique("labels_name_unique").on(t.accountId, t.name),
+    unique("labels_name_key_unique").on(t.accountId, t.nameKey),
+  ],
+);
 
 export const people = sqliteTable(
   "people",
   {
-    id: integer("id").primaryKey(),
+    accountId: accountId(),
+    id: integer("id").notNull(),
     firstName: text("first_name").notNull(),
     lastName: text("last_name").notNull(),
     note: text("note").notNull().default(""),
@@ -63,64 +105,104 @@ export const people = sqliteTable(
     notesMd: text("notes_md").notNull().default(""),
   },
   (t) => [
-    index("people_name_idx").on(sql`lower(${t.lastName})`, sql`lower(${t.firstName})`),
-    index("people_team_idx").on(sql`lower(${t.team})`),
+    primaryKey({ columns: [t.accountId, t.id] }),
+    index("people_name_idx").on(t.accountId, sql`lower(${t.lastName})`, sql`lower(${t.firstName})`),
+    index("people_team_idx").on(t.accountId, sql`lower(${t.team})`),
   ],
 );
 
 /** What people help with. A topic left with no people is deleted. */
-export const topics = sqliteTable("topics", {
-  id: integer("id").primaryKey(),
-  name: text("name").notNull().unique(),
-  nameKey: text("name_key").notNull().unique(),
-  createdAt: text("created_at").notNull(),
-});
+export const topics = sqliteTable(
+  "topics",
+  {
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    name: text("name").notNull(),
+    nameKey: text("name_key").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.id] }),
+    unique("topics_name_unique").on(t.accountId, t.name),
+    unique("topics_name_key_unique").on(t.accountId, t.nameKey),
+  ],
+);
 
 export const personTopics = sqliteTable(
   "person_topics",
   {
-    personId: integer("person_id")
-      .notNull()
-      .references(() => people.id, { onDelete: "cascade" }),
-    topicId: integer("topic_id")
-      .notNull()
-      .references(() => topics.id, { onDelete: "cascade" }),
+    accountId: accountId(),
+    personId: integer("person_id").notNull(),
+    topicId: integer("topic_id").notNull(),
     createdAt: text("created_at").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.personId, t.topicId] }), index("person_topics_topic_idx").on(t.topicId)],
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.personId, t.topicId] }),
+    foreignKey({
+      name: "person_topics_person_fk",
+      columns: [t.accountId, t.personId],
+      foreignColumns: [people.accountId, people.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "person_topics_topic_fk",
+      columns: [t.accountId, t.topicId],
+      foreignColumns: [topics.accountId, topics.id],
+    }).onDelete("cascade"),
+    index("person_topics_topic_idx").on(t.accountId, t.topicId),
+  ],
 );
 
-/** The user's own judgments about people. Separate from todo labels (other lifecycle, private later). */
-export const personTags = sqliteTable("person_tags", {
-  id: integer("id").primaryKey(),
-  name: text("name").notNull().unique(),
-  nameKey: text("name_key").notNull().unique(),
-  color: text("color").notNull().default("#8B95A5"),
-  description: text("description").notNull().default(""),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+/** The user's own judgments about people. Separate from todo labels (other lifecycle). */
+export const personTags = sqliteTable(
+  "person_tags",
+  {
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    name: text("name").notNull(),
+    nameKey: text("name_key").notNull(),
+    color: text("color").notNull().default("#8B95A5"),
+    description: text("description").notNull().default(""),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.id] }),
+    unique("person_tags_name_unique").on(t.accountId, t.name),
+    unique("person_tags_name_key_unique").on(t.accountId, t.nameKey),
+  ],
+);
 
 export const personTagLinks = sqliteTable(
   "person_tag_links",
   {
-    personId: integer("person_id")
-      .notNull()
-      .references(() => people.id, { onDelete: "cascade" }),
-    tagId: integer("tag_id")
-      .notNull()
-      .references(() => personTags.id, { onDelete: "cascade" }),
+    accountId: accountId(),
+    personId: integer("person_id").notNull(),
+    tagId: integer("tag_id").notNull(),
     createdAt: text("created_at").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.personId, t.tagId] }), index("person_tag_links_tag_idx").on(t.tagId)],
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.personId, t.tagId] }),
+    foreignKey({
+      name: "person_tag_links_person_fk",
+      columns: [t.accountId, t.personId],
+      foreignColumns: [people.accountId, people.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "person_tag_links_tag_fk",
+      columns: [t.accountId, t.tagId],
+      foreignColumns: [personTags.accountId, personTags.id],
+    }).onDelete("cascade"),
+    index("person_tag_links_tag_idx").on(t.accountId, t.tagId),
+  ],
 );
 
 export const todos = sqliteTable(
   "todos",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    projectId: integer("project_id").references(() => projects.id, { onDelete: "set null" }),
-    parentId: integer("parent_id").references((): AnySQLiteColumn => todos.id, { onDelete: "set null" }),
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    projectId: integer("project_id"),
+    parentId: integer("parent_id"),
     title: text("title").notNull(),
     descriptionMd: text("description_md").notNull().default(""),
     status: text("status", { enum: ["open", "in_progress", "blocked", "done"] })
@@ -133,22 +215,38 @@ export const todos = sqliteTable(
     updatedAt: text("updated_at").notNull(),
     doneAt: text("done_at"),
     lastActivityAt: text("last_activity_at").notNull(),
-    /** The repeat rule as JSON (RecurrenceRule), or null. 0005 adds CHECK json_valid by hand. */
+    /** The repeat rule as JSON (RecurrenceRule), or null. The migration adds CHECK json_valid by hand. */
     recurrence: text("recurrence"),
     /** The occurrence this todo was created from when the previous one was marked done. */
-    recurrencePrevId: integer("recurrence_prev_id").references((): AnySQLiteColumn => todos.id, {
-      onDelete: "set null",
-    }),
+    recurrencePrevId: integer("recurrence_prev_id"),
   },
   (t) => [
+    primaryKey({ columns: [t.accountId, t.id] }),
+    // NO ACTION (see the file comment): the services clear these before deleting the target.
+    foreignKey({
+      name: "todos_project_fk",
+      columns: [t.accountId, t.projectId],
+      foreignColumns: [projects.accountId, projects.id],
+    }),
+    foreignKey({
+      name: "todos_parent_fk",
+      columns: [t.accountId, t.parentId],
+      foreignColumns: [t.accountId, t.id],
+    }),
+    foreignKey({
+      name: "todos_recurrence_prev_fk",
+      columns: [t.accountId, t.recurrencePrevId],
+      foreignColumns: [t.accountId, t.id],
+    }),
     check("todos_status_check", sql`${t.status} IN ('open','in_progress','blocked','done')`),
     check("todos_title_check", sql`length(${t.title}) BETWEEN 1 AND 300`),
-    index("todos_project_idx").on(t.projectId),
-    index("todos_status_idx").on(t.status),
-    index("todos_parent_idx").on(t.parentId),
+    index("todos_status_idx").on(t.accountId, t.status),
+    index("todos_project_idx").on(t.accountId, t.projectId),
+    index("todos_parent_idx").on(t.accountId, t.parentId),
+    index("todos_created_idx").on(t.accountId, t.createdAt),
     // One next occurrence per todo, also against double clicks and races.
     uniqueIndex("todos_recurrence_prev_idx")
-      .on(t.recurrencePrevId)
+      .on(t.accountId, t.recurrencePrevId)
       .where(sql`${t.recurrencePrevId} IS NOT NULL`),
   ],
 );
@@ -160,144 +258,112 @@ export const todos = sqliteTable(
 export const todoLinks = sqliteTable(
   "todo_links",
   {
-    id: integer("id").primaryKey(),
-    fromId: integer("from_id")
-      .notNull()
-      .references(() => todos.id, { onDelete: "cascade" }),
-    toId: integer("to_id")
-      .notNull()
-      .references(() => todos.id, { onDelete: "cascade" }),
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    fromId: integer("from_id").notNull(),
+    toId: integer("to_id").notNull(),
     kind: text("kind", { enum: ["blocks", "relates"] }).notNull(),
     createdBy: text("created_by").notNull(),
     createdAt: text("created_at").notNull(),
   },
   (t) => [
+    primaryKey({ columns: [t.accountId, t.id] }),
+    foreignKey({
+      name: "todo_links_from_fk",
+      columns: [t.accountId, t.fromId],
+      foreignColumns: [todos.accountId, todos.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "todo_links_to_fk",
+      columns: [t.accountId, t.toId],
+      foreignColumns: [todos.accountId, todos.id],
+    }).onDelete("cascade"),
     check("todo_links_kind_check", sql`${t.kind} IN ('blocks','relates')`),
     check("todo_links_self_check", sql`${t.fromId} <> ${t.toId}`),
-    unique("todo_links_pair_unique").on(t.fromId, t.toId, t.kind),
-    index("todo_links_to_idx").on(t.toId),
+    unique("todo_links_pair_unique").on(t.accountId, t.fromId, t.toId, t.kind),
+    index("todo_links_to_idx").on(t.accountId, t.toId),
   ],
 );
 
 export const todoLabels = sqliteTable(
   "todo_labels",
   {
-    todoId: integer("todo_id")
-      .notNull()
-      .references(() => todos.id, { onDelete: "cascade" }),
-    labelId: integer("label_id")
-      .notNull()
-      .references(() => labels.id, { onDelete: "cascade" }),
+    accountId: accountId(),
+    todoId: integer("todo_id").notNull(),
+    labelId: integer("label_id").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.todoId, t.labelId] }), index("todo_labels_label_idx").on(t.labelId)],
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.todoId, t.labelId] }),
+    foreignKey({
+      name: "todo_labels_todo_fk",
+      columns: [t.accountId, t.todoId],
+      foreignColumns: [todos.accountId, todos.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "todo_labels_label_fk",
+      columns: [t.accountId, t.labelId],
+      foreignColumns: [labels.accountId, labels.id],
+    }).onDelete("cascade"),
+    index("todo_labels_label_idx").on(t.accountId, t.labelId),
+  ],
 );
 
 export const todoPeople = sqliteTable(
   "todo_people",
   {
-    todoId: integer("todo_id")
-      .notNull()
-      .references(() => todos.id, { onDelete: "cascade" }),
-    // RESTRICT: a person who is still linked cannot be deleted (the API answers 409 first).
-    personId: integer("person_id")
-      .notNull()
-      .references(() => people.id, { onDelete: "restrict" }),
+    accountId: accountId(),
+    todoId: integer("todo_id").notNull(),
+    personId: integer("person_id").notNull(),
     role: text("role", { enum: PERSON_ROLES }).notNull().default("requester"),
     createdAt: text("created_at").notNull(),
   },
   (t) => [
-    primaryKey({ columns: [t.todoId, t.personId, t.role] }),
+    primaryKey({ columns: [t.accountId, t.todoId, t.personId, t.role] }),
+    foreignKey({
+      name: "todo_people_todo_fk",
+      columns: [t.accountId, t.todoId],
+      foreignColumns: [todos.accountId, todos.id],
+    }).onDelete("cascade"),
+    // NO ACTION: a person who is still linked cannot be deleted (the API answers 409 first).
+    foreignKey({
+      name: "todo_people_person_fk",
+      columns: [t.accountId, t.personId],
+      foreignColumns: [people.accountId, people.id],
+    }),
     check("todo_people_role_check", sql`${t.role} IN ('requester','contact')`),
-    index("todo_people_person_idx").on(t.personId),
+    index("todo_people_person_idx").on(t.accountId, t.personId),
   ],
 );
 
 export const events = sqliteTable(
   "events",
   {
-    id: integer("id").primaryKey(),
-    todoId: integer("todo_id").references(() => todos.id, { onDelete: "cascade" }),
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    todoId: integer("todo_id"),
     actor: text("actor").notNull(),
     kind: text("kind").notNull(),
     /** JSON with from/to. */
     data: text("data").notNull(),
     createdAt: text("created_at").notNull(),
   },
-  (t) => [index("events_todo_idx").on(t.todoId)],
-);
-
-/** Comments in a todo's thread. Delete is permanent. */
-export const comments = sqliteTable(
-  "comments",
-  {
-    id: integer("id").primaryKey(),
-    todoId: integer("todo_id")
-      .notNull()
-      .references(() => todos.id, { onDelete: "cascade" }),
-    /** Display name of the author at the time of writing ("you" for the session, else the token name). */
-    actor: text("actor").notNull(),
-    bodyMd: text("body_md").notNull(),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-    editedAt: text("edited_at"),
-    /**
-     * Who wrote it: the browser session or an API token (author_token_id, owner of the comment). The id
-     * is only valid on this device: it is left out of exports and linked again after a restore. NULL
-     * for a token comment means no token owns it any more (only the session may change it). The
-     * migration SQL gives author_kind DEFAULT 'token' (needed to add the column); inserts set it.
-     */
-    authorKind: text("author_kind", { enum: ["session", "token"] }).notNull(),
-    authorTokenId: integer("author_token_id").references((): AnySQLiteColumn => apiTokens.id, {
-      onDelete: "set null",
-    }),
-  },
   (t) => [
-    check("comments_body_check", sql`length(${t.bodyMd}) BETWEEN 1 AND 50000`),
-    check("comments_author_kind_check", sql`${t.authorKind} IN ('session','token')`),
-    index("comments_todo_idx").on(t.todoId, t.createdAt),
+    primaryKey({ columns: [t.accountId, t.id] }),
+    foreignKey({
+      name: "events_todo_fk",
+      columns: [t.accountId, t.todoId],
+      foreignColumns: [todos.accountId, todos.id],
+    }).onDelete("cascade"),
+    index("events_todo_idx").on(t.accountId, t.todoId),
   ],
-);
-
-export const notes = sqliteTable(
-  "notes",
-  {
-    id: integer("id").primaryKey(),
-    projectId: integer("project_id").references(() => projects.id, { onDelete: "set null" }),
-    title: text("title").notNull(),
-    bodyMd: text("body_md").notNull().default(""),
-    pinnedAt: text("pinned_at"),
-    createdBy: text("created_by").notNull(),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-  (t) => [
-    check("notes_title_check", sql`length(${t.title}) BETWEEN 1 AND 200`),
-    index("notes_project_idx").on(t.projectId),
-  ],
-);
-
-/**
- * Uploaded files, stored at <data dir>/attachments/<id>. Ids are never reused (they are in Markdown
- * links). No owner columns: what uses an attachment is the Markdown that links it.
- */
-export const attachments = sqliteTable(
-  "attachments",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    name: text("name").notNull(),
-    mimeType: text("mime_type").notNull(),
-    size: integer("size").notNull(),
-    sha256: text("sha256").notNull(),
-    createdBy: text("created_by").notNull(),
-    createdAt: text("created_at").notNull(),
-  },
-  (t) => [index("attachments_sha256_idx").on(t.sha256)],
 );
 
 export const apiTokens = sqliteTable(
   "api_tokens",
   {
+    /** Global id: tokens are auth objects, never shown as #ids. */
     id: integer("id").primaryKey(),
+    accountId: accountId(),
     name: text("name").notNull(),
     prefix: text("prefix").notNull(),
     tokenHash: text("token_hash").notNull().unique(),
@@ -307,11 +373,120 @@ export const apiTokens = sqliteTable(
     expiresAt: text("expires_at"),
     revokedAt: text("revoked_at"),
   },
-  (t) => [check("api_tokens_scope_check", sql`${t.scope} IN ('read','write')`)],
+  (t) => [
+    check("api_tokens_scope_check", sql`${t.scope} IN ('read','write')`),
+    unique("api_tokens_account_id_unique").on(t.accountId, t.id),
+    index("api_tokens_account_idx").on(t.accountId),
+  ],
 );
 
-export const settings = sqliteTable("settings", {
-  key: text("key").primaryKey(),
-  /** JSON. */
-  value: text("value").notNull(),
-});
+/** Comments in a todo's thread. Delete is permanent. */
+export const comments = sqliteTable(
+  "comments",
+  {
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    todoId: integer("todo_id").notNull(),
+    /** Display name of the author at the time of writing ("you" for the session, else the token name). */
+    actor: text("actor").notNull(),
+    bodyMd: text("body_md").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    editedAt: text("edited_at"),
+    /**
+     * Who wrote it: the browser session or an API token (author_token_id, owner of the comment). The id
+     * is only valid on this server: it is left out of exports and linked again after a restore. NULL
+     * for a token comment means no token owns it any more (only the session may change it). The
+     * services only ever set the caller's own token.
+     */
+    authorKind: text("author_kind", { enum: ["session", "token"] }).notNull(),
+    authorTokenId: integer("author_token_id").references(() => apiTokens.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.id] }),
+    foreignKey({
+      name: "comments_todo_fk",
+      columns: [t.accountId, t.todoId],
+      foreignColumns: [todos.accountId, todos.id],
+    }).onDelete("cascade"),
+    check("comments_body_check", sql`length(${t.bodyMd}) BETWEEN 1 AND 50000`),
+    check("comments_author_kind_check", sql`${t.authorKind} IN ('session','token')`),
+    index("comments_todo_idx").on(t.accountId, t.todoId, t.createdAt),
+  ],
+);
+
+export const notes = sqliteTable(
+  "notes",
+  {
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    projectId: integer("project_id"),
+    title: text("title").notNull(),
+    bodyMd: text("body_md").notNull().default(""),
+    pinnedAt: text("pinned_at"),
+    createdBy: text("created_by").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.id] }),
+    // NO ACTION (see the file comment): a project delete moves its notes to no project first.
+    foreignKey({
+      name: "notes_project_fk",
+      columns: [t.accountId, t.projectId],
+      foreignColumns: [projects.accountId, projects.id],
+    }),
+    check("notes_title_check", sql`length(${t.title}) BETWEEN 1 AND 200`),
+    index("notes_project_idx").on(t.accountId, t.projectId),
+  ],
+);
+
+/**
+ * Uploaded files, stored at <files dir>/<account id>/<id>. Ids are never reused (they are in Markdown
+ * links). No owner columns: what uses an attachment is the Markdown that links it.
+ */
+export const attachments = sqliteTable(
+  "attachments",
+  {
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    name: text("name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    size: integer("size").notNull(),
+    sha256: text("sha256").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.id] }),
+    index("attachments_sha256_idx").on(t.accountId, t.sha256),
+  ],
+);
+
+/** Settings per account. Keys: lastExportAt (exported), restoreInProgress (local, never exported). */
+export const accountSettings = sqliteTable(
+  "account_settings",
+  {
+    accountId: accountId(),
+    key: text("key").notNull(),
+    /** JSON. */
+    value: text("value").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.accountId, t.key] })],
+);
+
+/** Every table with a per-account id (counted in account_sequences). */
+export const ID_TABLES = [
+  "projects",
+  "labels",
+  "people",
+  "topics",
+  "person_tags",
+  "todos",
+  "todo_links",
+  "events",
+  "comments",
+  "notes",
+  "attachments",
+] as const;
+export type IdTable = (typeof ID_TABLES)[number];

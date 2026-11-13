@@ -5,57 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1794410220159,
-      "tag": "0000_init",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1794410230377,
-      "tag": "0001_seed_priority_labels",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1794486504999,
-      "tag": "0002_step2_contacts_threads_notes",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1794486522994,
-      "tag": "0003_backfill_people_event_roles",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1794486523669,
-      "tag": "0004_search_index",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1794489115655,
-      "tag": "0005_step3_subtasks_links_repeats",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "6",
-      "when": 1794494115908,
-      "tag": "0006_name_keys",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "6",
-      "when": 1794494518260,
-      "tag": "0007_comment_authors",
+      "when": 1794574961725,
+      "tag": "0000_sloppanizer",
       "breakpoints": true
     }
   ]

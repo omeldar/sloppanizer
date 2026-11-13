@@ -196,9 +196,11 @@ describe("errors", () => {
       conflict: 409,
       unauthorized: 401,
       forbidden: 403,
+      reauth_required: 403,
       too_large: 413,
       unsupported_type: 415,
       unknown_host: 421,
+      too_many_requests: 429,
       internal: 500,
     });
     const body = errorBody("conflict", "Ambiguous person, use personId.", { candidates: [1, 2] });

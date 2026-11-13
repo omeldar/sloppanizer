@@ -6,9 +6,13 @@ export const ERROR_STATUS = {
   conflict: 409,
   unauthorized: 401,
   forbidden: 403,
+  /** A sensitive action needs a fresh sign-in (POST /auth/reauth, then repeat the call once). */
+  reauth_required: 403,
   too_large: 413,
   unsupported_type: 415,
   unknown_host: 421,
+  /** details { retryAfterSeconds }; the response also has a Retry-After header. */
+  too_many_requests: 429,
   internal: 500,
 } as const;
 

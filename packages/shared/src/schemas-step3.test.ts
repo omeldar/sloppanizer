@@ -62,16 +62,12 @@ describe("step 3 queries and outputs", () => {
   it("accepts only 32 hex upload ids and strict settings", () => {
     expect(ok(RestoreParams, { uploadId: "a".repeat(32) })).toBe(true);
     expect(ok(RestoreParams, { uploadId: "../../etc/passwd" })).toBe(false);
-    const settings = {
-      exportDir: "/d/exports",
-      folderExportKeep: 4,
-      dataDir: "/d",
-      lastExportAt: null,
-      lastFolderExport: null,
-      version: "0.1.0",
-    };
+    const settings = { lastExportAt: null, version: "0.1.0", filesBytes: 0, filesLimitBytes: 2 ** 31 };
     expect(ok(Settings, settings)).toBe(true);
     expect(ok(Settings, { ...settings, https: null })).toBe(false);
+    // Server paths are not for users of a hosted app.
+    expect(ok(Settings, { ...settings, dataDir: "/data" })).toBe(false);
+    expect(ok(Settings, { ...settings, filesBytes: -1 })).toBe(false);
   });
 });
 
