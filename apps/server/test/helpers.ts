@@ -38,6 +38,15 @@ type Call = (
   headers?: Record<string, string>,
 ) => Promise<LightMyRequestResponse>;
 
+/** POST that must answer 201; returns the created body. */
+const creatorOf =
+  (call: Call) =>
+  async <T = Record<string, unknown>>(url: string, body: unknown): Promise<T> => {
+    const res = await call("POST", url, body);
+    if (res.statusCode !== 201) throw new Error(`POST ${url} -> ${res.statusCode}: ${res.body}`);
+    return res.json() as T;
+  };
+
 /**
  * A server on a fresh temp data dir with a movable clock and a signed-in default account "anna", plus
  * helpers for authenticated calls. `asAccount` adds further accounts (cross-account tests).
@@ -85,13 +94,6 @@ export async function makeApp(options: TestAppOptions = {}) {
         headers: { ...account.headers(), ...headers },
         ...(body === undefined ? {} : { payload: body as InjectOptions["payload"] }),
       });
-    };
-  const creatorOf =
-    (call: Call) =>
-    async <T = Record<string, unknown>>(url: string, body: unknown): Promise<T> => {
-      const res = await call("POST", url, body);
-      if (res.statusCode !== 201) throw new Error(`POST ${url} -> ${res.statusCode}: ${res.body}`);
-      return res.json() as T;
     };
   /** Everything a test needs to act as one account: calls, tokens, the service context and files folder. */
   const actor = (account: TestAccount) => {

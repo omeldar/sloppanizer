@@ -353,15 +353,15 @@ describe("login", () => {
   });
 });
 
-describe("refresh and logout", () => {
-  async function signedIn(t: AuthApp) {
-    await t.account({ username: "anna", signedIn: false });
-    const res = await login(t, "anna", { password: TEST_PASSWORD, code: code(t) });
-    return res.json() as { accessToken: string; refreshToken: string; sessionId: string };
-  }
-  const refresh = (t: AuthApp, refreshToken: string) =>
-    t.call("POST", "/api/v1/auth/refresh", { refreshToken });
+async function signedIn(t: AuthApp) {
+  await t.account({ username: "anna", signedIn: false });
+  const res = await login(t, "anna", { password: TEST_PASSWORD, code: code(t) });
+  return res.json() as { accessToken: string; refreshToken: string; sessionId: string };
+}
+const refresh = (t: AuthApp, refreshToken: string) =>
+  t.call("POST", "/api/v1/auth/refresh", { refreshToken });
 
+describe("refresh and logout", () => {
   it("rotates the refresh token; the previous one works again only within 60 s", async () => {
     const t = await makeAuthApp();
     const tokens = await signedIn(t);
@@ -476,9 +476,9 @@ describe("login reset by the admin", () => {
       (await t.call("POST", "/api/v1/auth/reset", { ...resetBody, totpCode: code(t, SECRET_B) })).statusCode,
     ).toBe(401);
 
-    const signedIn = await login(t, "anna", { password: NEW_PASSWORD, code: code(t, SECRET_B) });
-    expect(signedIn.statusCode).toBe(200);
-    const after = await t.call("GET", "/api/v1/labels", undefined, bearer(signedIn.json().accessToken));
+    const relogin = await login(t, "anna", { password: NEW_PASSWORD, code: code(t, SECRET_B) });
+    expect(relogin.statusCode).toBe(200);
+    const after = await t.call("GET", "/api/v1/labels", undefined, bearer(relogin.json().accessToken));
     expect(after.json()).toEqual(before.json());
     const row = t.deps.db.select().from(accounts).where(eq(accounts.username, "anna")).get();
     expect(row?.loginResetAt).not.toBeNull();

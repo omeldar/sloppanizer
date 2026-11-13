@@ -20,7 +20,10 @@ const accountRows = (sqlite: Sqlite, table: string, accountId: number) =>
       .all(accountId) as Record<string, unknown>[]
   )
     .filter((row) => !(table === "settings" && row.key === "restoreInProgress"))
-    .map(({ account_id: _, ...row }) => row);
+    .map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== "account_id")));
+
+const everything = (sqlite: Sqlite, accountId: number) =>
+  Object.fromEntries(EXPORT_TABLES.map((table) => [table, accountRows(sqlite, table, accountId)]));
 
 describe("export data.json", () => {
   it("loads into another account of a fresh server with every row, id and sequence unchanged", async () => {
@@ -54,8 +57,6 @@ describe("export data.json", () => {
     })();
     expect(target.pragma("foreign_key_check")).toEqual([]);
 
-    const everything = (sqlite: Sqlite, accountId: number) =>
-      Object.fromEntries(EXPORT_TABLES.map((table) => [table, accountRows(sqlite, table, accountId)]));
     expect(everything(target, bo.account.id)).toEqual(everything(source, t.account.id));
     expect(EXPORT_TABLES.filter((table) => accountRows(source, table, t.account.id).length === 0)).toEqual(
       [],

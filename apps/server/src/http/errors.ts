@@ -33,12 +33,13 @@ interface Issue {
   message: string;
 }
 
+/** Never details of the failure (they stay in the log, under the request id the answer names). */
+const serverError = (requestId: string) =>
+  errorBody("internal", `Something went wrong on the server. Try again. (Request ${requestId})`, {
+    requestId,
+  });
+
 export function registerErrorHandling(app: FastifyInstance): void {
-  /** Never details of the failure (they stay in the log, under the request id the answer names). */
-  const serverError = (requestId: string) =>
-    errorBody("internal", `Something went wrong on the server. Try again. (Request ${requestId})`, {
-      requestId,
-    });
   app.setErrorHandler((error: FastifyError, request, reply) => {
     if (error instanceof ApiError) {
       return reply.status(error.status).send(errorBody(error.code, error.message, error.details));

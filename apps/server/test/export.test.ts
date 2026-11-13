@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Todo } from "@organizer/shared";
 import { strFromU8, unzipSync } from "fflate";
@@ -84,7 +84,7 @@ describe("GET /export.zip", () => {
         sqlite
           .prepare(`SELECT * FROM "${physical}" WHERE account_id = ? ORDER BY rowid`)
           .all(t.account.id) as Record<string, unknown>[]
-      ).map(({ account_id: _, ...row }) => row);
+      ).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== "account_id")));
       expect(data[table]).toEqual(asExported(table, rows));
       expect(manifest.counts[table]).toBe(rows.length);
     }
@@ -286,14 +286,14 @@ describe("export format 4", () => {
         sqlite
           .prepare(`SELECT * FROM "${physical}" WHERE account_id = ? ORDER BY rowid`)
           .all(t.account.id) as Record<string, unknown>[]
-      ).map(({ account_id: _, ...row }) => row);
+      ).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== "account_id")));
       expect(data[table]).toEqual(asExported(table, rows));
       expect(manifest.counts[table]).toBe(rows.length);
     }
     for (const table of ["topics", "person_tags", "person_topics", "person_tag_links", "notes", "comments"]) {
       expect(data[table].length).toBeGreaterThan(0);
     }
-    expect(data.attachments.map((a: { id: number }) => a.id)).toEqual([1, 2, 3]);
+    expect(data.attachments.map((row: { id: number }) => row.id)).toEqual([1, 2, 3]);
     // data.json keeps the raw links, so a restore gives identical data.
     expect(data.todos[0].description_md).toBe("See ![shot](/api/v1/attachments/1/shot.png)");
 

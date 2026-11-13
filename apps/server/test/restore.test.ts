@@ -4,7 +4,6 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
-import { loadConfig } from "../src/config.ts";
 import { attachmentFileName } from "../src/services/export.ts";
 import { setSetting } from "../src/services/settings.ts";
 import { fillEveryTable } from "./fixtures.ts";
@@ -571,12 +570,12 @@ describe("restore apply", () => {
   });
 });
 
-describe("restore between accounts", () => {
-  const withoutExportTime = (zip: Uint8Array) => {
-    const data = dataOf(zip);
-    return { ...data, settings: data.settings.filter((s: { key: string }) => s.key !== "lastExportAt") };
-  };
+const withoutExportTime = (zip: Uint8Array) => {
+  const data = dataOf(zip);
+  return { ...data, settings: data.settings.filter((s: { key: string }) => s.key !== "lastExportAt") };
+};
 
+describe("restore between accounts", () => {
   it("leaves other accounts alone and hides one account's uploads and safety copies from another", async () => {
     const t = await makeApp();
     await fillEveryTable(t);

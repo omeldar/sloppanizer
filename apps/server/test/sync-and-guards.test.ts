@@ -1,6 +1,4 @@
 import type { Comment, Note, Person, RestorePreview, SearchResult, Todo } from "@organizer/shared";
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { json, makeApp, type TestApp } from "./helpers.ts";
 

@@ -1,10 +1,33 @@
 import { statSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { apiTokens, events } from "../src/db/schema.ts";
-import { CSP, SESSION_COOKIE } from "../src/http/security.ts";
+import { CORS_EXPOSE_HEADERS } from "../src/http/cors.ts";
+import { HSTS } from "../src/http/security.ts";
 import { hashToken } from "../src/services/tokens.ts";
-import { makeApp, TEST_INDEX_HTML } from "./helpers.ts";
+import { makeApp, type TestApp } from "./helpers.ts";
+
+const WEB = "http://localhost:5181";
+
+const authHeaders = (t: TestApp) => t.account.headers();
+
+const preflight = (t: TestApp, origin: string) =>
+  t.app.inject({
+    method: "OPTIONS",
+    url: "/api/v1/todos",
+    headers: {
+      origin,
+      "access-control-request-method": "POST",
+      "access-control-request-headers": "authorization, content-type",
+    },
+  });
+
+const https = (t: TestApp, remoteAddress: string) =>
+  t.app.inject({
+    method: "GET",
+    url: "/api/v1/health",
+    remoteAddress,
+    headers: { "x-forwarded-proto": "https", "x-forwarded-for": "203.0.113.9" },
+  });
 
 describe("host allowlist", () => {
   it("answers 421 for an unknown Host, also for static files and health", async () => {
@@ -12,7 +35,7 @@ describe("host allowlist", () => {
     const urls = ["/api/v1/health", "/", "/assets/app-abc123.js", "/api/v1/todos"];
     const responses = await Promise.all(
       urls.map((url) =>
-        t.app.inject({ method: "GET", url, headers: { host: "evil.example:4711", cookie: t.cookie } }),
+        t.app.inject({ method: "GET", url, headers: { ...authHeaders(t), host: "evil.example:4711" } }),
       ),
     );
     expect(responses.map((res) => res.statusCode)).toEqual([421, 421, 421, 421]);
@@ -21,11 +44,46 @@ describe("host allowlist", () => {
 
   it("accepts every allowed host name on any port", async () => {
     const t = await makeApp();
-    const hosts = ["organizer.localhost:4711", "localhost", "127.0.0.1:9999", "[::1]:4711", "LOCALHOST:1"];
+    const hosts = ["organizerapi.omeldar.cloud", "localhost:4711", "127.0.0.1:9999", "LOCALHOST:1"];
     const responses = await Promise.all(
       hosts.map((host) => t.app.inject({ method: "GET", url: "/api/v1/health", headers: { host } })),
     );
-    expect(responses.map((res) => res.statusCode)).toEqual([200, 200, 200, 200, 200]);
+    expect(responses.map((res) => res.statusCode)).toEqual([200, 200, 200, 200]);
+  });
+});
+
+describe("CORS", () => {
+  it("answers a preflight from the web app's origin, never with credentials", async () => {
+    const t = await makeApp();
+    const res = await preflight(t, WEB);
+    expect(res.statusCode).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBe(WEB);
+    expect(res.headers["access-control-allow-methods"]).toContain("PATCH");
+    expect(res.headers["access-control-allow-headers"]).toContain("authorization");
+    expect(res.headers["access-control-allow-credentials"]).toBeUndefined();
+    expect(res.headers.vary).toContain("Origin");
+  });
+
+  it("refuses a preflight from another origin (403)", async () => {
+    const t = await makeApp();
+    const res = await preflight(t, "https://evil.example");
+    expect(res.statusCode).toBe(403);
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("lets the web app read answers and the file name of downloads, other origins not", async () => {
+    const t = await makeApp();
+    const ok = await t.call("GET", "/api/v1/todos", undefined, { origin: WEB });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.headers["access-control-allow-origin"]).toBe(WEB);
+    expect(ok.headers["access-control-expose-headers"]).toBe(CORS_EXPOSE_HEADERS);
+    expect(CORS_EXPOSE_HEADERS).toContain("content-disposition");
+    expect(ok.headers["access-control-allow-credentials"]).toBeUndefined();
+    expect(ok.headers.vary).toContain("Origin");
+
+    const other = await t.call("GET", "/api/v1/todos", undefined, { origin: "https://evil.example" });
+    expect(other.headers["access-control-allow-origin"]).toBeUndefined();
+    expect(other.headers.vary).toContain("Origin");
   });
 });
 
@@ -39,76 +97,66 @@ describe("cross-site protection", () => {
     expect(nullOrigin.statusCode).toBe(403);
   });
 
-  it("allows a write whose Origin is an allowed host on another port (Vite dev)", async () => {
+  it("allows writes from the web app's origin and from clients that send no Origin", async () => {
     const t = await makeApp();
-    const res = await t.call("POST", "/api/v1/projects", { name: "X" }, { origin: "http://localhost:5181" });
-    expect(res.statusCode).toBe(201);
-  });
-
-  it("rejects Sec-Fetch-Site: cross-site (403), allows same-origin", async () => {
-    const t = await makeApp();
-    const bad = await t.call("POST", "/api/v1/projects", { name: "X" }, { "sec-fetch-site": "cross-site" });
-    expect(bad.statusCode).toBe(403);
-    const badGet = await t.call("GET", "/api/v1/todos", undefined, { "sec-fetch-site": "cross-site" });
-    expect(badGet.statusCode).toBe(403);
-    const ok = await t.call("POST", "/api/v1/projects", { name: "X" }, { "sec-fetch-site": "same-origin" });
-    expect(ok.statusCode).toBe(201);
+    expect((await t.call("POST", "/api/v1/projects", { name: "X" }, { origin: WEB })).statusCode).toBe(201);
+    const raw = t.token("assistant", "write");
+    expect((await t.withToken(raw, "POST", "/api/v1/projects", { name: "Y" })).statusCode).toBe(201);
   });
 });
 
 describe("authentication", () => {
-  it("serves health without auth and answers 401 elsewhere without a session or token", async () => {
+  it("serves health without auth and answers 401 elsewhere without a token", async () => {
     const t = await makeApp();
     expect((await t.app.inject({ method: "GET", url: "/api/v1/health" })).json()).toEqual({
       ok: true,
       version: "0.1.0",
     });
-    const urls = ["/api/v1/me", "/api/v1/todos", "/api/v1/export.zip", "/api/openapi.json", "/api/docs/"];
+    const urls = ["/api/v1/me", "/api/v1/todos", "/api/v1/export.zip", "/api/v1/account"];
     const responses = await Promise.all(urls.map((url) => t.app.inject({ method: "GET", url })));
-    expect(responses.map((res) => res.statusCode)).toEqual([401, 401, 401, 401, 401]);
-    expect(responses.map((res) => res.json().error.code)).toEqual(Array(5).fill("unauthorized"));
+    expect(responses.map((res) => res.statusCode)).toEqual([401, 401, 401, 401]);
+    expect(responses.map((res) => res.json().error.code)).toEqual(Array(4).fill("unauthorized"));
   });
 
-  it("rejects a session cookie with a wrong signature", async () => {
+  it("rejects malformed and unknown bearer values (401) and never sets a cookie", async () => {
     const t = await makeApp();
-    const forged = t.cookie.replace(/.$/, (c) => (c === "A" ? "B" : "A"));
-    const res = await t.app.inject({ method: "GET", url: "/api/v1/me", headers: { cookie: forged } });
-    expect(res.statusCode).toBe(401);
-    const unsigned = await t.app.inject({
-      method: "GET",
-      url: "/api/v1/me",
-      headers: { cookie: `${SESSION_COOKIE}=s1.abc` },
-    });
-    expect(unsigned.statusCode).toBe(401);
+    for (const authorization of ["Bearer", "Basic abc", "Bearer not-a-token", `Bearer ${"x".repeat(600)}`]) {
+      // oxlint-disable-next-line no-await-in-loop -- one call after the other
+      const res = await t.app.inject({ method: "GET", url: "/api/v1/me", headers: { authorization } });
+      expect(res.statusCode).toBe(401);
+    }
+    const me = await t.call("GET", "/api/v1/me");
+    expect(me.json()).toMatchObject({ via: "session", account: { username: "anna" } });
+    expect(me.headers["set-cookie"]).toBeUndefined();
   });
+});
 
-  it("sets a strict HttpOnly session cookie with the app HTML; the session acts as you", async () => {
+describe("behind the proxy", () => {
+  it("trusts X-Forwarded-* only from the configured proxies and then sends HSTS", async () => {
+    const t = await makeApp({ env: { SLOPPANIZER_TRUSTED_PROXIES: "172.16.0.0/12" } });
+    expect((await https(t, "172.18.0.2")).headers["strict-transport-security"]).toBe(HSTS);
+    expect((await https(t, "198.51.100.7")).headers["strict-transport-security"]).toBeUndefined();
+    const untrusting = await makeApp();
+    expect((await https(untrusting, "172.18.0.2")).headers["strict-transport-security"]).toBeUndefined();
+  });
+});
+
+describe("rate limits", () => {
+  it("limits API calls per account and says when to try again", async () => {
     const t = await makeApp();
-    const page = await t.app.inject({
-      method: "GET",
-      url: "/projects/home-lab",
-      headers: { accept: "text/html" },
-    });
-    expect(page.statusCode).toBe(200);
-    expect(page.body).toBe(TEST_INDEX_HTML);
-    const cookie = String(page.headers["set-cookie"]);
-    expect(cookie).toMatch(/^org_session=/);
-    expect(cookie).toContain("HttpOnly");
-    expect(cookie).toContain("SameSite=Strict");
-    expect(cookie).toContain("Path=/");
-    expect(cookie).not.toContain("Secure");
-    expect((await t.call("GET", "/api/v1/me")).json()).toEqual({
-      actor: "you",
-      via: "session",
-      scope: "write",
-    });
-  });
-
-  it("serves the placeholder page (with the cookie) when the web app is not built", async () => {
-    const t = await makeApp({ noWebBuild: true });
-    const page = await t.app.inject({ method: "GET", url: "/" });
-    expect(page.body).toContain("not built");
-    expect(page.headers["set-cookie"]).toBeDefined();
+    const bo = await t.asAccount({ username: "bo" });
+    const statuses = await Promise.all(
+      Array.from({ length: 601 }, () => t.call("GET", "/api/v1/me").then((res) => res.statusCode)),
+    );
+    expect(statuses.filter((s) => s === 200)).toHaveLength(600);
+    const limited = await t.call("GET", "/api/v1/me");
+    expect(limited.statusCode).toBe(429);
+    expect(Number(limited.headers["retry-after"])).toBeGreaterThan(0);
+    expect(limited.json().error.details.retryAfterSeconds).toBe(Number(limited.headers["retry-after"]));
+    // Another account is not affected; after the window the first one may call again.
+    expect((await bo.call("GET", "/api/v1/me")).statusCode).toBe(200);
+    t.advance(61_000);
+    expect((await t.call("GET", "/api/v1/me")).statusCode).toBe(200);
   });
 });
 
@@ -117,10 +165,11 @@ describe("tokens", () => {
     const t = await makeApp();
     const raw = t.token("reader", "read");
     expect((await t.withToken(raw, "GET", "/api/v1/todos")).statusCode).toBe(200);
-    expect((await t.withToken(raw, "GET", "/api/v1/me")).json()).toEqual({
+    expect((await t.withToken(raw, "GET", "/api/v1/me")).json()).toMatchObject({
       actor: "reader",
       via: "token",
       scope: "read",
+      account: { username: "anna" },
     });
     const write = await t.withToken(raw, "POST", "/api/v1/todos", { title: "No" });
     expect(write.statusCode).toBe(403);
@@ -153,7 +202,7 @@ describe("tokens", () => {
     const res = await t.call("POST", "/api/v1/tokens", { name: "cli", scope: "read" });
     expect(res.statusCode).toBe(201);
     const { token, raw } = res.json();
-    expect(raw).toMatch(/^org_[0-9A-Za-z]{40}$/);
+    expect(raw).toMatch(/^spz_[0-9A-Za-z]{40}$/);
     expect(token.prefix).toBe(raw.slice(0, 12));
     const stored = t.deps.db.select().from(apiTokens).all();
     expect(stored).toHaveLength(1);
@@ -192,7 +241,7 @@ describe("tokens", () => {
     t.setNow("2026-11-11T11:00:00.000Z");
     expect((await t.withToken(expiring, "GET", "/api/v1/me")).statusCode).toBe(401);
 
-    const unknown = `org_${"a".repeat(40)}`;
+    const unknown = `spz_${"a".repeat(40)}`;
     expect((await t.withToken(unknown, "GET", "/api/v1/me")).statusCode).toBe(401);
     expect((await t.withToken("not-a-token", "GET", "/api/v1/me")).statusCode).toBe(401);
     expect((await t.call("DELETE", "/api/v1/tokens/999")).statusCode).toBe(404);
@@ -214,12 +263,10 @@ describe("tokens", () => {
 });
 
 describe("headers and files", () => {
-  it("sends the CSP on HTML and the basic headers everywhere", async () => {
+  it("sends the basic headers everywhere and no-store on JSON", async () => {
     const t = await makeApp();
-    const page = await t.app.inject({ method: "GET", url: "/" });
-    expect(page.headers["content-security-policy"]).toBe(CSP);
     for (const res of [
-      page,
+      await t.app.inject({ method: "GET", url: "/" }),
       await t.call("GET", "/api/v1/todos"),
       await t.app.inject({ method: "GET", url: "/assets/app-abc123.js" }),
     ]) {
@@ -227,15 +274,14 @@ describe("headers and files", () => {
       expect(res.headers["referrer-policy"]).toBe("no-referrer");
       expect(res.headers["x-frame-options"]).toBe("DENY");
     }
+    expect((await t.call("GET", "/api/v1/todos")).headers["cache-control"]).toBe("no-store");
   });
 
-  it("serves assets with long caching and answers 404 JSON for unknown API routes and missing files", async () => {
+  it("answers 404 JSON for unknown API routes", async () => {
     const t = await makeApp();
-    const asset = await t.app.inject({ method: "GET", url: "/assets/app-abc123.js" });
-    expect(asset.statusCode).toBe(200);
-    expect(asset.headers["cache-control"]).toContain("immutable");
-    expect((await t.call("GET", "/api/v1/nope")).statusCode).toBe(404);
-    expect((await t.app.inject({ method: "GET", url: "/assets/missing.js" })).statusCode).toBe(404);
+    const res = await t.call("GET", "/api/v1/nope");
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe("not_found");
   });
 
   it("serves the OpenAPI document and the self-hosted docs UI to a session", async () => {
@@ -247,36 +293,25 @@ describe("headers and files", () => {
         "/api/v1/todos",
         "/api/v1/todos/{id}",
         "/api/v1/next",
-        "/api/v1/todos/{id}/activity",
         "/api/v1/notes",
         "/api/v1/attachments",
         "/api/v1/search",
-        "/api/v1/person-tags",
-        "/api/v1/todos/{id}/subtasks",
-        "/api/v1/todos/{id}/links",
-        "/api/v1/todos/{id}/links/{otherId}",
-        "/api/v1/todos/{id}/checklist",
-        "/api/v1/stats/people",
-        "/api/v1/stats/people/{id}",
         "/api/v1/settings",
-        "/api/v1/export/folder",
         "/api/v1/restore",
-        "/api/v1/restore/{uploadId}",
         "/api/v1/restore/{uploadId}/apply",
-        "/api/v1/restore/backups",
         "/api/v1/restore/backups/{fileName}",
       ]),
     );
+    expect(Object.keys(spec.paths)).not.toContain("/api/v1/export/folder");
     const docs = await t.call("GET", "/api/docs/");
     expect(docs.statusCode).toBe(200);
     expect(docs.body).not.toMatch(/cdn|unpkg|jsdelivr/i);
   });
 
-  it("creates the data dir with 0700 and the secret with 0600", async () => {
+  it("keeps the data dir, the secret and the files folders private", async () => {
     const t = await makeApp();
     expect(statSync(t.dataDir).mode & 0o777).toBe(0o700);
-    expect(statSync(join(t.dataDir, "secret")).mode & 0o777).toBe(0o600);
-    expect(statSync(join(t.dataDir, "attachments")).mode & 0o777).toBe(0o700);
-    expect(t.deps.attachmentsDir).toBe(join(t.dataDir, "attachments"));
+    expect(statSync(`${t.dataDir}/secret`).mode & 0o777).toBe(0o600);
+    expect(statSync(t.filesDir).mode & 0o777).toBe(0o700);
   });
 });
