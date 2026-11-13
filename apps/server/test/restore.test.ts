@@ -12,13 +12,13 @@ import { json, makeApp, type TestApp } from "./helpers.ts";
 
 type Files = Record<string, Uint8Array>;
 
-const exportZip = async (t: TestApp): Promise<Buffer> => {
+const exportZip = async (t: Pick<TestApp, "call">): Promise<Buffer> => {
   const res = await t.call("GET", "/api/v1/export.zip");
   expect(res.statusCode).toBe(200);
   return res.rawPayload;
 };
 
-const upload = (t: TestApp, zip: Uint8Array, name = "organizer-export.zip") =>
+const upload = (t: Pick<TestApp, "call">, zip: Uint8Array, name = "sloppanizer-export.zip") =>
   t.call("POST", `/api/v1/restore?name=${encodeURIComponent(name)}`, Buffer.from(zip), {
     "content-type": "application/zip",
   });
@@ -40,6 +40,12 @@ function rework(zip: Uint8Array, change: (manifest: any, data: any, files: Files
 // oxlint-disable-next-line typescript/no-explicit-any
 const problems = (res: { json: () => any }): string[] => res.json().error.details.problems;
 
+/** Where the account's staged uploads, safety copies and restore folders live. */
+const stagedZip = (t: TestApp, uploadId: string) =>
+  join(t.dataDir, "restore", `${t.account.id}-${uploadId}.zip`);
+const backupsOf = (t: TestApp) => join(t.config.backupDir, "accounts", String(t.account.id));
+const filesRoot = (t: TestApp) => dirname(t.filesDir);
+
 const dataOf = (zip: Uint8Array) => readJson(unzipSync(zip), "data.json");
 const manifest = (zip: Uint8Array) => readJson(unzipSync(zip), "manifest.json");
 
@@ -48,15 +54,16 @@ describe("restore upload and preview", () => {
     const t = await makeApp();
     await fillEveryTable(t);
     const zip = await exportZip(t);
-    const res = await upload(t, zip, "C:\\Users\\x\\organizer-export-20261111.zip");
+    const res = await upload(t, zip, "C:\\Users\\x\\sloppanizer-export-20261111.zip");
     expect(res.statusCode).toBe(201);
     const preview = res.json() as RestorePreview;
     expect(preview).toMatchObject({
-      fileName: "organizer-export-20261111.zip",
-      format: 3,
+      fileName: "sloppanizer-export-20261111.zip",
+      source: "sloppanizer",
+      format: 4,
       exportedAt: "2026-11-11T10:00:00.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 8,
+      schemaVersion: 9,
       attachments: { count: 1, bytes: 11, missing: [] },
       warnings: [],
       expiresAt: "2026-11-11T11:00:00.000Z",
@@ -65,7 +72,7 @@ describe("restore upload and preview", () => {
     expect(preview.inFile).toEqual(preview.now);
     expect(preview.inFile.todos).toBe(4);
     expect(json<RestorePreview>(await t.call("GET", `/api/v1/restore/${preview.uploadId}`))).toEqual(preview);
-    const staged = join(t.dataDir, "restore", `${preview.uploadId}.zip`);
+    const staged = stagedZip(t, preview.uploadId);
     expect(statSync(staged).mode & 0o777).toBe(0o600);
     expect(statSync(dirname(staged)).mode & 0o777).toBe(0o700);
     // No scratch database is left behind.
@@ -76,7 +83,7 @@ describe("restore upload and preview", () => {
     expect((await t.call("GET", `/api/v1/restore/${preview.uploadId}`)).statusCode).toBe(404);
     t.advance(61 * 60_000);
     expect((await t.call("GET", `/api/v1/restore/${second.uploadId}`)).statusCode).toBe(404);
-    expect(existsSync(join(t.dataDir, "restore", `${second.uploadId}.zip`))).toBe(false);
+    expect(existsSync(stagedZip(t, second.uploadId))).toBe(false);
   });
 
   it("drops a staged upload on DELETE", async () => {
@@ -102,15 +109,15 @@ describe("restore upload and preview", () => {
     await check(zipSync({ "hello.txt": strToU8("hi") }), /manifest\.json is missing/);
     await check(
       rework(zip, (m) => (m.app = "other")),
-      /organizer export/,
+      /Sloppanizer export/,
     );
     await check(
       rework(zip, (m) => (m.format = 9)),
-      /format 9 is not known/,
+      /format 9 of app "sloppanizer" is not known/,
     );
     await check(
       rework(zip, (m) => (m.schemaVersion = 99)),
-      /newer organizer\. Update this one first/,
+      /newer Sloppanizer/,
     );
     await check(
       rework(zip, (_m, d) => (d.gadgets = [])),
@@ -219,7 +226,7 @@ describe("restore upload and preview", () => {
     for (const dir of [t.dataDir, dirname(t.dataDir), dirname(dirname(t.dataDir))]) {
       expect(readdirSync(dir).filter((n) => n.startsWith("evil"))).toEqual([]);
     }
-    expect(readdirSync(join(t.dataDir, "attachments"))).toEqual([String(file.id)]);
+    expect(readdirSync(t.filesDir)).toEqual([String(file.id)]);
   });
 
   it("answers 413 above the upload limit and 422 above the unpacked limits", async () => {
@@ -274,7 +281,7 @@ describe("restore upload and preview", () => {
 });
 
 describe("restore apply", () => {
-  it("replaces everything, keeps tokens and device settings, saves a safety copy, and round trips", async () => {
+  it("replaces everything, keeps tokens, saves a safety copy, and round trips", async () => {
     const t = await makeApp();
     const { todo, file } = await fillEveryTable(t);
     const original = await exportZip(t);
@@ -285,12 +292,6 @@ describe("restore apply", () => {
     await t.call("DELETE", `/api/v1/todos/${todo.id}`);
     const added = await t.create<Todo>("/api/v1/todos", { title: "Added later" });
     const mcp = t.token("mcp", "write");
-    setSetting(t.deps.db, "lastFolderExport", {
-      at: "2026-11-11T10:01:00.000Z",
-      path: "/x",
-      fileName: "x.zip",
-      bytes: 1,
-    });
 
     const preview = json<RestorePreview>(await upload(t, original));
     expect(preview.now.todos).toBe(4);
@@ -299,8 +300,8 @@ describe("restore apply", () => {
     const result = res.json() as RestoreResult;
     expect(result.restoredAt).toBe("2026-11-11T10:01:00.000Z");
     expect(result.counts.todos).toBe(4);
-    expect(result.safetyCopy.fileName).toBe("organizer-before-restore-20261111-110100.zip");
-    const copyPath = join(t.dataDir, "backups", result.safetyCopy.fileName);
+    expect(result.safetyCopy.fileName).toBe("sloppanizer-before-restore-20261111-110100.zip");
+    const copyPath = join(backupsOf(t), result.safetyCopy.fileName);
     expect(statSync(copyPath).mode & 0o777).toBe(0o600);
     // The safety copy holds the data before the restore and did not count as an export.
     expect(dataOf(readFileSync(copyPath)).todos.map((r: Todo) => r.title)).toContain("Added later");
@@ -315,14 +316,13 @@ describe("restore apply", () => {
     expect(json<{ counts: { todo: number } }>(await t.call("GET", "/api/v1/search?q=Rack")).counts.todo).toBe(
       1,
     );
-    // Tokens and device settings stay; the session keeps working.
+    // Tokens stay; the session keeps working.
     expect((await t.withToken(mcp, "GET", "/api/v1/me")).statusCode).toBe(200);
     const settings = json<Settings>(await t.call("GET", "/api/v1/settings"));
-    expect(settings.lastFolderExport?.fileName).toBe("x.zip");
     expect(settings.lastExportAt).toBe("2026-11-11T10:00:00.000Z");
     // The staged upload and staging folders are gone.
     expect(readdirSync(join(t.dataDir, "restore"))).toEqual([]);
-    expect(readdirSync(t.dataDir).filter((n) => n.startsWith("attachments."))).toEqual([]);
+    expect(readdirSync(filesRoot(t)).filter((n) => n.startsWith("."))).toEqual([]);
 
     // Round trip: a new export equals the first one except lastExportAt; next ids stay unused.
     t.advance(60_000);
@@ -346,7 +346,7 @@ describe("restore apply", () => {
     expect(download.headers["content-type"]).toBe("application/zip");
     expect((await t.call("GET", "/api/v1/restore/backups/..%2Fsecret")).statusCode).toBe(404);
     expect(
-      (await t.call("GET", "/api/v1/restore/backups/organizer-before-restore-20990101-000000.zip"))
+      (await t.call("GET", "/api/v1/restore/backups/sloppanizer-before-restore-20990101-000000.zip"))
         .statusCode,
     ).toBe(404);
   });
@@ -378,7 +378,9 @@ describe("restore apply", () => {
       expect.objectContaining({ name: "Ärzte", peopleCount: 2 }),
       expect.objectContaining({ name: "dns" }),
     ]);
-    const labels = t.deps.db.$client.prepare("SELECT name, name_key FROM labels").all() as {
+    const labels = t.deps.db.$client
+      .prepare("SELECT name, name_key FROM labels WHERE account_id = ?")
+      .all(t.account.id) as {
       name: string;
       name_key: string;
     }[];
@@ -444,7 +446,7 @@ describe("restore apply", () => {
     }
     const kept = json<BackupFile[]>(await t.call("GET", "/api/v1/restore/backups")).map((b) => b.fileName);
     expect(kept).toEqual(names.slice(1).toReversed());
-    expect(readdirSync(join(t.dataDir, "backups")).toSorted()).toEqual(names.slice(1).toSorted());
+    expect(readdirSync(backupsOf(t)).toSorted()).toEqual(names.slice(1).toSorted());
   });
 
   it("restores format 1 and 2 archives with defaults for newer columns and repairs scope labels", async () => {
@@ -452,6 +454,7 @@ describe("restore apply", () => {
     await fillEveryTable(t);
     const zip = await exportZip(t);
     const format2 = rework(zip, (m, d) => {
+      m.app = "organizer";
       m.format = 2;
       m.schemaVersion = 5;
       delete m.sequences;
@@ -562,9 +565,63 @@ describe("restore apply", () => {
       },
     ]);
     expect(json<{ total: number }>(await t.call("GET", "/api/v1/todos?status=all")).total).toBe(1);
-    expect(readdirSync(join(t.dataDir, "attachments"))).toEqual([]);
+    expect(readdirSync(t.filesDir)).toEqual([]);
     // Ids are not reused even though format 1 has no sequences: the next todo comes after 7.
     expect((await t.create<Todo>("/api/v1/todos", { title: "n" })).id).toBe(8);
+  });
+});
+
+describe("restore between accounts", () => {
+  const withoutExportTime = (zip: Uint8Array) => {
+    const data = dataOf(zip);
+    return { ...data, settings: data.settings.filter((s: { key: string }) => s.key !== "lastExportAt") };
+  };
+
+  it("leaves other accounts alone and hides one account's uploads and safety copies from another", async () => {
+    const t = await makeApp();
+    await fillEveryTable(t);
+    const bo = await t.asAccount({ username: "bo" });
+    await bo.call("POST", "/api/v1/todos", { title: "Bo's own todo" });
+    await bo.call("POST", "/api/v1/attachments?name=bo.txt", Buffer.from("bo"), {
+      "content-type": "text/plain",
+    });
+    const boBefore = await exportZip(bo);
+    const boFiles = readdirSync(bo.filesDir).map((n) => [n, readFileSync(join(bo.filesDir, n))]);
+
+    // Anna restores her own export (which has the same ids as Bo's rows).
+    const preview = json<RestorePreview>(await upload(t, await exportZip(t)));
+    for (const [method, url, body] of [
+      ["GET", `/api/v1/restore/${preview.uploadId}`, undefined],
+      ["DELETE", `/api/v1/restore/${preview.uploadId}`, undefined],
+      ["POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" }],
+    ] as const) {
+      // oxlint-disable-next-line no-await-in-loop -- one call after the other
+      expect((await bo.call(method, url, body)).statusCode).toBe(404);
+    }
+    const result = json<RestoreResult>(
+      await t.call("POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" }),
+    );
+    expect((await bo.call("GET", `/api/v1/restore/backups/${result.safetyCopy.fileName}`)).statusCode).toBe(
+      404,
+    );
+    expect(json<BackupFile[]>(await bo.call("GET", "/api/v1/restore/backups"))).toEqual([]);
+
+    // Bo's rows and files are exactly as before.
+    expect(withoutExportTime(await exportZip(bo))).toEqual(withoutExportTime(boBefore));
+    expect(readdirSync(bo.filesDir).map((n) => [n, readFileSync(join(bo.filesDir, n))])).toEqual(boFiles);
+    expect(json<{ total: number }>(await bo.call("GET", "/api/v1/todos")).total).toBe(1);
+  });
+
+  it("refuses an export whose files pass the account's limit (422)", async () => {
+    const source = await makeApp();
+    await source.call("POST", "/api/v1/attachments?name=big.bin", Buffer.alloc(1024 * 1024 + 1, 1), {
+      "content-type": "application/octet-stream",
+    });
+    const zip = await exportZip(source);
+    const t = await makeApp({ env: { SLOPPANIZER_FILES_LIMIT_MB: "1" } });
+    const res = await upload(t, zip);
+    expect(res.statusCode).toBe(422);
+    expect(problems(res).join()).toMatch(/more than this account's limit of 1 MB/);
   });
 });
 
@@ -574,13 +631,15 @@ const restart = async (t: TestApp) => {
   await second.app.close();
 };
 
+const oldFolder = (t: TestApp, uploadId: string) => join(filesRoot(t), `.old-${t.account.id}-${uploadId}`);
+
 /** A restore that committed its transaction: staging folder with the new files plus the marker. */
 function committed(t: TestApp, uploadId: string) {
-  const staging = join(t.dataDir, `attachments.restore-${uploadId}`);
+  const staging = join(filesRoot(t), `.restore-${t.account.id}-${uploadId}`);
   mkdirSync(staging);
   writeFileSync(join(staging, "1"), "new");
-  writeFileSync(join(t.dataDir, "attachments", "1"), "old");
-  setSetting(t.deps.db, "restoreInProgress", { uploadId, stagingDir: staging });
+  writeFileSync(join(t.filesDir, "1"), "old");
+  setSetting(t.ctx(), "restoreInProgress", { uploadId });
   return staging;
 }
 
@@ -590,11 +649,13 @@ describe("start-up recovery", () => {
     const id = "a".repeat(32);
     const staging = committed(t, id);
     await restart(t);
-    expect(readFileSync(join(t.dataDir, "attachments", "1"), "utf8")).toBe("new");
+    expect(readFileSync(join(t.filesDir, "1"), "utf8")).toBe("new");
     expect(existsSync(staging)).toBe(false);
-    expect(existsSync(join(t.dataDir, `attachments.old-${id}`))).toBe(false);
+    expect(existsSync(oldFolder(t, id))).toBe(false);
     expect(
-      t.deps.db.$client.prepare("SELECT count(*) AS n FROM settings WHERE key = 'restoreInProgress'").get(),
+      t.deps.db.$client
+        .prepare("SELECT count(*) AS n FROM account_settings WHERE key = 'restoreInProgress'")
+        .get(),
     ).toEqual({ n: 0 });
   });
 
@@ -603,18 +664,18 @@ describe("start-up recovery", () => {
     const id = "b".repeat(32);
     committed(t, id);
     const { renameSync } = await import("node:fs");
-    renameSync(join(t.dataDir, "attachments"), join(t.dataDir, `attachments.old-${id}`));
+    renameSync(t.filesDir, oldFolder(t, id));
     await restart(t);
-    expect(readFileSync(join(t.dataDir, "attachments", "1"), "utf8")).toBe("new");
-    expect(existsSync(join(t.dataDir, `attachments.old-${id}`))).toBe(false);
+    expect(readFileSync(join(t.filesDir, "1"), "utf8")).toBe("new");
+    expect(existsSync(oldFolder(t, id))).toBe(false);
   });
 
   it("removes leftover staging folders and expired uploads when no restore was running", async () => {
     const t = await makeApp();
-    mkdirSync(join(t.dataDir, `attachments.restore-${"c".repeat(32)}`));
+    mkdirSync(join(filesRoot(t), `.restore-${t.account.id}-${"c".repeat(32)}`));
     const preview = json<RestorePreview>(await upload(t, await exportZip(t)));
     await restart(t); // 2 hours later: the staged upload has expired
-    expect(readdirSync(t.dataDir).filter((n) => n.startsWith("attachments."))).toEqual([]);
-    expect(existsSync(join(t.dataDir, "restore", `${preview.uploadId}.zip`))).toBe(false);
+    expect(readdirSync(filesRoot(t)).filter((n) => n.startsWith("."))).toEqual([]);
+    expect(existsSync(stagedZip(t, preview.uploadId))).toBe(false);
   });
 });

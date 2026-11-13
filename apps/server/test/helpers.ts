@@ -27,6 +27,8 @@ export interface TestAppOptions {
   noWebBuild?: boolean;
   /** Smaller restore limits. */
   limits?: Partial<RestoreLimits>;
+  /** Further SLOPPANIZER_* settings. */
+  env?: Record<string, string>;
 }
 
 type Call = (
@@ -52,7 +54,11 @@ export async function makeApp(options: TestAppOptions = {}) {
   }
   let current = new Date(options.now ?? "2026-11-11T10:00:00.000Z");
   const config = {
-    ...loadConfig({ SLOPPANIZER_DATA_DIR: dataDir, SLOPPANIZER_SETUP_CODE: "TESTSETUPCODE0000000000000" }),
+    ...loadConfig({
+      SLOPPANIZER_DATA_DIR: dataDir,
+      SLOPPANIZER_SETUP_CODE: "TESTSETUPCODE0000000000000",
+      ...options.env,
+    }),
     webDir,
   };
   const { app, deps, auth } = await buildApp({
