@@ -51,6 +51,9 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     // `pnpm test` runs every package at once: each takes its share of the cores, not all of them.
     maxWorkers: "50%",
+    // Most tests render the whole app with its router and queries, several times over. On a busy
+    // machine one such test takes a few seconds, so the 5 s default only measured the machine's load.
+    testTimeout: 15_000,
     css: { modules: { classNameStrategy: "non-scoped" } },
   },
 });

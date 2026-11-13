@@ -1,6 +1,6 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { makePerson } from "../../test/render.tsx";
+import { makePerson, typeOnFakeClock } from "../../test/render.tsx";
 import { renderAppAt } from "../../test/renderApp.tsx";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -14,12 +14,8 @@ describe("people filter", () => {
       return { status: 404, body: { error: { code: "not_found", message: "Not here." } } };
     });
     const filter = await screen.findByRole("textbox", { name: "Search people" });
-    // About 60 ms per key: faster than the typing pause, slow enough for each URL change to land.
-    for (const text of ["a", "an", "ann"]) {
-      fireEvent.change(filter, { target: { value: text } });
-      // oxlint-disable-next-line no-await-in-loop -- typing, one key after the other
-      await new Promise((resolve) => setTimeout(resolve, 60));
-    }
+    // 60 ms per key: faster than the 150 ms typing pause, slow enough for each render to land.
+    await typeOnFakeClock(filter, ["a", "an", "ann"], 60, 150);
     await waitFor(() => expect(router.state.location.search).toEqual({ q: "ann" }));
     await new Promise((resolve) => setTimeout(resolve, 300));
     const searches = calls.filter((c) => c.path.startsWith("/api/v1/people?") && c.path.includes("q="));

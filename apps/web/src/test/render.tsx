@@ -8,7 +8,7 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import { render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
 import { ToastProvider } from "../components/toast/ToastProvider.tsx";
@@ -160,4 +160,23 @@ export function mockApi(handler: (call: RecordedCall) => { status?: number; body
     }),
   );
   return calls;
+}
+
+/**
+ * Types the texts into a field one after the other, `gapMs` apart, then waits out `pauseMs`, all on a
+ * fake clock. Real sleeps between keys stretch past the typing pause on a busy machine, and the page
+ * then rightly asks the server for a half-typed word. The real clock is back when this returns.
+ */
+export async function typeOnFakeClock(field: HTMLElement, texts: string[], gapMs: number, pauseMs: number) {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    for (const value of texts) {
+      fireEvent.change(field, { target: { value } });
+      // oxlint-disable-next-line no-await-in-loop -- typing, one key after the other
+      await act(() => vi.advanceTimersByTimeAsync(gapMs));
+    }
+    await act(() => vi.advanceTimersByTimeAsync(pauseMs));
+  } finally {
+    vi.useRealTimers();
+  }
 }

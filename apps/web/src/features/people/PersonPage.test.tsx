@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { makePerson, type RecordedCall } from "../../test/render.tsx";
 import { renderAppAt } from "../../test/renderApp.tsx";
 
+// The route loads this page lazily. Loading it here, with the test file, keeps the import (and the
+// editor) out of the first test's time limit.
+await import("./PersonPage.tsx");
+
 afterEach(() => vi.unstubAllGlobals());
 
 const person = makePerson("Anna", "Meier", 1, { topics: ["DNS", "Backup"] });
@@ -24,7 +28,7 @@ function renderPerson() {
   });
 }
 
-// The person page is a lazy chunk with the editor; its first import can take over a second on a busy machine.
+// Rendering waits for the lazy route to resolve and the first queries to answer.
 const LAZY_PAGE = { timeout: 5000 };
 
 const topicCalls = (calls: RecordedCall[]) => calls.filter((c) => c.path.startsWith("/api/v1/topics"));

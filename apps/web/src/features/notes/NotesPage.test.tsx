@@ -6,7 +6,11 @@ import { CommandsProvider } from "../../app/commands.tsx";
 import { routeTree } from "../../app/router.tsx";
 import { ToastProvider } from "../../components/toast/ToastProvider.tsx";
 import { KeyboardProvider } from "../../keyboard/KeyboardProvider.tsx";
-import { mockApi } from "../../test/render.tsx";
+import { mockApi, typeOnFakeClock } from "../../test/render.tsx";
+
+// The route loads this page lazily. Loading it here, with the test file, keeps the import (and the
+// editor) out of the first test's time limit.
+await import("./NotesPage.tsx");
 
 const T = "2026-11-01T09:00:00.000Z";
 const homeLab = {
@@ -33,7 +37,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-// The notes page is a lazy chunk with the editor; its first import can take over a second on a busy machine.
+// Rendering waits for the lazy route to resolve and the first queries to answer.
 const LAZY_PAGE = { timeout: 5000 };
 
 function renderAt(path: string) {
@@ -81,12 +85,8 @@ describe("notes filter", () => {
     const calls = renderAt("/notes");
     await screen.findByText("No notes yet. Press n to write one.", {}, LAZY_PAGE);
     const filter = screen.getByRole("textbox", { name: "Filter notes by title" });
-    // About 60 ms per key: faster than the typing pause, slow enough for each URL change to land.
-    for (const text of ["p", "pl", "pla", "plan"]) {
-      fireEvent.change(filter, { target: { value: text } });
-      // oxlint-disable-next-line no-await-in-loop -- typing, one key after the other
-      await new Promise((resolve) => setTimeout(resolve, 60));
-    }
+    // 60 ms per key: faster than the 150 ms typing pause, slow enough for each render to land.
+    await typeOnFakeClock(filter, ["p", "pl", "pla", "plan"], 60, 150);
     await waitFor(() => expect(calls.some((c) => c.path.includes("q=plan"))).toBe(true));
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(

@@ -9,6 +9,10 @@ import { ToastProvider } from "../../components/toast/ToastProvider.tsx";
 import { KeyboardProvider } from "../../keyboard/KeyboardProvider.tsx";
 import { makeTodo, mockApi } from "../../test/render.tsx";
 
+// The route loads this page lazily. Loading it here, with the test file, keeps the import (and the
+// editor) out of the first test's time limit.
+await import("./TodoPage.tsx");
+
 beforeEach(() => {
   vi.stubGlobal(
     "ResizeObserver",

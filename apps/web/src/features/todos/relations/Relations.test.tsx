@@ -12,6 +12,10 @@ import { makeTodo, mockApi } from "../../../test/render.tsx";
 import { pastedTitles } from "./SubtaskInput.tsx";
 import { stepTarget } from "./Subtasks.tsx";
 
+// The route loads this page lazily. Loading it here, with the test file, keeps the import (and the
+// editor) out of the first test's time limit.
+await import("../TodoPage.tsx");
+
 const LAZY_PAGE = { timeout: 5000 };
 
 beforeEach(() => {
