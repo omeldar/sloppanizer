@@ -92,6 +92,25 @@ export interface SecurityOptions {
   allowedHosts: readonly string[];
 }
 
+const looksLikeApi = (path: string): boolean => path === "/api" || path.startsWith("/api/");
+
+/**
+ * Whether the request is an API call that needs auth. Decided by the route that matched (the router
+ * decodes %XX, so "/%61pi/v1/todos" reaches /api/v1/todos) and, failing closed, also by the raw and
+ * the decoded path: any of them under /api counts, and a path that cannot be decoded counts too.
+ */
+function needsApiAuth(request: FastifyRequest): boolean {
+  const route = request.routeOptions.url;
+  if (route !== undefined && looksLikeApi(route)) return true;
+  const path = request.url.split("?")[0] ?? "";
+  if (looksLikeApi(path)) return true;
+  try {
+    return looksLikeApi(decodeURIComponent(path));
+  } catch {
+    return true;
+  }
+}
+
 /** Host allowlist, CSRF checks, auth and security headers. Register before the routes. */
 export function registerSecurity(app: FastifyInstance, options: SecurityOptions): void {
   const allowed = new Set(options.allowedHosts.map((h) => h.toLowerCase()));
@@ -107,7 +126,7 @@ export function registerSecurity(app: FastifyInstance, options: SecurityOptions)
       );
     }
 
-    const isApi = request.url === "/api" || request.url.startsWith("/api/");
+    const isApi = needsApiAuth(request);
     const unsafe = !SAFE_METHODS.has(request.method);
     if (unsafe || isApi) {
       if (request.headers["sec-fetch-site"] === "cross-site") {

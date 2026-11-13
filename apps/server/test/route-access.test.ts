@@ -113,6 +113,17 @@ const statuses = async (call: (method: string, url: string) => Promise<{ statusC
 const routesWith = (access: Access[]) =>
   MATRIX.flatMap(([method, path, a]) => (access.includes(a) ? [`${method} ${path}`] : []));
 
+/** One character percent-encoded ("a" -> "%61"). */
+const hex = (c: string) => `%${c.charCodeAt(0).toString(16)}`;
+
+/** Encoded spellings of an API path that the router still matches (the last one it does not). */
+const variants = (path: string) => [
+  `/${hex("a")}pi/v1${path}`,
+  `/api/${hex("v")}1${path}`,
+  `/api/v1/${hex(path.charAt(1))}${path.slice(2)}`,
+  `/api${hex("/")}v1${path}`,
+];
+
 describe("access on every API route", () => {
   it("lists every registered route in the matrix, so a new route needs a decision here", async () => {
     const t = await makeApp();
@@ -132,6 +143,29 @@ describe("access on every API route", () => {
     const t = await makeApp();
     const rows = await statuses((method, url) => t.app.inject({ method: method as "GET", url }));
     expect(rows.filter(([, status]) => status !== 401)).toEqual([]);
+  });
+
+  it("answers 401 to percent-encoded paths of every route too (the router decodes them)", async () => {
+    const t = await makeApp();
+    const rows = (
+      await Promise.all(
+        MATRIX.flatMap(([method, path]) =>
+          variants(path).map(async (url) => {
+            const res = await t.app.inject({ method: method as "GET", url });
+            return [`${method} ${url}`, res.statusCode] as const;
+          }),
+        ),
+      )
+    ).filter(([, status]) => status !== 401);
+    expect(rows).toEqual([]);
+    // An encoded path still gets the route's own rules: a read token stays out of write and session routes.
+    const raw = t.token("reader", "read");
+    const denied = await Promise.all(
+      MATRIX.filter(([, , access]) => access !== "read").map(
+        async ([method, path]) => (await t.withToken(raw, method as "GET", `/%61pi/v1${path}`)).statusCode,
+      ),
+    );
+    expect(denied.every((status) => status === 403)).toBe(true);
   });
 
   it("lets a read token only do the read routes and keeps it out of the rest", async () => {
