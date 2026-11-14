@@ -162,6 +162,11 @@
   box-shadow: var(--shadow-1);
 }
 
+.block {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
 .block[data-dragging] {
   z-index: 10 !important;
   opacity: 0.9;

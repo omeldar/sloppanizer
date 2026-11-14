@@ -343,7 +343,8 @@ interface Drag {
 
 /**
  * One block. With a mouse it can be dragged: the body moves it (also to another day), the bottom edge
- * resizes it, both in 15 minute steps; a click without moving opens it. Touch screens tap to open.
+ * resizes it, both in 15 minute steps; a click without moving opens it. On touch screens a long press
+ * picks it up (move, or resize near the bottom edge) and a tap opens it.
  */
 function BlockCard({
   placed,
@@ -403,6 +404,72 @@ function BlockCard({
     if (drag.deltaMin !== 0 || drag.dayOffset !== 0) onDrop(drag.deltaMin, drag.dayOffset, drag.mode);
   };
 
+  // Touch: a long press picks the block up (near its bottom edge: resizes it), then it follows the
+  // finger in 15 minute steps; a quick swipe still scrolls and a tap opens it. Native listeners, because
+  // only a non-passive touchmove can stop the page from scrolling once the drag has started.
+  const ref = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef(onDrop);
+  useEffect(() => {
+    dropRef.current = onDrop;
+  }, [onDrop]);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    let timer: number | undefined;
+    let origin: { x: number; y: number } | null = null;
+    let active: Drag | null = null;
+    const onStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (event.touches.length !== 1 || !touch) return;
+      origin = { x: touch.clientX, y: touch.clientY };
+      const mode = touch.clientY > el.getBoundingClientRect().bottom - 16 ? "resize" : "move";
+      timer = window.setTimeout(() => {
+        if (!origin) return;
+        active = { mode, x: origin.x, y: origin.y, colWidth: 0, moved: true, deltaMin: 0, dayOffset: 0 };
+        navigator.vibrate?.(10);
+        setDrag(active);
+      }, 350);
+    };
+    const onMove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch || !origin) return;
+      if (!active) {
+        if (Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) > 8) {
+          window.clearTimeout(timer);
+          origin = null;
+        }
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      active = { ...active, deltaMin: snap(((touch.clientY - active.y) / HOUR_PX) * 60) };
+      setDrag(active);
+    };
+    const onEnd = (event: TouchEvent) => {
+      window.clearTimeout(timer);
+      origin = null;
+      if (!active) return;
+      // Neither a click (opening the block) nor the day swipe of the calendar.
+      event.preventDefault();
+      event.stopPropagation();
+      const done = active;
+      active = null;
+      setDrag(null);
+      if (done.deltaMin !== 0) dropRef.current(done.deltaMin, 0, done.mode);
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd);
+    el.addEventListener("touchcancel", onEnd);
+    return () => {
+      window.clearTimeout(timer);
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, []);
+
   const style = {
     top,
     height,
@@ -416,6 +483,7 @@ function BlockCard({
   } as CSSProperties;
   return (
     <button
+      ref={ref}
       type="button"
       className={styles.block}
       style={style}
