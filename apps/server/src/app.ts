@@ -19,6 +19,7 @@ import { registerSecurity } from "./http/security.ts";
 import { registerWeb } from "./http/web.ts";
 import { attachmentRoutes } from "./routes/attachments.ts";
 import { registerAccountApi } from "./routes/auth.ts";
+import { calendarRoutes } from "./routes/calendar.ts";
 import { commentRoutes } from "./routes/comments.ts";
 import { exportRoutes } from "./routes/export.ts";
 import { labelRoutes } from "./routes/labels.ts";
@@ -148,6 +149,7 @@ export async function buildApp(options: BuildOptions) {
   mcpRoutes(app, deps);
   registerAccountApi(app, deps, auth);
   await oauthRoutes(app, deps, auth);
+  calendarRoutes(app, deps, auth);
   await registerWeb(app, config.webDir);
 
   return { app, deps, auth };

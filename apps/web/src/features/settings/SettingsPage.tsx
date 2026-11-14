@@ -5,6 +5,7 @@ import { useDownloadExport } from "../../components/useDownload.ts";
 import { absoluteTime, formatBytes, relativeTime } from "../../lib/format.ts";
 import { useMe, useSettings, useStats } from "../../lib/queries.ts";
 import { setTheme, type Theme, useTheme } from "../../lib/theme.ts";
+import { CalendarFeedSection } from "./CalendarFeed.tsx";
 import { RestoreSection } from "./Restore.tsx";
 import styles from "./Settings.module.css";
 
@@ -72,6 +73,8 @@ export function SettingsPage() {
       {session && <FilesSection />}
 
       {session && <RestoreSection />}
+
+      {session && <CalendarFeedSection />}
 
       {session && (
         <section className={styles.section}>

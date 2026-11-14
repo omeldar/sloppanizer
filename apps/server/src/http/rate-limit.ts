@@ -144,6 +144,8 @@ export interface Limiters {
   oauthRegisterByIp: FixedWindowLimiter;
   /** OAuth token calls (code and refresh grants) per IP. */
   oauthTokenByIp: FixedWindowLimiter;
+  /** Calendar feed downloads (calendar apps poll) per IP. */
+  calendarByIp: FixedWindowLimiter;
 }
 
 export function createLimiters(clock: Clock): Limiters {
@@ -160,5 +162,6 @@ export function createLimiters(clock: Clock): Limiters {
     uploadsByAccount: new FixedWindowLimiter(clock, 60, MINUTE),
     oauthRegisterByIp: new FixedWindowLimiter(clock, 20, HOUR),
     oauthTokenByIp: new FixedWindowLimiter(clock, 60, MINUTE),
+    calendarByIp: new FixedWindowLimiter(clock, 120, HOUR),
   };
 }

@@ -17,6 +17,7 @@ they sat untouched, and tells you why each one is where it is.
 - Board (Open, In progress, Blocked, Done) and a week planner, both with drag and drop and keys.
 - Planner: reserve time in a week calendar for a todo or with a title (click a free slot, drag a block to move
   or resize it); todos planned for a day without a time wait in a row above it. Phones show one day at a time.
+  Settings, Calendar feed gives a secret link to subscribe to in Google Calendar, Apple Calendar or Outlook.
 - Web links on todos (tickets, docs, pull requests) with a label, and a new todo that takes notes, links, a
   planned day and a time slot at once.
 - Works on phones: a drawer for the sidebar, a tab bar with a new todo button, bottom sheets for dialogs.
