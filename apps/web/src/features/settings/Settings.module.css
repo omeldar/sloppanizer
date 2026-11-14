@@ -364,3 +364,29 @@ button.fileName:hover {
   color: var(--red);
   font-size: var(--fs-small);
 }
+
+/* Calendar feed */
+.feedBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 12px;
+  padding: 12px;
+  border: 1px solid var(--amber-line);
+  border-radius: var(--radius-panel);
+  background: var(--amber-tint);
+}
+
+.feedUrl {
+  padding: 8px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.feedOpen {
+  font-size: var(--fs-small);
+}

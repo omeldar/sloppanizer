@@ -208,3 +208,16 @@ export const oauthGrants = sqliteTable(
     check("oauth_grants_scope_check", sql`${t.scope} IN ('read','write')`),
   ],
 );
+
+/**
+ * The account's calendar feed: a secret link (stored as sha256) that calendar apps poll for the planner's
+ * time blocks. One per account; resetting it replaces the secret.
+ */
+export const calendarFeeds = sqliteTable("calendar_feeds", {
+  accountId: integer("account_id")
+    .primaryKey()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  createdAt: text("created_at").notNull(),
+  lastUsedAt: text("last_used_at"),
+});

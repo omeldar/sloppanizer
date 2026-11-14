@@ -52,6 +52,9 @@ const MATRIX: [method: string, path: string, access: Access][] = [
   ["DELETE", "/todos/1/urls/2", "write"],
   ["GET", "/blocks?from=2026-11-01&to=2026-11-02", "read"],
   ["POST", "/blocks", "write"],
+  ["GET", "/calendar-feed", "session"],
+  ["POST", "/calendar-feed", "session"],
+  ["DELETE", "/calendar-feed", "session"],
   ["PATCH", "/blocks/1", "write"],
   ["DELETE", "/blocks/1", "write"],
   ["GET", "/todos/1/comments", "read"],
@@ -142,10 +145,11 @@ describe("access on every API route", () => {
     const expected = MATRIX.map(([method, path]) =>
       `${method} ${shape(path)}`.replace(/:\w+/g, ":p"),
     ).toSorted();
-    // /health is public and checked in security.test.ts; the sign-in, account and admin routes have
+    // /health is public and checked in security.test.ts, the calendar feed (secret link) in calendar.test.ts;
+    // the sign-in, account and admin routes have
     // their own access rules and tests (auth-*.test.ts, admin.test.ts).
     const real = registered
-      .filter((route) => route !== "GET /health" && !isAccountRoute(route))
+      .filter((route) => route !== "GET /health" && route !== "GET /calendar/:file" && !isAccountRoute(route))
       .map((route) => route.replace(/:\w+/g, ":p"))
       .toSorted();
     expect(real).toEqual(expected);
