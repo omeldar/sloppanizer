@@ -218,6 +218,55 @@
   white-space: nowrap;
 }
 
+/* Todos planned for a day without a time yet. */
+.allDay {
+  display: grid;
+  grid-template-columns: var(--axis) repeat(7, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+  background: var(--sunken);
+}
+
+.allDayLabel {
+  padding: 6px 8px 0 0;
+  border-right: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: 11px;
+  text-align: right;
+}
+
+.allDayCell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 4px 3px;
+  border-right: 1px solid var(--line);
+}
+
+.allDayCell:last-child {
+  border-right: 0;
+}
+
+.dayTodo {
+  overflow: hidden;
+  padding: 3px 7px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dayTodo:hover {
+  border-style: solid;
+  border-color: var(--amber-line);
+}
+
 /* Side list */
 .side {
   padding: 12px;
@@ -385,8 +434,16 @@
     grid-template-columns: var(--axis) minmax(0, 1fr);
     max-height: none;
   }
-  .day:not([data-selected]) {
+  .day:not([data-selected]),
+  .allDayCell:not([data-selected]) {
     display: none;
+  }
+  .allDay {
+    grid-template-columns: var(--axis) minmax(0, 1fr);
+  }
+  .dayTodo {
+    padding: 6px 10px;
+    font-size: 13px;
   }
   .day {
     border-right: 0;

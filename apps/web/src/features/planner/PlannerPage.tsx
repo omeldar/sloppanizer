@@ -4,7 +4,7 @@ import { type CSSProperties, type MouseEvent, type PointerEvent, useEffect, useM
 import { Button, PageHeader } from "../../components/ui.tsx";
 import { timeZone, today } from "../../lib/format.ts";
 import { errorMessage } from "../../lib/api.ts";
-import { useBlocks, useNext, useUpdateBlock } from "../../lib/queries.ts";
+import { useBlocks, useNext, useTodos, useUpdateBlock } from "../../lib/queries.ts";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { BlockDialog, type BlockDraft, draftOf } from "./BlockDialog.tsx";
 import styles from "./Planner.module.css";
@@ -58,6 +58,13 @@ export function PlannerPage() {
   const first = days[0] as string;
   const last = days[6] as string;
   const blocks = useBlocks(first, last);
+  const plannedTodos = useTodos({
+    plannedFrom: first,
+    plannedTo: last,
+    sort: "priority",
+    order: "desc",
+    limit: 200,
+  });
   const next = useNext({ mode: "smart" });
   const [draft, setDraft] = useState<BlockDraft | null>(null);
   const update = useUpdateBlock();
@@ -81,10 +88,10 @@ export function PlannerPage() {
     setDraft({ day, start: minutesToTime(start), end: minutesToTime(Math.min(24 * 60, start + 60)) });
   };
 
-  const planTodo = (todo: { id: number; title: string }) => {
-    const start = selected === now.day ? nextQuarter(new Date(), timeZone) : "09:00";
+  const planTodo = (todo: { id: number; title: string }, day = selected) => {
+    const start = day === now.day ? nextQuarter(new Date(), timeZone) : "09:00";
     const [h = 9, m = 0] = start.split(":").map(Number);
-    setDraft({ day: selected, start, end: minutesToTime(Math.min(24 * 60, h * 60 + m + 60)), todo });
+    setDraft({ day, start, end: minutesToTime(Math.min(24 * 60, h * 60 + m + 60)), todo });
   };
 
   const planned = new Set((blocks.data ?? []).flatMap((b) => (b.todoId === null ? [] : [b.todoId])));
@@ -92,6 +99,12 @@ export function PlannerPage() {
     .map((item) => item.todo)
     .filter((todo) => !planned.has(todo.id))
     .slice(0, 8);
+  /** Todos planned for a day of this week that have no time that day yet. */
+  const dayTodos = (day: string) =>
+    (plannedTodos.data?.items ?? []).filter(
+      (todo) =>
+        todo.plannedOn === day && !(placedByDay.get(day) ?? []).some((p) => p.block.todoId === todo.id),
+    );
 
   return (
     <div className={styles.page}>
@@ -147,6 +160,26 @@ export function PlannerPage() {
               </button>
             ))}
           </div>
+          {days.some((day) => dayTodos(day).length > 0) && (
+            <div className={styles.allDay} aria-label="Planned for the day, no time yet">
+              <span className={styles.allDayLabel}>Day</span>
+              {days.map((day) => (
+                <div key={day} className={styles.allDayCell} data-selected={day === selected || undefined}>
+                  {dayTodos(day).map((todo) => (
+                    <button
+                      key={todo.id}
+                      type="button"
+                      className={styles.dayTodo}
+                      title={`Plan time for ${todo.title}`}
+                      onClick={() => planTodo(todo, day)}
+                    >
+                      {todo.title}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
           <div className={styles.body}>
             <div className={styles.axis} aria-hidden="true">
               {hourList.map((hour) => (
