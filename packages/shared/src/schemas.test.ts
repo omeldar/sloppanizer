@@ -170,6 +170,7 @@ describe("Todo output", () => {
     parent: null,
     progress: { subtasks: { total: 0, done: 0 }, checklist: { total: 0, done: 0 } },
     links: { blocks: [], blockedBy: [], relatesTo: [] },
+    urls: [{ id: 1, url: "https://example.com/spec", label: "Spec" }],
     recurrence: null,
     previousOccurrenceId: null,
     nextOccurrence: null,

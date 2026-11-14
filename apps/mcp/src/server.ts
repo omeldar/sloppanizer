@@ -14,7 +14,8 @@ export function createServer(config: McpConfig, fetchImpl?: typeof fetch): McpSe
         "People are a small directory of colleagues: list_people with a topic or team answers whom to ask, " +
         "and contacts on a todo record whom to ask about it. Each todo has a thread (get_activity, add_comment). " +
         "Todos can have subtasks, a Markdown checklist (check_item), links (blocks, relates to) and a repeat rule; " +
-        "people_stats shows who asks for how much and how fast it gets done.",
+        "people_stats shows who asks for how much and how fast it gets done. Todos keep web links (add_web_link). " +
+        "The planner holds time blocks in the user's local time: list_plan shows them, plan_time reserves time for a todo.",
     },
   );
   registerTools(server, {

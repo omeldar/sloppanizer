@@ -35,6 +35,14 @@ export async function fillEveryTable(t: Pick<TestApp, "call" | "create" | "accou
   ).json() as Todo[];
   await t.call("POST", `/api/v1/todos/${todo.id}/links`, { links: [{ kind: "blocks", todoId: child?.id }] });
   await t.call("POST", `/api/v1/todos/${todo.id}/comments`, { bodyMd: "First comment" });
+  await t.call("POST", `/api/v1/todos/${todo.id}/urls`, {
+    urls: [{ url: "https://example.com/rack", label: "Rack spec" }],
+  });
+  await t.create("/api/v1/blocks", {
+    todoId: todo.id,
+    startAt: "2026-11-12T09:00:00.000Z",
+    endAt: "2026-11-12T10:30:00.000Z",
+  });
   const weekly = await t.create<Todo>("/api/v1/todos", {
     title: "Weekly check",
     dueOn: "2026-11-11",

@@ -43,6 +43,8 @@ import {
 import { useCommands } from "../../app/commands.tsx";
 import { AddLinkDialog } from "./relations/AddLinkDialog.tsx";
 import { Links, linkedIds, WaitingLine } from "./relations/Links.tsx";
+import { WebLinks } from "./relations/WebLinks.tsx";
+import { PlannedTime } from "../planner/PlannedTime.tsx";
 import { Subtasks } from "./relations/Subtasks.tsx";
 import { TodoSearchPicker } from "./relations/TodoSearchPicker.tsx";
 import { RepeatField } from "./repeat/RepeatField.tsx";
@@ -181,6 +183,8 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
           </section>
           <Subtasks todo={todo} inputRef={subtaskInput} />
           <Links todo={todo} onAdd={() => setAddingLink(true)} />
+          <WebLinks todo={todo} />
+          <PlannedTime todo={todo} />
           <Activity todo={todo} composerRef={composer} focusComment={focusComment} />
         </div>
 

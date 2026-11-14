@@ -47,6 +47,13 @@ import {
   UpdateNote,
   UpdatePerson,
   UpdateTodo,
+  addDays as addLocalDays,
+  CalendarDate as PlanDate,
+  localTimeToInstant,
+  type TimeBlock,
+  toLocalDate as planLocalDate,
+  toLocalTime,
+  UrlInput,
 } from "@organizer/shared";
 import { z } from "zod";
 import { type Api, ApiError, ToolError } from "./api.ts";
@@ -69,6 +76,7 @@ import {
   todoLine,
   todoLines,
   topicLine,
+  urlLines,
 } from "./format.ts";
 
 export interface ToolDeps {
@@ -523,6 +531,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           "Makes it a subtask of this todo. Without project it takes the parent's project.",
         ),
         repeat: Repeat.optional(),
+        links: z
+          .array(UrlInput)
+          .max(50)
+          .optional()
+          .describe("Web links (tickets, docs, pull requests): url and an optional label."),
         format,
       },
       annotations: WRITE,
@@ -542,6 +555,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           contacts: toPeople(args.contacts),
           parentId: args.parent,
           recurrence: args.repeat,
+          urls: args.links,
         }),
       );
       return out(args.format, todo, (data) => `Created ${todoLine(data, ctx())}`);
@@ -1306,6 +1320,200 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         }),
       );
       return out(args.format, note, (data) => `Updated ${noteLine(data, ctx())}`);
+    },
+  );
+
+  // ---------- web links ----------
+
+  tool(
+    "add_web_link",
+    {
+      title: "Add web link",
+      description:
+        "Attach a web link to a todo (a ticket, doc, pull request, mail thread). A bare host gets https://. " +
+        "A URL the todo has already is skipped. get_todo lists the links with their ids.",
+      inputSchema: {
+        todo: TodoId,
+        url: UrlInput.shape.url,
+        label: UrlInput.shape.label.describe("Short name shown instead of the URL (optional)."),
+        format,
+      },
+      annotations: { ...WRITE, idempotentHint: true },
+    },
+    async (args) => {
+      const todo = await api.post<Todo>(`/todos/${args.todo}/urls`, {
+        urls: [compact({ url: args.url, label: args.label })],
+      });
+      return out(args.format, todo, (data) => `Links of ${todoLine(data, ctx())}\n${urlLines(data)}`);
+    },
+  );
+
+  tool(
+    "remove_web_link",
+    {
+      title: "Remove web link",
+      description: "Remove a web link from a todo, by its link id (get_todo shows it) or its exact URL.",
+      inputSchema: {
+        todo: TodoId,
+        link: z.union([z.number().int().positive(), z.string().min(1)]).describe("Link id or the exact URL."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async (args) => {
+      const current = await api.get<Todo>(`/todos/${args.todo}`);
+      const match = current.urls.find((u) => u.id === args.link || u.url === args.link);
+      if (!match) {
+        throw new ToolError(
+          `#${args.todo} has no link ${String(args.link)}. Its links:\n${urlLines(current)}`,
+        );
+      }
+      await api.delete(`/todos/${args.todo}/urls/${match.id}`);
+      const todo = await api.get<Todo>(`/todos/${args.todo}`);
+      return `Removed ${match.url} from #${args.todo}.\n${urlLines(todo)}`;
+    },
+  );
+
+  // ---------- planner ----------
+
+  const Time = z
+    .string()
+    .regex(/^([01]?\d|2[0-3]):[0-5]\d$/, "Use HH:MM, 24 hours.")
+    .describe("Local time HH:MM (24 hours) in the user's time zone.");
+  const BlockId = z.number().int().positive().describe("Time block id from list_plan.");
+  const blockLine = (b: TimeBlock): string => {
+    const day = planLocalDate(b.startAt, deps.timeZone);
+    const endDay = planLocalDate(b.endAt, deps.timeZone);
+    const endText = `${endDay === day ? "" : `${endDay} `}${toLocalTime(b.endAt, deps.timeZone)}`;
+    const what = b.todo
+      ? `#${b.todo.id} ${b.todo.title}${b.todo.status === "done" ? " (done)" : ""}`
+      : b.title;
+    const project = b.project ? ` [${b.project.name}]` : "";
+    return `block ${b.id} | ${day} ${toLocalTime(b.startAt, deps.timeZone)}-${endText} | ${what}${project}`;
+  };
+  const blockLines = (blocks: readonly TimeBlock[]): string =>
+    blocks.length === 0 ? "Nothing planned." : blocks.map(blockLine).join("\n");
+
+  tool(
+    "list_plan",
+    {
+      title: "List planned time",
+      description:
+        "The user's planner: time blocks reserved for todos (or with their own title) between two days, " +
+        "in local time. Default: today and the next 6 days. Use it before plan_time to find free time.",
+      inputSchema: {
+        from: PlanDate.optional().describe("First day YYYY-MM-DD (default today)."),
+        to: PlanDate.optional().describe("Last day YYYY-MM-DD (default from + 6)."),
+        todo: TodoId.optional().describe("Only the blocks of this todo."),
+        format,
+      },
+      annotations: READ,
+    },
+    async (args) => {
+      const from = args.from ?? ctx().today;
+      const to = args.to ?? addLocalDays(from, 6);
+      const blocks = await api.get<TimeBlock[]>("/blocks", { from, to, todoId: args.todo });
+      return out(args.format, blocks, (data) => `Plan ${from} to ${to}:\n${blockLines(data)}`);
+    },
+  );
+
+  tool(
+    "plan_time",
+    {
+      title: "Plan time",
+      description:
+        "Reserve time in the user's planner: for a todo (todo) or with its own title (title), on a day from " +
+        "start to end (local HH:MM), or from start for minutes. Check list_plan first so blocks do not clash.",
+      inputSchema: {
+        todo: TodoId.optional(),
+        title: z.string().trim().max(200).optional().describe("Title of a block without a todo."),
+        date: PlanDate.describe("Day YYYY-MM-DD."),
+        start: Time,
+        end: Time.optional().describe("Local end time HH:MM; or give minutes."),
+        minutes: z.number().int().min(5).max(1440).optional().describe("Length in minutes (instead of end)."),
+        format,
+      },
+      annotations: WRITE,
+    },
+    async (args) => {
+      if (args.todo === undefined && !args.title)
+        throw new ToolError("Give a todo or a title for the block.");
+      const startAt = localTimeToInstant(args.date, args.start, deps.timeZone);
+      let endAt: Date;
+      if (args.end !== undefined) {
+        endAt = localTimeToInstant(args.date, args.end, deps.timeZone);
+        if (endAt <= startAt) endAt = localTimeToInstant(addLocalDays(args.date, 1), args.end, deps.timeZone);
+      } else if (args.minutes !== undefined) {
+        endAt = new Date(startAt.getTime() + args.minutes * 60_000);
+      } else {
+        throw new ToolError("Give end (HH:MM) or minutes.");
+      }
+      const block = await api.post<TimeBlock>(
+        "/blocks",
+        compact({
+          todoId: args.todo,
+          title: args.title,
+          startAt: startAt.toISOString(),
+          endAt: endAt.toISOString(),
+        }),
+      );
+      return out(args.format, block, (data) => `Planned ${blockLine(data)}`);
+    },
+  );
+
+  tool(
+    "move_block",
+    {
+      title: "Move time block",
+      description:
+        "Move or resize a planned block: a new day (keeps the times and length), a new start (keeps the " +
+        "length) and/or a new end (local HH:MM), or a new title.",
+      inputSchema: {
+        block: BlockId,
+        date: PlanDate.optional().describe("New day YYYY-MM-DD."),
+        start: Time.optional(),
+        end: Time.optional(),
+        title: z.string().trim().max(200).optional(),
+        format,
+      },
+      annotations: WRITE,
+    },
+    async (args) => {
+      const today = ctx().today;
+      const all = await api.get<TimeBlock[]>("/blocks", {
+        from: addLocalDays(today, -31),
+        to: addLocalDays(today, 31),
+      });
+      const current = all.find((b) => b.id === args.block);
+      if (!current) {
+        throw new ToolError(`No block ${args.block} within a month of today. list_plan shows the blocks.`);
+      }
+      const day = args.date ?? planLocalDate(current.startAt, deps.timeZone);
+      const length = Date.parse(current.endAt) - Date.parse(current.startAt);
+      const startTime = args.start ?? toLocalTime(current.startAt, deps.timeZone);
+      const startAt = localTimeToInstant(day, startTime, deps.timeZone);
+      let endAt = args.end
+        ? localTimeToInstant(day, args.end, deps.timeZone)
+        : new Date(startAt.getTime() + length);
+      if (endAt <= startAt) endAt = new Date(endAt.getTime() + 86_400_000);
+      const block = await api.patch<TimeBlock>(
+        `/blocks/${args.block}`,
+        compact({ startAt: startAt.toISOString(), endAt: endAt.toISOString(), title: args.title }),
+      );
+      return out(args.format, block, (data) => `Moved ${blockLine(data)}`);
+    },
+  );
+
+  tool(
+    "delete_block",
+    {
+      title: "Delete time block",
+      description: "Remove a planned time block from the planner (the todo itself stays).",
+      inputSchema: { block: BlockId },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async (args) => {
+      await api.delete(`/blocks/${args.block}`);
+      return `Deleted block ${args.block}.`;
     },
   );
 }

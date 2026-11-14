@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays,
+  localTimeToInstant,
+  toLocalTime,
   daysBetween,
   daysSince,
   isCalendarDate,
@@ -165,5 +167,25 @@ describe("toLocalDateTime", () => {
     expect(toLocalDateTime("2026-11-12T13:03:59.000Z", PARIS)).toBe("2026-11-12 14:03");
     expect(toLocalDateTime("2026-07-01T22:15:00.000Z", PARIS)).toBe("2026-07-02 00:15");
     expect(toLocalDateTime("2026-12-31T23:00:00.000Z", "UTC")).toBe("2026-12-31 23:00");
+  });
+});
+
+describe("localTimeToInstant", () => {
+  it("turns local wall time into UTC, also around DST", () => {
+    expect(localTimeToInstant("2026-11-12", "08:30", "Europe/Zurich").toISOString()).toBe(
+      "2026-11-12T07:30:00.000Z",
+    );
+    expect(localTimeToInstant("2026-07-01", "08:30", "Europe/Zurich").toISOString()).toBe(
+      "2026-07-01T06:30:00.000Z",
+    );
+    // 2026-03-29 02:30 does not exist in Zurich: an hour later.
+    expect(localTimeToInstant("2026-03-29", "02:30", "Europe/Zurich").toISOString()).toBe(
+      "2026-03-29T01:30:00.000Z",
+    );
+    expect(localTimeToInstant("2026-11-12", "23:15", "America/New_York").toISOString()).toBe(
+      "2026-11-13T04:15:00.000Z",
+    );
+    expect(toLocalTime("2026-11-12T07:30:00.000Z", "Europe/Zurich")).toBe("08:30");
+    expect(() => localTimeToInstant("2026-11-12", "25:00", "UTC")).toThrow("Not a time of day");
   });
 });

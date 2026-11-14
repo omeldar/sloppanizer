@@ -192,3 +192,6 @@ export type RestoreParams = z.infer<typeof RestoreParams>;
 
 export const BackupParams = z.strictObject({ fileName: z.string().max(200) });
 export type BackupParams = z.infer<typeof BackupParams>;
+
+export const UrlParams = z.strictObject({ id: IdParam, urlId: IdParam });
+export type UrlParams = z.infer<typeof UrlParams>;

@@ -115,6 +115,7 @@ export function todoDetail(todo: Todo, ctx: DateContext, subtasks: readonly Todo
   if (links.blockedBy.length > 0) lines.push(`blocked by: ${links.blockedBy.map(refText).join(", ")}`);
   if (links.blocks.length > 0) lines.push(`blocks: ${links.blocks.map(refText).join(", ")}`);
   if (links.relatesTo.length > 0) lines.push(`relates to: ${links.relatesTo.map(refText).join(", ")}`);
+  if (todo.urls.length > 0) lines.push("web links:", urlLines(todo));
   if (todo.recurrence) {
     const next = todo.nextOccurrence ? ` (next: #${todo.nextOccurrence.id})` : "";
     lines.push(`Repeats ${describeRecurrence(todo.recurrence)}${next}`);
@@ -365,4 +366,10 @@ export function statsLine(stats: Stats, ctx: DateContext): string {
     `due today ${stats.dueToday}, planned today ${stats.plannedToday}, inbox ${stats.inbox}, ` +
     `done last 7 days ${stats.doneLast7Days}; ${exported}`
   );
+}
+
+/** A todo's web links, one per line with the id remove_web_link takes. */
+export function urlLines(todo: Todo): string {
+  if (todo.urls.length === 0) return "No web links.";
+  return todo.urls.map((u) => `- link ${u.id}: ${u.label ? `${u.label} ` : ""}<${u.url}>`).join("\n");
 }
