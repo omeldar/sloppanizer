@@ -1,7 +1,7 @@
 import { formatDuration, priorityOf, type Reason, type Todo } from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
 import { type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from "react";
-import { dueState, dueText, shortAge } from "../../lib/format.ts";
+import { dueState, dueText, shortAge, shortDate } from "../../lib/format.ts";
 import { useOnChange } from "../../lib/useOnChange.ts";
 import { LabelPill } from "../LabelPill.tsx";
 import styles from "./Strip.module.css";
@@ -181,8 +181,8 @@ function DueCell({ todo }: { todo: Todo }) {
   if (!todo.dueOn) return <span className={styles.due} />;
   const state = todo.status === "done" ? "later" : dueState(todo.dueOn);
   return (
-    <span className={styles.due} data-state={state} title={dueText(todo.dueOn)}>
-      {todo.dueOn}
+    <span className={styles.due} data-state={state} title={`${todo.dueOn}, ${dueText(todo.dueOn)}`}>
+      {shortDate(todo.dueOn)}
     </span>
   );
 }
