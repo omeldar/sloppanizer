@@ -56,6 +56,7 @@ export function Layout() {
     { keys: "g i", run: go("/inbox"), label: "Go to Inbox", group: "Go to" },
     { keys: "g b", run: go("/board"), label: "Go to Board", group: "Go to" },
     { keys: "g w", run: go("/week"), label: "Go to Week", group: "Go to" },
+    { keys: "g t", run: go("/planner"), label: "Go to Planner", group: "Go to" },
     { keys: "g o", run: go("/notes"), label: "Go to Notes", group: "Go to" },
     { keys: "g l", run: go("/labels"), label: "Go to Labels", group: "Go to" },
     { keys: "g p", run: go("/people"), label: "Go to People", group: "Go to" },
@@ -147,6 +148,7 @@ function Sidebar({ open }: { open: boolean }) {
         <NavItem to="/" label="Next up" keys="g n" exact />
         <NavItem to="/inbox" label="Inbox" count={stats.data?.inbox} keys="g i" />
         <NavItem to="/board" label="Board" keys="g b" />
+        <NavItem to="/planner" label="Planner" keys="g t" />
         <NavItem to="/week" label="Week" keys="g w" />
         <NavItem to="/notes" label="Notes" keys="g o" />
       </ul>
@@ -276,6 +278,7 @@ function Breadcrumb() {
   else if (pathname === "/labels") trail = [{ label: "Labels" }];
   else if (pathname === "/board") trail = [{ label: "Board" }];
   else if (pathname === "/week") trail = [{ label: "Week" }];
+  else if (pathname === "/planner") trail = [{ label: "Planner" }];
   else if (pathname === "/search") trail = [{ label: "Search" }];
   else if (pathname === "/notes") trail = [{ label: "Notes" }];
   else if (pathname.startsWith("/notes/")) trail = [{ label: "Notes", to: "/notes" }, { label: "Note" }];
@@ -339,7 +342,11 @@ function TabBar({ onMore }: { onMore: () => void }) {
           <path d="M11 4v14M4 11h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
         </svg>
       </button>
-      <TabLink to="/week" label="Week" icon={<path d="M3 5h14v12H3zM3 9h14M7 3v4M13 3v4" />} />
+      <TabLink
+        to="/planner"
+        label="Planner"
+        icon={<path d="M3 5h14v12H3zM3 9h14M7 3v4M13 3v4M7 12.5h3v2.5H7z" />}
+      />
       <button type="button" className={styles.tab} onClick={onMore}>
         <TabIcon>
           <path d="M4 6h12M4 10h12M4 14h12" />

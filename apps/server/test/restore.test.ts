@@ -458,6 +458,8 @@ describe("restore apply", () => {
       m.schemaVersion = 5;
       delete m.sequences;
       delete d.todo_links;
+      delete d.todo_urls;
+      delete d.time_blocks;
       for (const row of d.todos) {
         delete row.recurrence;
         delete row.recurrence_prev_id;

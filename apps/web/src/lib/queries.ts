@@ -39,6 +39,10 @@ import {
   type UpdatePersonTag,
   type UpdateProject,
   type UpdateTodo,
+  type CreateTimeBlock,
+  TimeBlock,
+  type UpdateTimeBlock,
+  type UrlInput,
 } from "@organizer/shared";
 import { type QueryClient, queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
@@ -58,6 +62,7 @@ export const keys = {
   personTags: ["personTags"] as const,
   todos: (query: TodoListParams) => ["todos", query] as const,
   todo: (id: number) => ["todo", id] as const,
+  blocks: (from: string, to: string, todoId?: number) => ["blocks", from, to, todoId ?? null] as const,
   activity: (todoId: number) => ["activity", todoId] as const,
   next: (query: NextParams) => ["next", query] as const,
   notes: (query: NoteListParams) => ["notes", query] as const,
@@ -563,3 +568,66 @@ export const cancelRestore = (uploadId: string) => apiVoid(`/restore/${uploadId}
 
 export const applyRestore = (uploadId: string) =>
   api(RestoreResult, `/restore/${uploadId}/apply`, { method: "POST", body: { confirm: "replace" } });
+
+// ---------- web links ----------
+
+function useTodoMutation<V>(run: (vars: V) => Promise<Todo>) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: run,
+    onSuccess: (todo: Todo) => {
+      client.setQueryData(keys.todo(todo.id), todo);
+      return invalidateTodoViews(client);
+    },
+  });
+}
+
+export const useAddUrls = (todoId: number) =>
+  useTodoMutation((urls: UrlInput[]) =>
+    api(Todo, `/todos/${todoId}/urls`, { method: "POST", body: { urls } }),
+  );
+
+export const useUpdateUrl = (todoId: number) =>
+  useTodoMutation(({ id, label, url }: { id: number; label?: string; url?: string }) =>
+    api(Todo, `/todos/${todoId}/urls/${id}`, { method: "PATCH", body: { label, url } }),
+  );
+
+export const useRemoveUrl = (todoId: number) =>
+  useTodoMutation((id: number) => api(Todo, `/todos/${todoId}/urls/${id}`, { method: "DELETE" }));
+
+// ---------- planner ----------
+
+/** Time blocks that overlap the days from..to (account time zone); todoId narrows to one todo. */
+export const useBlocks = (from: string, to: string, todoId?: number) =>
+  useQuery({
+    queryKey: keys.blocks(from, to, todoId),
+    queryFn: () => api(z.array(TimeBlock), "/blocks", { query: { from, to, ...(todoId ? { todoId } : {}) } }),
+    placeholderData: (previous) => previous,
+  });
+
+const invalidateBlocks = (client: QueryClient) => client.invalidateQueries({ queryKey: ["blocks"] });
+
+export function useCreateBlock() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateTimeBlock) => api(TimeBlock, "/blocks", { method: "POST", body: input }),
+    onSuccess: () => invalidateBlocks(client),
+  });
+}
+
+export function useUpdateBlock() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: number; patch: UpdateTimeBlock }) =>
+      api(TimeBlock, `/blocks/${id}`, { method: "PATCH", body: patch }),
+    onSuccess: () => invalidateBlocks(client),
+  });
+}
+
+export function useDeleteBlock() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => apiVoid(`/blocks/${id}`, { method: "DELETE" }),
+    onSuccess: () => invalidateBlocks(client),
+  });
+}
