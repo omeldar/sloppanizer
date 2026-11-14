@@ -221,3 +221,23 @@ export const calendarFeeds = sqliteTable("calendar_feeds", {
   createdAt: text("created_at").notNull(),
   lastUsedAt: text("last_used_at"),
 });
+
+/**
+ * The account's AI assistant: which provider, its models and the working day the planner fills. The
+ * Claude API key is encrypted with the data key (purpose "ai-claude-key"); this table is never exported.
+ */
+export const aiSettings = sqliteTable("ai_settings", {
+  accountId: integer("account_id")
+    .primaryKey()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  provider: text("provider", { enum: ["none", "claude", "ollama"] })
+    .notNull()
+    .default("none"),
+  claudeModel: text("claude_model").notNull().default("claude-opus-5-5"),
+  claudeKeyEnc: text("claude_key_enc"),
+  ollamaUrl: text("ollama_url").notNull().default("http://localhost:11434"),
+  ollamaModel: text("ollama_model").notNull().default("jaahas/qwen3.5-uncensored:9b"),
+  dayStart: text("day_start").notNull().default("09:00"),
+  dayEnd: text("day_end").notNull().default("18:00"),
+  updatedAt: text("updated_at").notNull(),
+});

@@ -19,6 +19,7 @@ import { registerSecurity } from "./http/security.ts";
 import { registerWeb } from "./http/web.ts";
 import { attachmentRoutes } from "./routes/attachments.ts";
 import { registerAccountApi } from "./routes/auth.ts";
+import { aiRoutes } from "./routes/ai.ts";
 import { calendarRoutes } from "./routes/calendar.ts";
 import { commentRoutes } from "./routes/comments.ts";
 import { exportRoutes } from "./routes/export.ts";
@@ -44,6 +45,7 @@ import { createAuthServices } from "./services/auth/index.ts";
 import { backupBeforeMigrate } from "./services/instance-backup.ts";
 import { repairScopeConflicts } from "./services/labels.ts";
 import { repairNameKeys } from "./services/name-keys.ts";
+import type { ClaudeRunner } from "./services/ai.ts";
 import { RESTORE_LIMITS, type RestoreLimits, recoverRestore } from "./services/restore.ts";
 import { rebuildSearchIndex } from "./services/search-index.ts";
 
@@ -55,6 +57,8 @@ export interface BuildOptions {
   logger?: FastifyServerOptions["logger"];
   /** Smaller restore limits for tests. */
   limits?: Partial<RestoreLimits>;
+  /** Stands in for the Claude API in tests. */
+  claude?: ClaudeRunner;
 }
 
 /**
@@ -150,6 +154,7 @@ export async function buildApp(options: BuildOptions) {
   registerAccountApi(app, deps, auth);
   await oauthRoutes(app, deps, auth);
   calendarRoutes(app, deps, auth);
+  aiRoutes(app, deps, auth, options.claude);
   await registerWeb(app, config.webDir);
 
   return { app, deps, auth };
