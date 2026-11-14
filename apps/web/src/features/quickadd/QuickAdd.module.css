@@ -58,3 +58,10 @@
   color: var(--text-3);
   font-size: 12px;
 }
+
+/* Touch screens: no keyboard legend. */
+@media (hover: none) and (pointer: coarse) {
+  .hint {
+    display: none;
+  }
+}

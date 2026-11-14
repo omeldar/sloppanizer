@@ -228,7 +228,6 @@
   gap: 7px;
   min-width: 0;
   padding: 0 10px;
-  border-left: 1px solid var(--line);
   font-family: var(--font-mono);
   font-size: var(--fs-mono);
   color: var(--text-2);
@@ -320,5 +319,51 @@
   .project,
   .header > span:nth-last-child(-n + 2) {
     display: none;
+  }
+}
+
+/* Phones: the strip becomes a card line. Check, the title over up to two lines with its tags below,
+   the due date on the right. Id, comments, age and project live on the todo page. */
+@media (max-width: 640px) {
+  .bay,
+  .bay[data-ranked] {
+    --cols: 4px 44px minmax(0, 1fr) auto;
+    border-radius: 14px;
+  }
+  .header,
+  .rank,
+  .id,
+  .comments,
+  .age,
+  .project {
+    display: none;
+  }
+  .row {
+    max-height: none;
+    min-height: 56px;
+  }
+  .check {
+    align-self: start;
+    padding-top: 14px;
+  }
+  .main {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .line {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .title {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    font-size: 15px;
+  }
+  .due {
+    align-self: start;
+    padding-top: 12px;
+    border-left: 0;
   }
 }
