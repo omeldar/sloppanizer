@@ -5,6 +5,7 @@ import stripStyles from "../../components/strip/Strip.module.css";
 import { EmptyState, ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
 import { useLabels, useNext, useProjects } from "../../lib/queries.ts";
 import styles from "../lists/Lists.module.css";
+import { hint } from "../../lib/device.ts";
 
 const route = getRouteApi("/");
 
@@ -90,7 +91,10 @@ export function NextUpPage() {
           <EmptyState>
             {search.project || search.label
               ? "Nothing open matches these filters. Clear them to see everything."
-              : "Nothing to do next. Press c to add a todo."}
+              : hint(
+                  "Nothing to do next. Press c to add a todo.",
+                  "Nothing to do next. Tap + to add a todo.",
+                )}
           </EmptyState>
         ) : (
           <StripList
