@@ -275,3 +275,10 @@
   gap: 8px;
   padding: 14px 16px 16px;
 }
+
+/* Touch screens: no keyboard legend. */
+@media (hover: none) and (pointer: coarse) {
+  .keysHint {
+    display: none;
+  }
+}

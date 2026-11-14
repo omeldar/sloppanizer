@@ -75,3 +75,29 @@
     transform: translate(-50%, -6px);
   }
 }
+
+/* Phones: dialogs are bottom sheets, full width, above the keyboard and the home indicator. */
+@media (max-width: 640px) {
+  .content,
+  .content[data-placement="top"] {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: auto !important;
+    max-width: none !important;
+    max-height: 92dvh;
+    transform: none;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-width: 1px 0 0;
+    border-radius: 20px 20px 0 0;
+    animation-name: sheet;
+  }
+}
+
+@keyframes sheet {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}

@@ -669,3 +669,10 @@
   color: var(--red);
   font-size: var(--fs-small);
 }
+
+/* Touch screens: no keyboard legend. */
+@media (hover: none) and (pointer: coarse) {
+  .keysHint {
+    display: none;
+  }
+}
