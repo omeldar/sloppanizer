@@ -15,6 +15,11 @@ they sat untouched, and tells you why each one is where it is.
 - Notes: Markdown pages, alone or in a project, pinned ones first.
 - Paste or drop images and files into any Markdown field; images show inline, other files are downloads.
 - Board (Open, In progress, Blocked, Done) and a week planner, both with drag and drop and keys.
+- Planner: reserve time in a week calendar for a todo or with a title (click a free slot, drag a block to move
+  or resize it); todos planned for a day without a time wait in a row above it. Phones show one day at a time.
+- Web links on todos (tickets, docs, pull requests) with a label, and a new todo that takes notes, links, a
+  planned day and a time slot at once.
+- Works on phones: a drawer for the sidebar, a tab bar with a new todo button, bottom sheets for dialogs.
 - Search over todos, notes, comments and people (ignores case and accents), in the palette and on its own page.
 - People and contacts: a small directory of colleagues with team, email, the topics they help with and your own
   tags, so "whom do I ask about firewall rules?" has an answer. People statistics show who asks for how much
@@ -89,6 +94,11 @@ Settings (environment of the service, all optional): `ORGANIZER_PORT` (4711), `O
   The type is read from the file itself; PNG, JPEG, GIF and WebP show inline, everything else is served as a
   download. Files live in `~/.local/share/organizer/attachments/` and are part of the export.
 - Search: `GET /api/v1/search?q=...` over todos, notes, comments and people.
+- Web links: `POST /api/v1/todos/{id}/urls` (`{ urls: [{ url, label? }] }`), `PATCH`/`DELETE`
+  `/api/v1/todos/{id}/urls/{urlId}`; `urls` on `POST /api/v1/todos` too.
+- Planner: `GET /api/v1/blocks?from=YYYY-MM-DD&to=YYYY-MM-DD[&todoId=]` (days in the account's time zone, at
+  most 62), `POST /api/v1/blocks` (`{ todoId? , title?, startAt, endAt }`, ISO instants), `PATCH`/`DELETE`
+  `/api/v1/blocks/{id}`.
 
 ## MCP server
 
@@ -135,6 +145,9 @@ Tools:
 - Statistics and backup: `people_stats` (one line per person: requested, open, done, median time to done,
   contact count), `export_to_folder` (writes an export zip to the export folder).
 - Setup: `list_projects`, `create_project`, `list_labels`, `create_label`.
+- Web links: `create_todo` takes `links`; `add_web_link`, `remove_web_link`.
+- Planner (local time): `list_plan`, `plan_time` (a todo or a title, a day, start and end or minutes),
+  `move_block`, `delete_block`.
 
 Restore, settings and tokens are not offered as tools.
 
