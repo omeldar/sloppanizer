@@ -5,6 +5,7 @@ import type { InjectOptions, LightMyRequestResponse } from "fastify";
 import { afterEach } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
+import type { ClaudeRunner } from "../src/services/ai.ts";
 import { accountFilesDir } from "../src/services/attachments.ts";
 import type { Ctx } from "../src/services/context.ts";
 import type { RestoreLimits } from "../src/services/restore.ts";
@@ -29,6 +30,8 @@ export interface TestAppOptions {
   limits?: Partial<RestoreLimits>;
   /** Further SLOPPANIZER_* settings. */
   env?: Record<string, string>;
+  /** Stands in for the Claude API. */
+  claude?: ClaudeRunner;
 }
 
 type Call = (
@@ -74,6 +77,7 @@ export async function makeApp(options: TestAppOptions = {}) {
     config,
     clock: () => new Date(current),
     ...(options.limits ? { limits: options.limits } : {}),
+    ...(options.claude ? { claude: options.claude } : {}),
   });
   cleanups.push(async () => {
     await app.close();

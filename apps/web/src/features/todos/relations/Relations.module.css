@@ -318,3 +318,49 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Suggested steps (AI assistant) */
+.suggest {
+  margin-top: 8px;
+}
+
+.suggestBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--amber-line);
+  border-radius: var(--radius-panel);
+  background: var(--amber-tint);
+}
+
+.suggestNote {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.suggestList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suggestItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.suggestItem input {
+  accent-color: var(--amber);
+}
+
+.suggestActions {
+  display: flex;
+  gap: 6px;
+}

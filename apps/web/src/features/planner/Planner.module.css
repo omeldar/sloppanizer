@@ -620,3 +620,67 @@
   text-overflow: ellipsis;
   pointer-events: none;
 }
+
+/* The assistant's proposed plan */
+.proposalBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--amber-line);
+  border-radius: var(--radius-panel);
+  background: var(--amber-tint);
+}
+
+.proposalText {
+  flex: 1 1 100%;
+  font-size: var(--fs-small);
+}
+
+.proposalList {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.proposalItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-round);
+  background: var(--raised);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.proposalItem input {
+  accent-color: var(--amber);
+}
+
+.proposalActions {
+  display: flex;
+  gap: 6px;
+}
+
+.proposed {
+  position: absolute;
+  z-index: 4;
+  left: 2px;
+  right: 2px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 4px 8px;
+  border: 2px dashed var(--amber-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--amber-tint) 70%, var(--raised));
+}

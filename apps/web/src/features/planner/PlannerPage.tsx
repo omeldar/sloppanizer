@@ -14,6 +14,8 @@ import { timeZone, today } from "../../lib/format.ts";
 import { errorMessage } from "../../lib/api.ts";
 import { useBlocks, useCreateBlock, useNext, useTodos, useUpdateBlock } from "../../lib/queries.ts";
 import { useTodoDrag } from "./useTodoDrag.ts";
+import { planDay, useAiSettings } from "../../lib/ai.ts";
+import type { CheckedBlock } from "@organizer/shared";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { BlockDialog, type BlockDraft, draftOf } from "./BlockDialog.tsx";
 import styles from "./Planner.module.css";
@@ -27,10 +29,19 @@ import {
   placeBlocks,
   snap,
   spanText,
+  timeToMinutes,
   visibleHours,
 } from "./planner.ts";
 
 const route = getRouteApi("/planner");
+
+/** A plan the assistant proposed for a day; blocks the user unticked are skipped. */
+interface Proposal {
+  day: string;
+  note: string;
+  blocks: CheckedBlock[];
+  skipped: Set<number>;
+}
 const HOUR_PX = 52;
 const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: "short", timeZone: "UTC" });
 const DAY_NUMBER = new Intl.DateTimeFormat(undefined, { day: "numeric", timeZone: "UTC" });
@@ -81,6 +92,10 @@ export function PlannerPage() {
   const swipe = useRef<{ x: number; y: number } | null>(null);
   const update = useUpdateBlock();
   const toast = useToast();
+  const ai = useAiSettings();
+  const aiOn = (ai.data?.provider ?? "none") !== "none";
+  const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [planning, setPlanning] = useState(false);
 
   const go = (day: string) => void navigate({ to: "/planner", search: day === now.day ? {} : { day } });
 
@@ -127,6 +142,31 @@ export function PlannerPage() {
       ),
   });
 
+  const askPlan = async () => {
+    if (!ai.data) return;
+    setPlanning(true);
+    try {
+      const result = await planDay(selected, ai.data);
+      setProposal({ day: selected, note: result.note, blocks: result.blocks, skipped: new Set() });
+      if (result.blocks.length === 0) toast.show({ message: result.note || "Nothing to plan for this day." });
+    } catch (failure) {
+      toast.show({ tone: "error", message: errorMessage(failure) });
+    } finally {
+      setPlanning(false);
+    }
+  };
+
+  const acceptPlan = async () => {
+    if (!proposal) return;
+    const chosen = proposal.blocks.filter((b) => !proposal.skipped.has(b.todoId));
+    for (const b of chosen) {
+      // oxlint-disable-next-line no-await-in-loop -- one block after the other keeps the order and errors clear
+      await create.mutateAsync({ todoId: b.todoId, ...blockSpan(proposal.day, b.start, b.end, timeZone) });
+    }
+    setProposal(null);
+    toast.show({ message: `Planned ${chosen.length} block${chosen.length === 1 ? "" : "s"}` });
+  };
+
   const planned = new Set((blocks.data ?? []).flatMap((b) => (b.todoId === null ? [] : [b.todoId])));
   const toPlan = (next.data?.items ?? [])
     .map((item) => item.todo)
@@ -155,6 +195,11 @@ export function PlannerPage() {
             <Button size="sm" onClick={() => go(addDays(selected, 7))} aria-label="Next week">
               ›
             </Button>
+            {aiOn && (
+              <Button size="sm" onClick={() => void askPlan()} disabled={planning}>
+                {planning ? "Planning…" : "✦ Plan my day"}
+              </Button>
+            )}
             <Button
               size="sm"
               variant="primary"
@@ -169,6 +214,52 @@ export function PlannerPage() {
           </>
         }
       />
+
+      {proposal && proposal.blocks.length > 0 && (
+        <div className={styles.proposalBar} role="region" aria-label="Proposed plan">
+          <div className={styles.proposalText}>
+            <strong>
+              Proposed for {WEEKDAY.format(asDate(proposal.day))} {DAY_NUMBER.format(asDate(proposal.day))}:
+            </strong>{" "}
+            {proposal.note}
+          </div>
+          <ul className={styles.proposalList}>
+            {proposal.blocks.map((b) => (
+              <li key={b.todoId}>
+                <label className={styles.proposalItem} title={b.why}>
+                  <input
+                    type="checkbox"
+                    checked={!proposal.skipped.has(b.todoId)}
+                    onChange={() => {
+                      const skipped = new Set(proposal.skipped);
+                      if (skipped.has(b.todoId)) skipped.delete(b.todoId);
+                      else skipped.add(b.todoId);
+                      setProposal({ ...proposal, skipped });
+                    }}
+                  />
+                  <span className={styles.todayTime}>
+                    {b.start}–{b.end}
+                  </span>
+                  <span className={styles.todayTitle}>{b.title}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className={styles.proposalActions}>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => void acceptPlan()}
+              disabled={create.isPending || proposal.blocks.every((b) => proposal.skipped.has(b.todoId))}
+            >
+              Add to planner
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setProposal(null)}>
+              Discard
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className={styles.layout}>
         <div className={styles.calendar} style={gridStyle}>
@@ -257,6 +348,25 @@ export function PlannerPage() {
                     aria-hidden="true"
                   />
                 )}
+                {proposal?.day === day &&
+                  proposal.blocks
+                    .filter((b) => !proposal.skipped.has(b.todoId))
+                    .map((b) => (
+                      <span
+                        key={`p-${b.todoId}`}
+                        className={styles.proposed}
+                        style={{
+                          top: ((timeToMinutes(b.start) - hours.first * 60) / 60) * HOUR_PX,
+                          height: ((timeToMinutes(b.end) - timeToMinutes(b.start)) / 60) * HOUR_PX - 2,
+                        }}
+                        title={b.why}
+                      >
+                        <span className={styles.blockTitle}>{b.title}</span>
+                        <span className={styles.blockTime}>
+                          {b.start}–{b.end}
+                        </span>
+                      </span>
+                    ))}
                 {drag?.active && drag.target?.day === day && (
                   <span
                     className={styles.dropPreview}
