@@ -59,10 +59,10 @@ describe("restore upload and preview", () => {
     expect(preview).toMatchObject({
       fileName: "sloppanizer-export-20261111.zip",
       source: "sloppanizer",
-      format: 4,
+      format: 5,
       exportedAt: "2026-11-11T10:00:00.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 9,
+      schemaVersion: 13,
       attachments: { count: 1, bytes: 11, missing: [] },
       warnings: [],
       expiresAt: "2026-11-11T11:00:00.000Z",
@@ -458,6 +458,8 @@ describe("restore apply", () => {
       m.schemaVersion = 5;
       delete m.sequences;
       delete d.todo_links;
+      delete d.todo_urls;
+      delete d.time_blocks;
       for (const row of d.todos) {
         delete row.recurrence;
         delete row.recurrence_prev_id;

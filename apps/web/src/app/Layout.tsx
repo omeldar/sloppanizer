@@ -2,6 +2,7 @@ import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-route
 import { type CSSProperties, useState } from "react";
 import { Kbd } from "../components/ui.tsx";
 import { BrandMark } from "./BrandMark.tsx";
+import { Icon, type IconName } from "./icons.tsx";
 import { HelpOverlay } from "../features/help/HelpOverlay.tsx";
 import { Palette } from "../features/palette/Palette.tsx";
 import { NewNoteDialog } from "../features/notes/NewNoteDialog.tsx";
@@ -24,6 +25,11 @@ export function Layout() {
   const page = usePageProject();
   const activeBindings = useActiveBindings();
   const [helpBindings, setHelpBindings] = useState<KeyBinding[]>([]);
+  // Phones: the sidebar is a drawer, open on the page it was opened on, so any navigation closes it.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [drawerOn, setDrawerOn] = useState<string | null>(null);
+  const drawer = drawerOn === pathname;
+  const setDrawer = (open: boolean) => setDrawerOn(open ? pathname : null);
 
   const go = (to: string) => () => void navigate({ to });
   const globalKeys: KeyBinding[] = [
@@ -51,6 +57,7 @@ export function Layout() {
     { keys: "g i", run: go("/inbox"), label: "Go to Inbox", group: "Go to" },
     { keys: "g b", run: go("/board"), label: "Go to Board", group: "Go to" },
     { keys: "g w", run: go("/week"), label: "Go to Week", group: "Go to" },
+    { keys: "g t", run: go("/planner"), label: "Go to Planner", group: "Go to" },
     { keys: "g o", run: go("/notes"), label: "Go to Notes", group: "Go to" },
     { keys: "g l", run: go("/labels"), label: "Go to Labels", group: "Go to" },
     { keys: "g p", run: go("/people"), label: "Go to People", group: "Go to" },
@@ -81,12 +88,19 @@ export function Layout() {
 
   return (
     <div className={styles.shell}>
-      <Sidebar />
-      <TopBar />
+      <Sidebar open={drawer} />
+      <div
+        className={styles.scrim}
+        data-open={drawer || undefined}
+        onClick={() => setDrawer(false)}
+        aria-hidden="true"
+      />
+      <TopBar onMenu={() => setDrawer(true)} />
       <main className={styles.main} id="main">
         <Outlet />
       </main>
       <StatusBar />
+      <TabBar onMore={() => setDrawer(true)} />
       <QuickAdd />
       <NewNoteDialog />
       <NewPersonDialog />
@@ -117,7 +131,7 @@ function usePageProject() {
   };
 }
 
-function Sidebar() {
+function Sidebar({ open }: { open: boolean }) {
   const isAdmin = useCurrentAccount()?.role === "admin";
   const signups = useSignups(isAdmin);
   const projects = useProjects();
@@ -126,17 +140,18 @@ function Sidebar() {
   const active = (projects.data ?? []).filter((p) => p.archivedAt === null);
 
   return (
-    <nav className={styles.sidebar} aria-label="Main">
+    <nav className={styles.sidebar} data-open={open || undefined} aria-label="Main">
       <Link to="/" className={styles.brand}>
         <BrandMark />
         <span>Sloppanizer</span>
       </Link>
       <ul className={styles.nav}>
-        <NavItem to="/" label="Next up" keys="g n" exact />
-        <NavItem to="/inbox" label="Inbox" count={stats.data?.inbox} keys="g i" />
-        <NavItem to="/board" label="Board" keys="g b" />
-        <NavItem to="/week" label="Week" keys="g w" />
-        <NavItem to="/notes" label="Notes" keys="g o" />
+        <NavItem to="/" icon="next" label="Next up" keys="g n" exact />
+        <NavItem to="/inbox" icon="inbox" label="Inbox" count={stats.data?.inbox} keys="g i" />
+        <NavItem to="/board" icon="board" label="Board" keys="g b" />
+        <NavItem to="/planner" icon="planner" label="Planner" keys="g t" />
+        <NavItem to="/week" icon="week" label="Week" keys="g w" />
+        <NavItem to="/notes" icon="notes" label="Notes" keys="g o" />
       </ul>
       <div className={styles.sectionHead}>
         <span>Projects</span>
@@ -172,10 +187,12 @@ function Sidebar() {
         )}
       </ul>
       <ul className={[styles.nav, styles.navBottom].join(" ")}>
-        <NavItem to="/labels" label="Labels" keys="g l" />
-        <NavItem to="/people" label="People" keys="g p" />
-        <NavItem to="/settings" label="Settings" keys="g s" />
-        {isAdmin && <NavItem to="/admin" label="Admin" count={signups.data?.length} keys="g a" />}
+        <NavItem to="/labels" icon="labels" label="Labels" keys="g l" />
+        <NavItem to="/people" icon="people" label="People" keys="g p" />
+        <NavItem to="/settings" icon="settings" label="Settings" keys="g s" />
+        {isAdmin && (
+          <NavItem to="/admin" icon="admin" label="Admin" count={signups.data?.length} keys="g a" />
+        )}
       </ul>
       <AccountSwitcher />
       <NewProjectDialog open={newProject} onOpenChange={setNewProject} />
@@ -185,12 +202,14 @@ function Sidebar() {
 
 function NavItem({
   to,
+  icon,
   label,
   count,
   keys,
   exact,
 }: {
   to: string;
+  icon: IconName;
   label: string;
   count?: number;
   keys: string;
@@ -204,6 +223,9 @@ function NavItem({
         activeOptions={{ exact: exact ?? false }}
         activeProps={{ "data-active": true } as Record<string, unknown>}
       >
+        <span className={styles.navIcon}>
+          <Icon name={icon} />
+        </span>
         <span className={styles.navLabel}>{label}</span>
         {count !== undefined && count > 0 && <span className={styles.count}>{count}</span>}
         <span className={styles.navKeys}>
@@ -214,11 +236,21 @@ function NavItem({
   );
 }
 
-function TopBar() {
+function TopBar({ onMenu }: { onMenu: () => void }) {
   const commands = useCommands();
   const page = usePageProject();
   return (
     <header className={styles.topbar}>
+      <button type="button" className={styles.menuButton} onClick={onMenu} aria-label="Open the menu">
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+          <path
+            d="M2 4.5h14M2 9h14M2 13.5h14"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
       <Breadcrumb />
       <div className={styles.topActions}>
         <button type="button" className={styles.search} onClick={() => commands.openPalette()}>
@@ -254,6 +286,7 @@ function Breadcrumb() {
   else if (pathname === "/labels") trail = [{ label: "Labels" }];
   else if (pathname === "/board") trail = [{ label: "Board" }];
   else if (pathname === "/week") trail = [{ label: "Week" }];
+  else if (pathname === "/planner") trail = [{ label: "Planner" }];
   else if (pathname === "/search") trail = [{ label: "Search" }];
   else if (pathname === "/notes") trail = [{ label: "Notes" }];
   else if (pathname.startsWith("/notes/")) trail = [{ label: "Notes", to: "/notes" }, { label: "Note" }];
@@ -289,5 +322,61 @@ function Breadcrumb() {
         </li>
       ))}
     </ol>
+  );
+}
+
+/** Phones: the main places at the thumb, new todo in the middle, everything else in the drawer. */
+function TabBar({ onMore }: { onMore: () => void }) {
+  const commands = useCommands();
+  const page = usePageProject();
+  const stats = useStats();
+  const inbox = stats.data?.inbox ?? 0;
+  return (
+    <nav className={styles.tabbar} aria-label="Main places">
+      <TabLink to="/" label="Next up" exact icon="next" />
+      <TabLink to="/inbox" label="Inbox" badge={inbox > 0 ? inbox : undefined} icon="inbox" />
+      <button
+        type="button"
+        className={styles.tabAdd}
+        onClick={() => commands.openQuickAdd(page.quickAddDefaults())}
+        aria-label="New todo"
+      >
+        <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+          <path d="M11 4v14M4 11h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+        </svg>
+      </button>
+      <TabLink to="/planner" label="Planner" icon="planner" />
+      <button type="button" className={styles.tab} onClick={onMore}>
+        <Icon name="more" size={22} />
+        <span>More</span>
+      </button>
+    </nav>
+  );
+}
+
+function TabLink({
+  to,
+  label,
+  icon,
+  badge,
+  exact,
+}: {
+  to: string;
+  label: string;
+  icon: IconName;
+  badge?: number | undefined;
+  exact?: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      className={styles.tab}
+      activeOptions={{ exact: exact ?? false }}
+      activeProps={{ "data-active": true } as Record<string, unknown>}
+    >
+      <Icon name={icon} size={22} />
+      <span>{label}</span>
+      {badge !== undefined && <span className={styles.tabBadge}>{badge}</span>}
+    </Link>
   );
 }

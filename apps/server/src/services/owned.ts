@@ -10,8 +10,10 @@ import {
   people,
   personTags,
   projects,
+  timeBlocks,
   todoLinks,
   todos,
+  todoUrls,
   topics,
 } from "../db/schema.ts";
 import type { Scoped, Tx } from "./context.ts";
@@ -60,7 +62,9 @@ type IdTableDef =
   | typeof events
   | typeof comments
   | typeof notes
-  | typeof attachments;
+  | typeof attachments
+  | typeof todoUrls
+  | typeof timeBlocks;
 
 /**
  * Inserts rows into an id table of the scope's account: stamps account_id and gives each row the next

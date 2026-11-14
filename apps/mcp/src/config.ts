@@ -7,6 +7,8 @@ export interface McpConfig {
   url: string;
   /** File holding the account's API token. Read on every call, never logged. */
   tokenFile: string;
+  /** The token itself, when the server is hosted in the API for the caller; then tokenFile is not read. */
+  token?: string;
   /** Zone for "today", overdue and age in the text output. */
   timeZone: string;
 }

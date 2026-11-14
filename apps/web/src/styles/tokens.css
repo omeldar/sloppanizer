@@ -1,4 +1,4 @@
-/* Design tokens. Dark is the default; light is hand tuned (cool daylight grey). */
+/* Design tokens. Dark is the default; light is hand tuned (cool daylight grey). Soft corners, quiet lines. */
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -6,8 +6,8 @@
   --raised: #141922;
   --raised-2: #1a2030;
   --sunken: #0a0d11;
-  --line: #232a35;
-  --line-strong: #2f3845;
+  --line: #20262f;
+  --line-strong: #2d3541;
   --text: #e6e9ee;
   --text-2: #9aa4b2;
   /* Spec #77818F is 4.1:1 on the selected strip; a step lighter reaches 4.6:1 everywhere. */
@@ -29,17 +29,19 @@
   --strip-hover: #11151c;
   --strip-selected: #182030;
   --overlay: rgba(4, 6, 9, 0.66);
-  --menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --menu-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #eceef1;
-  --raised: #f7f8fa;
+  --bg: #f1f3f6;
+  --raised: #f8f9fb;
   --raised-2: #ffffff;
-  --sunken: #e2e5ea;
-  --line: #cdd2d9;
-  --line-strong: #b6bdc7;
+  --sunken: #e8ebef;
+  --line: #dce0e6;
+  --line-strong: #c3c9d2;
   --text: #12161c;
   --text-2: #4a5361;
   /* Spec #67707E is 4.3:1 on the page background; this keeps the hue at 4.8:1 or more. */
@@ -59,11 +61,13 @@
   --band-high: #e59a0c;
   --band-medium: #9aa4b2;
   --band-low: #c3c9d2;
-  --strip: #f7f8fa;
-  --strip-hover: #fbfbfc;
+  --strip: #ffffff;
+  --strip-hover: #fafbfc;
   --strip-selected: #ffffff;
   --overlay: rgba(18, 22, 28, 0.36);
-  --menu-shadow: 0 8px 24px rgba(18, 22, 28, 0.16);
+  --menu-shadow: 0 12px 32px rgba(18, 22, 28, 0.14);
+  --shadow-1: 0 1px 2px rgba(18, 22, 28, 0.06);
+  --shadow-2: 0 6px 20px rgba(18, 22, 28, 0.08);
 }
 
 :root {
@@ -78,13 +82,15 @@
   --fs-h1: 19px;
   --fs-title: 24px;
 
-  --radius-pill: 2px;
-  --radius-panel: 4px;
-  --radius-dialog: 6px;
+  --radius-pill: 6px;
+  --radius-panel: 10px;
+  --radius-dialog: 16px;
+  --radius-round: 999px;
 
-  --row-h: 36px;
-  --sidebar-w: 232px;
-  --topbar-h: 44px;
+  --row-h: 40px;
+  --sidebar-w: 240px;
+  --topbar-h: 52px;
+  --tabbar-h: 60px;
   --statusbar-h: 26px;
 
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);

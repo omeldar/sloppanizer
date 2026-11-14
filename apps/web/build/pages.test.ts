@@ -39,7 +39,7 @@ describe("vercel.json", () => {
 
   it("lets the CSP connect to the API the build uses", () => {
     const csp = rule("/(.*)")?.headers.find((h) => h.key === "Content-Security-Policy")?.value ?? "";
-    expect(csp).toContain(`connect-src 'self' ${new URL(apiUrl).origin};`);
+    expect(csp).toContain(`connect-src 'self' ${new URL(apiUrl).origin} `);
   });
 
   it("caches hashed assets for a year and asks again for everything else", () => {

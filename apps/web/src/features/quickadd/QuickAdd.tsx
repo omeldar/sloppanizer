@@ -1,4 +1,4 @@
-import type { CreateTodo } from "@organizer/shared";
+import { type CreateTodo, UrlInput } from "@organizer/shared";
 import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { useCommands } from "../../app/commands.tsx";
@@ -15,7 +15,10 @@ import {
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { Button, FieldButton, Kbd, TextInput } from "../../components/ui.tsx";
 import { errorMessage } from "../../lib/api.ts";
-import { useCreateTodo, useLabels, useProjects } from "../../lib/queries.ts";
+import { timeZone } from "../../lib/format.ts";
+import { useCreateBlock, useCreateTodo, useLabels, useProjects } from "../../lib/queries.ts";
+import { blockSpan, minutesToTime, timeToMinutes } from "../planner/planner.ts";
+import { urlHost } from "../todos/relations/WebLinks.tsx";
 import { personRef } from "../todos/TodoPickerDialog.tsx";
 import styles from "./QuickAdd.module.css";
 import { parseQuickTitle } from "./tokens.ts";
@@ -49,6 +52,13 @@ function QuickAddForm({ projectSlug, onDone }: { projectSlug?: string; onDone: (
   const [picked, setPicked] = useState<string[]>([]);
   const [people, setPeople] = useState<PersonChoice[]>([]);
   const [dueOn, setDueOn] = useState("");
+  const [notes, setNotes] = useState("");
+  const [links, setLinks] = useState<UrlInput[]>([]);
+  const [linkText, setLinkText] = useState("");
+  const [plannedOn, setPlannedOn] = useState("");
+  const [slotStart, setSlotStart] = useState("");
+  const [slotMinutes, setSlotMinutes] = useState(60);
+  const createBlock = useCreateBlock();
   const [open, setOpen] = useState<"project" | "labels" | "people" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,21 +71,57 @@ function QuickAddForm({ projectSlug, onDone }: { projectSlug?: string; onDone: (
   const labelColor = (name: string) =>
     labels.data?.find((l) => l.name.toLowerCase() === name.toLowerCase())?.color ?? "#8B95A5";
 
+  /** Adds the typed link; false (with the error shown) when it is not a web address. */
+  const addLink = (): boolean => {
+    if (linkText.trim() === "") return true;
+    const link = UrlInput.safeParse({ url: linkText });
+    if (!link.success) {
+      setError(link.error.issues[0]?.message ?? "Enter a web address.");
+      return false;
+    }
+    setLinks((current) => (current.some((l) => l.url === link.data.url) ? current : [...current, link.data]));
+    setLinkText("");
+    setError(null);
+    return true;
+  };
+
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!parsed.title) {
       setError("Give the todo a title.");
       return;
     }
+    // A link still in the field counts, as long as it is one.
+    const typed = linkText.trim() === "" ? null : UrlInput.safeParse({ url: linkText });
+    if (typed && !typed.success) {
+      setError(typed.error.issues[0]?.message ?? "Enter a web address.");
+      return;
+    }
+    const allLinks =
+      typed?.success && !links.some((l) => l.url === typed.data.url) ? [...links, typed.data] : links;
     const input: CreateTodo = {
       title: parsed.title,
       projectId,
       ...(allLabels.length > 0 && { labels: allLabels }),
       ...(people.length > 0 && { requestedBy: people.map(personRef) }),
       ...(dueOn && { dueOn }),
+      ...(plannedOn && { plannedOn }),
+      ...(notes.trim() && { descriptionMd: notes }),
+      ...(allLinks.length > 0 && { urls: allLinks }),
     };
     try {
       const todo = await create.mutateAsync(input);
+      if (plannedOn && slotStart) {
+        const end = minutesToTime(Math.min(24 * 60, timeToMinutes(slotStart) + slotMinutes));
+        await createBlock
+          .mutateAsync({ todoId: todo.id, ...blockSpan(plannedOn, slotStart, end, timeZone) })
+          .catch((failure: unknown) =>
+            toast.show({
+              tone: "error",
+              message: `Added #${todo.id}, but not its time. ${errorMessage(failure)}`,
+            }),
+          );
+      }
       onDone();
       toast.show({
         message: `Added #${todo.id}`,
@@ -111,6 +157,14 @@ function QuickAddForm({ projectSlug, onDone }: { projectSlug?: string; onDone: (
         // The dialog opens to type a title.
         // oxlint-disable-next-line jsx-a11y/no-autofocus
         autoFocus
+      />
+      <textarea
+        className={styles.notes}
+        value={notes}
+        onChange={(event) => setNotes(event.target.value)}
+        placeholder="Notes: details, context, a checklist (- [ ] step)"
+        aria-label="Notes"
+        rows={3}
       />
       {parsed.unknown.length > 0 && (
         <p className={styles.note}>
@@ -187,6 +241,76 @@ function QuickAddForm({ projectSlug, onDone }: { projectSlug?: string; onDone: (
           onChange={(event) => setDueOn(event.target.value)}
           aria-label="Due date"
         />
+
+        <span className={styles.fieldName}>Plan for</span>
+        <div className={styles.planRow}>
+          <input
+            type="date"
+            className={styles.date}
+            value={plannedOn}
+            onChange={(event) => setPlannedOn(event.target.value)}
+            aria-label="Planned day"
+          />
+          {plannedOn && (
+            <>
+              <input
+                type="time"
+                step={900}
+                className={styles.date}
+                value={slotStart}
+                onChange={(event) => setSlotStart(event.target.value)}
+                aria-label="Time slot start (optional)"
+              />
+              {slotStart && (
+                <select
+                  className={styles.date}
+                  value={slotMinutes}
+                  onChange={(event) => setSlotMinutes(Number(event.target.value))}
+                  aria-label="Time slot length"
+                >
+                  {[30, 60, 90, 120, 180].map((m) => (
+                    <option key={m} value={m}>
+                      {m < 60 ? `${m} min` : `${m / 60} h`}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </>
+          )}
+        </div>
+
+        <span className={styles.fieldName}>Links</span>
+        <div className={styles.links}>
+          {links.map((link) => (
+            <span key={link.url} className={styles.linkChip}>
+              <span className={styles.linkText}>{urlHost(link.url)}</span>
+              <button
+                type="button"
+                className={styles.linkRemove}
+                aria-label={`Remove ${link.url}`}
+                onClick={() => setLinks((current) => current.filter((l) => l.url !== link.url))}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          <input
+            type="url"
+            inputMode="url"
+            className={styles.linkInput}
+            value={linkText}
+            onChange={(event) => setLinkText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.ctrlKey && !event.metaKey && linkText.trim() !== "") {
+                event.preventDefault();
+                addLink();
+              }
+            }}
+            onBlur={() => linkText.trim() !== "" && addLink()}
+            placeholder="Paste a link, Enter adds it"
+            aria-label="Add a link"
+          />
+        </div>
       </div>
       {error && (
         <p className={styles.error} role="alert">

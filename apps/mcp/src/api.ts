@@ -64,7 +64,7 @@ function toSearch(query: Query | undefined): string {
 /** REST client for /api/v1 with the token from the token file. */
 export function createApi(config: McpConfig, fetchImpl: typeof fetch = fetch): Api {
   async function request<T>(method: string, path: string, body?: unknown, query?: Query): Promise<T> {
-    const token = readToken(config.tokenFile);
+    const token = config.token ?? readToken(config.tokenFile);
     let response: Response;
     try {
       response = await fetchImpl(`${config.url}${API_PREFIX}${path}${toSearch(query)}`, {
@@ -94,7 +94,7 @@ export function createApi(config: McpConfig, fetchImpl: typeof fetch = fetch): A
       throw new ApiError(
         401,
         "unauthorized",
-        `The token in ${config.tokenFile} was not accepted: it was revoked or has expired, or its account is disabled. Create a new one in Sloppanizer under Settings, API tokens.`,
+        `The ${config.token === undefined ? `token in ${config.tokenFile}` : "API token"} was not accepted: it was revoked or has expired, or its account is disabled. Create a new one in Sloppanizer under Settings, API tokens.`,
       );
     }
     if (!parsed.success) {

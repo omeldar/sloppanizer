@@ -261,3 +261,106 @@
   font-family: var(--font-mono);
   color: var(--amber-text);
 }
+
+/* Web links */
+.webLinks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.webLink {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--strip);
+}
+
+.webLinkMain {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.webLinkMain:hover .webLinkLabel {
+  text-decoration: underline;
+}
+
+.webLinkLabel,
+.webLinkHost {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webLinkHost {
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.webLinkForm {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .webLinkForm {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Suggested steps (AI assistant) */
+.suggest {
+  margin-top: 8px;
+}
+
+.suggestBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--amber-line);
+  border-radius: var(--radius-panel);
+  background: var(--amber-tint);
+}
+
+.suggestNote {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.suggestList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suggestItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.suggestItem input {
+  accent-color: var(--amber);
+}
+
+.suggestActions {
+  display: flex;
+  gap: 6px;
+}

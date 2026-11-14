@@ -42,6 +42,8 @@ export const EXPORT_TABLES = [
   "todo_labels",
   "todo_people",
   "todo_links",
+  "todo_urls",
+  "time_blocks",
   "notes",
   "comments",
   "attachments",
@@ -77,7 +79,7 @@ export function withoutLocalColumns(table: string, row: Record<string, unknown>)
 const README = `# Sloppanizer export
 
 This archive is a complete copy of one Sloppanizer account's data (its sign-in data, API tokens and
-the server's settings are left out). Export format 4.
+the server's settings are left out). Export format ${EXPORT_FORMAT}.
 
 - manifest.json: app, export format, time of export, app and schema version, the account (username
   and display name), row counts per table, the attachments (count, bytes, ids of files that were
@@ -268,7 +270,7 @@ function sequences(ctx: Ctx): Record<string, number> {
 }
 
 /**
- * Builds the export of the context's account (format 4) and stores its lastExportAt. The database is read in one
+ * Builds the export of the context's account (format 5) and stores its lastExportAt. The database is read in one
  * snapshot right away; the zip is streamed, and uploaded files are read from disk while it streams,
  * so memory stays small even with many files.
  */

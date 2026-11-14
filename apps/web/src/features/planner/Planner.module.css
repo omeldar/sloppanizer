@@ -1,0 +1,686 @@
+.page {
+  padding-bottom: 24px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 16px;
+  align-items: start;
+}
+
+/* Calendar: a time axis and seven day columns. */
+.calendar {
+  --axis: 52px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.dayHeads {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: var(--axis) repeat(7, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+  background: var(--raised);
+}
+
+.corner {
+  border-right: 1px solid var(--line);
+}
+
+.dayHead {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.weekday {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dayNumber {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-round);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dayHead[data-today] .dayNumber {
+  background: var(--amber-fill);
+  color: var(--on-amber);
+}
+
+.dot {
+  position: absolute;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: var(--radius-round);
+  background: var(--text-3);
+}
+
+.body {
+  display: grid;
+  grid-template-columns: var(--axis) repeat(7, minmax(0, 1fr));
+  max-height: calc(100dvh - 220px);
+  overflow-y: auto;
+}
+
+.axis {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+}
+
+.hourLabel {
+  height: var(--hour);
+  padding: 2px 8px 0 0;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: right;
+  transform: translateY(-8px);
+}
+
+.hourLabel:first-child {
+  transform: none;
+}
+
+.day {
+  position: relative;
+  height: calc(var(--hour) * var(--hours));
+  border-right: 1px solid var(--line);
+  background-image: linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 100% var(--hour);
+  cursor: copy;
+}
+
+.day:last-child {
+  border-right: 0;
+}
+
+.day[data-past] {
+  background-color: color-mix(in srgb, var(--sunken) 45%, transparent);
+}
+
+.nowLine {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--red);
+  pointer-events: none;
+}
+
+.nowLine::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-round);
+  background: var(--red);
+}
+
+.block {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  padding: 4px 8px;
+  border: 0;
+  border-left: 3px solid var(--block);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--block) 18%, var(--raised-2));
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-1);
+}
+
+.block {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.block[data-dragging] {
+  z-index: 10 !important;
+  opacity: 0.9;
+  box-shadow: var(--shadow-2);
+  cursor: grabbing;
+}
+
+.resize {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 7px;
+  cursor: ns-resize;
+}
+
+@media (hover: none) {
+  .resize {
+    display: none;
+  }
+}
+
+.block:hover {
+  background: color-mix(in srgb, var(--block) 28%, var(--raised-2));
+}
+
+.block[data-done] .blockTitle {
+  text-decoration: line-through;
+  color: var(--text-2);
+}
+
+.blockTitle {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+}
+
+.block[data-short] {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding-block: 2px;
+}
+
+.block[data-short] .blockTitle {
+  white-space: nowrap;
+}
+
+.blockTime {
+  color: var(--text-2);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+/* Todos planned for a day without a time yet. */
+.allDay {
+  display: grid;
+  grid-template-columns: var(--axis) repeat(7, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+  background: var(--sunken);
+}
+
+.allDayLabel {
+  padding: 6px 8px 0 0;
+  border-right: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: 11px;
+  text-align: right;
+}
+
+.allDayCell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 4px 3px;
+  border-right: 1px solid var(--line);
+}
+
+.allDayCell:last-child {
+  border-right: 0;
+}
+
+.dayTodo {
+  overflow: hidden;
+  padding: 3px 7px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dayTodo:hover {
+  border-style: solid;
+  border-color: var(--amber-line);
+}
+
+/* Side list */
+.side {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+}
+
+.sideTitle {
+  margin: 0;
+  font-size: var(--fs-h2);
+  font-weight: 600;
+}
+
+.sideNote {
+  margin: 4px 0 8px;
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.toPlan {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.toPlanItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--strip);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.toPlanItem:hover {
+  border-color: var(--amber-line);
+}
+
+.toPlanTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toPlanAction {
+  color: var(--amber-text);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+/* Block dialog */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 16px 16px;
+}
+
+.picked {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--sunken);
+}
+
+.pickedLabel {
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.pickedTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.lengths {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.length {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-round);
+  background: var(--raised);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.length[data-on] {
+  border-color: var(--amber-line);
+  background: var(--amber-tint);
+  color: var(--text);
+}
+
+.error {
+  margin: 0;
+  color: var(--red);
+  font-size: var(--fs-small);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Phones: the week as a row of day chips, one day's column below. */
+@media (max-width: 640px) {
+  .calendar {
+    --axis: 46px;
+  }
+  .dayHeads {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+  .corner {
+    display: none;
+  }
+  .dayHead[data-selected] {
+    color: var(--text);
+  }
+  .dayHead[data-selected]:not([data-today]) .dayNumber {
+    background: var(--text);
+    color: var(--bg);
+  }
+  .body {
+    grid-template-columns: var(--axis) minmax(0, 1fr);
+    max-height: none;
+  }
+  .day:not([data-selected]),
+  .allDayCell:not([data-selected]) {
+    display: none;
+  }
+  .allDay {
+    grid-template-columns: var(--axis) minmax(0, 1fr);
+  }
+  .dayTodo {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+  .day {
+    border-right: 0;
+  }
+  .timeRow {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .timeRow > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Planned time on the todo page */
+.plannedList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plannedItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-round);
+  background: var(--strip);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.plannedItem:hover {
+  border-color: var(--amber-line);
+}
+
+.plannedItem[data-past] {
+  color: var(--text-3);
+}
+
+.plannedTime {
+  font-family: var(--font-mono);
+  color: var(--text-2);
+}
+
+/* Today's plan above Next up */
+.today {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+  overflow: hidden;
+}
+
+.todayHead {
+  flex-shrink: 0;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.todayList {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: none;
+}
+
+.todayItem {
+  flex-shrink: 0;
+}
+
+.todayLink {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 280px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-round);
+  background: var(--strip);
+  color: var(--text);
+  font-size: var(--fs-small);
+  text-decoration: none;
+}
+
+.todayItem[data-now] .todayLink {
+  border-color: var(--amber-line);
+  background: var(--amber-tint);
+}
+
+.todayTime {
+  flex-shrink: 0;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.todayItem[data-now] .todayTime {
+  color: var(--amber-text);
+  font-weight: 700;
+}
+
+.todayTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dragging a todo onto the calendar */
+.dayTodo,
+.toPlanItem {
+  user-select: none;
+}
+
+.dayTodo {
+  /* Draggable on touch screens: the chip must not start a scroll. */
+  touch-action: none;
+}
+
+.dayTodo[data-dragging],
+.toPlanItem[data-dragging] {
+  opacity: 0.45;
+}
+
+.dropPreview {
+  position: absolute;
+  z-index: 5;
+  left: 2px;
+  right: 2px;
+  overflow: hidden;
+  padding: 4px 8px;
+  border: 2px dashed var(--amber-line);
+  border-radius: 8px;
+  background: var(--amber-tint);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.ghost {
+  position: fixed;
+  z-index: 60;
+  max-width: 240px;
+  overflow: hidden;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--raised-2);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/* The assistant's proposed plan */
+.proposalBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--amber-line);
+  border-radius: var(--radius-panel);
+  background: var(--amber-tint);
+}
+
+.proposalText {
+  flex: 1 1 100%;
+  font-size: var(--fs-small);
+}
+
+.proposalList {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.proposalItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-round);
+  background: var(--raised);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.proposalItem input {
+  accent-color: var(--amber);
+}
+
+.proposalActions {
+  display: flex;
+  gap: 6px;
+}
+
+.proposed {
+  position: absolute;
+  z-index: 4;
+  left: 2px;
+  right: 2px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 4px 8px;
+  border: 2px dashed var(--amber-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--amber-tint) 70%, var(--raised));
+}

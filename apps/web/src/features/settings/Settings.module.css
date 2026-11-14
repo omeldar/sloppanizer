@@ -364,3 +364,92 @@ button.fileName:hover {
   color: var(--red);
   font-size: var(--fs-small);
 }
+
+/* Calendar feed */
+.feedBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 12px;
+  padding: 12px;
+  border: 1px solid var(--amber-line);
+  border-radius: var(--radius-panel);
+  background: var(--amber-tint);
+}
+
+.feedUrl {
+  padding: 8px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.feedOpen {
+  font-size: var(--fs-small);
+}
+
+/* AI assistant */
+.aiProviders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.aiFields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.aiRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.aiRow > :first-child {
+  flex: 1 1 220px;
+}
+
+.aiSelect {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  color: var(--text);
+  font: inherit;
+}
+
+.aiCard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+  cursor: pointer;
+}
+
+.aiCard[data-on] {
+  border-color: var(--amber-line);
+  background: var(--amber-tint);
+}
+
+.aiCard input {
+  grid-row: span 2;
+  margin: 3px 0 0;
+  accent-color: var(--amber);
+}
+
+.aiCardNote {
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}

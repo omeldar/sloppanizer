@@ -102,6 +102,7 @@ function todo(overrides: Partial<Todo> = {}): Todo {
     parent: null,
     progress: { subtasks: { total: 0, done: 0 }, checklist: { total: 0, done: 0 } },
     links: { blocks: [], blockedBy: [], relatesTo: [] },
+    urls: [],
     recurrence: null,
     previousOccurrenceId: null,
     nextOccurrence: null,

@@ -43,6 +43,8 @@ import {
 import { useCommands } from "../../app/commands.tsx";
 import { AddLinkDialog } from "./relations/AddLinkDialog.tsx";
 import { Links, linkedIds, WaitingLine } from "./relations/Links.tsx";
+import { WebLinks } from "./relations/WebLinks.tsx";
+import { PlannedTime } from "../planner/PlannedTime.tsx";
 import { Subtasks } from "./relations/Subtasks.tsx";
 import { TodoSearchPicker } from "./relations/TodoSearchPicker.tsx";
 import { RepeatField } from "./repeat/RepeatField.tsx";
@@ -83,6 +85,8 @@ export function TodoPage() {
 type SidePicker = PickerKind | "parent" | "repeat";
 
 function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number }) {
+  // Phones fold the details into one summary line until opened.
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const { setPriority, patch } = useTodoActions();
   const navigate = useNavigate();
   const { setTodoCommands } = useCommands();
@@ -181,10 +185,28 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
           </section>
           <Subtasks todo={todo} inputRef={subtaskInput} />
           <Links todo={todo} onAdd={() => setAddingLink(true)} />
+          <WebLinks todo={todo} />
+          <PlannedTime todo={todo} />
           <Activity todo={todo} composerRef={composer} focusComment={focusComment} />
         </div>
 
-        <aside className={styles.side} aria-label="Details">
+        <aside className={styles.side} aria-label="Details" data-open={detailsOpen || undefined}>
+          <button
+            type="button"
+            className={styles.detailsToggle}
+            aria-expanded={detailsOpen}
+            onClick={() => setDetailsOpen((open) => !open)}
+          >
+            <span className={styles.detailsSummary}>
+              {STATUS_LABELS[todo.status]}
+              {todo.project ? ` · ${todo.project.name}` : " · Inbox"}
+              {todo.dueOn ? ` · ${dueText(todo.dueOn)}` : ""}
+              {todo.labels.length > 0
+                ? ` · ${todo.labels.length} ${todo.labels.length === 1 ? "label" : "labels"}`
+                : ""}
+            </span>
+            <span className={styles.detailsMore}>{detailsOpen ? "Less" : "Details"}</span>
+          </button>
           <dl className={styles.fields}>
             <dt>Status</dt>
             <dd>

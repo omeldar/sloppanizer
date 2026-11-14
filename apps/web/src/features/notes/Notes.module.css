@@ -269,3 +269,27 @@
   color: var(--red);
   font-size: var(--fs-small);
 }
+
+.back {
+  display: none;
+}
+
+/* Phones and narrow windows: the list or the open note, never both. */
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding-top: 12px;
+  }
+  .layout[data-open] .listPane,
+  .layout:not([data-open]) .editorPane {
+    display: none;
+  }
+  .back {
+    display: inline-block;
+    margin-bottom: 8px;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    text-decoration: none;
+  }
+}

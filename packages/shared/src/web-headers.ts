@@ -12,7 +12,14 @@ export interface WebHeaderOptions {
 }
 
 /** Paths of the app entry (app.html); everything else is the landing page, a static file or 404. */
-export const APP_PATH_PREFIXES = ["/u/", "/login", "/signup", "/setup", "/reset"] as const;
+export const APP_PATH_PREFIXES = [
+  "/u/",
+  "/login",
+  "/signup",
+  "/setup",
+  "/reset",
+  "/oauth/authorize",
+] as const;
 
 export function isAppPath(pathname: string): boolean {
   if (pathname === "/u") return true;
@@ -34,10 +41,14 @@ export const PERMISSIONS_POLICY =
   "camera=(), microphone=(), geolocation=(), payment=(), usb=(), " +
   "publickey-credentials-get=(self), publickey-credentials-create=(self)";
 
-/** The Content-Security-Policy value: scripts only from the own origin, fetches only to it and the API. */
+/**
+ * The Content-Security-Policy value: scripts only from the own origin; fetches to it, the API and a local
+ * Ollama on this machine.
+ */
 export function contentSecurityPolicy({ apiOrigin }: WebHeaderOptions): string {
-  const secure = isHttps(apiOrigin);
-  const connect = apiOrigin ? `'self' ${originOf(apiOrigin)}` : "'self'";
+  // A local Ollama (the AI assistant on the user's own machine) is fetched from the browser.
+  const local = "http://localhost:* http://127.0.0.1:*";
+  const connect = apiOrigin ? `'self' ${originOf(apiOrigin)} ${local}` : `'self' ${local}`;
   const directives = [
     "default-src 'self'",
     "script-src 'self'",
@@ -54,7 +65,8 @@ export function contentSecurityPolicy({ apiOrigin }: WebHeaderOptions): string {
     "form-action 'self'",
   ];
   // Only for the hosted https site: on plain http (local) it would turn every API call into https.
-  if (secure) directives.push("upgrade-insecure-requests");
+  // No upgrade-insecure-requests: it would turn the fetch to a local Ollama (http://localhost) into https.
+  // Every resource of the page is same-origin or the API, which are https on the hosted site anyway.
   return directives.join("; ");
 }
 

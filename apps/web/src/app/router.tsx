@@ -52,6 +52,14 @@ const ProjectSearch = z.object({
 });
 
 const WeekSearch = z.object({ start: z.string().optional().catch(undefined) });
+const PlannerSearch = z.object({
+  day: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .catch(undefined),
+});
+const plannerPage = lazyRouteComponent(() => import("../features/planner/PlannerPage.tsx"), "PlannerPage");
 
 const NotesSearch = z.object({
   /** Project slug or "none". */
@@ -127,6 +135,12 @@ const routes = [
     path: "/week",
     component: WeekPage,
     validateSearch: WeekSearch,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/planner",
+    component: plannerPage,
+    validateSearch: PlannerSearch,
   }),
   createRoute({
     getParentRoute: () => rootRoute,

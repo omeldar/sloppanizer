@@ -6,6 +6,7 @@ import { BoardFilterBar } from "../board/BoardFilterBar.tsx";
 import { BoardView } from "../board/BoardView.tsx";
 import styles from "../lists/Lists.module.css";
 import { TodoListView } from "../lists/TodoListView.tsx";
+import { hint } from "../../lib/device.ts";
 
 const route = getRouteApi("/projects/$slug");
 
@@ -87,7 +88,10 @@ export function ProjectPage() {
           key={project.id}
           projectId={project.id}
           label={project.name}
-          empty={`No open todos in ${project.name}. Press c to add one.`}
+          empty={hint(
+            `No open todos in ${project.name}. Press c to add one.`,
+            `No open todos in ${project.name}. Tap + to add one.`,
+          )}
         />
       )}
     </>

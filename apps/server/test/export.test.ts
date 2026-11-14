@@ -67,10 +67,10 @@ describe("GET /export.zip", () => {
     const manifest = JSON.parse(strFromU8(files["manifest.json"] as Uint8Array));
     expect(manifest).toMatchObject({
       app: "sloppanizer",
-      format: 4,
+      format: 5,
       exportedAt: "2026-11-14T13:04:05.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 9,
+      schemaVersion: 13,
       account: { username: "anna" },
       attachments: { count: 0, bytes: 0, missing: [] },
     });
@@ -156,7 +156,7 @@ const frontMatter = (md: string) => {
   return { meta: parse(match?.[1] ?? "") as Record<string, unknown>, body: match?.[2] ?? "" };
 };
 
-describe("export format 4", () => {
+describe("export format 5", () => {
   it("holds the new tables, the uploaded files and Markdown for notes and people", async () => {
     const t = await makeApp({ now: "2026-11-11T13:04:05.000Z", timeZone: "Europe/Zurich" });
     const sqlite = t.deps.db.$client;
@@ -272,7 +272,7 @@ describe("export format 4", () => {
     expect(methods["attachments/2-net.txt"]).toBe(8);
 
     const manifest = JSON.parse(text("manifest.json"));
-    expect(manifest.format).toBe(4);
+    expect(manifest.format).toBe(5);
     expect(manifest.attachments).toEqual({ count: 2, bytes: png.length + txt.length, missing: [3] });
     const data = JSON.parse(text("data.json"));
     expect(Object.keys(data)).toEqual([...EXPORT_TABLES]);
@@ -363,7 +363,7 @@ describe("export format 4", () => {
       requested: [],
       contact_for: [todo.id],
     });
-    expect(text("README.md")).toContain("Export format 4.");
+    expect(text("README.md")).toContain("Export format 5.");
   });
 });
 

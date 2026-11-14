@@ -7,8 +7,10 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json apps/server/
 COPY packages/shared/package.json packages/shared/
+COPY apps/mcp/package.json apps/mcp/
 RUN pnpm install --frozen-lockfile --prod --filter @organizer/server...
 COPY packages/shared/src packages/shared/src
+COPY apps/mcp/src apps/mcp/src
 COPY apps/server/src apps/server/src
 COPY apps/server/drizzle apps/server/drizzle
 

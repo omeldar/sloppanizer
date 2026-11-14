@@ -146,6 +146,10 @@ export const TodoLinks = z.strictObject({
 });
 export type TodoLinks = z.infer<typeof TodoLinks>;
 
+/** A web link of a todo; label is "" when the URL speaks for itself. */
+export const TodoUrl = z.strictObject({ id: Id, url: z.string(), label: z.string() });
+export type TodoUrl = z.infer<typeof TodoUrl>;
+
 export const Todo = z.strictObject({
   id: Id,
   projectId: Id.nullable(),
@@ -175,6 +179,8 @@ export const Todo = z.strictObject({
   /** subtasks: direct children; checklist: task list lines in descriptionMd. */
   progress: z.strictObject({ subtasks: DoneCount, checklist: DoneCount }),
   links: TodoLinks,
+  /** Web links, in order. */
+  urls: z.array(TodoUrl),
   /** The repeat rule (stored normalized), or null. */
   recurrence: RecurrenceRule.nullable(),
   /** The occurrence this todo was created from. */
@@ -497,7 +503,7 @@ export const RestoreProblemDetails = z.strictObject({ problems: z.array(z.string
 export type RestoreProblemDetails = z.infer<typeof RestoreProblemDetails>;
 
 /** Export format written by this version (manifest.json `format`). Formats 1 to 3 come from the single-user app. */
-export const EXPORT_FORMAT = 4;
+export const EXPORT_FORMAT = 5;
 
 /** manifest.json of an export zip (format 4). data.json rows carry no account id: any export fits any account. */
 export const ExportManifest = z.strictObject({

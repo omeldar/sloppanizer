@@ -153,3 +153,24 @@
     flex: 0 0 100%;
   }
 }
+
+/* Touch screens: no keyboard legend. */
+@media (hover: none) and (pointer: coarse) {
+  .keysHint {
+    display: none;
+  }
+}
+
+/* Phones: the days as a list, one under the other. */
+@media (max-width: 640px) {
+  .days {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .day,
+  .cards {
+    min-height: 0;
+  }
+  .cards:empty {
+    min-height: 36px;
+  }
+}

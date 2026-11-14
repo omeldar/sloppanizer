@@ -166,3 +166,78 @@ export const instanceSettings = sqliteTable("instance_settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
 });
+
+/**
+ * OAuth clients (dynamic client registration, RFC 7591): MCP clients like claude.ai register themselves.
+ * Public clients only (PKCE, no secret).
+ */
+export const oauthClients = sqliteTable("oauth_clients", {
+  /** The client_id: 24 random bytes base64url. */
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  /** JSON array of the exact redirect URIs. */
+  redirectUris: text("redirect_uris").notNull(),
+  createdAt: text("created_at").notNull(),
+  lastUsedAt: text("last_used_at"),
+});
+
+/**
+ * One account's consent to one client. Its access token is an API token of the account (token_id, so
+ * it shows on the tokens page and revoking it ends the grant); the refresh token is stored as sha256.
+ */
+export const oauthGrants = sqliteTable(
+  "oauth_grants",
+  {
+    id: integer("id").primaryKey(),
+    accountId: integer("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClients.id, { onDelete: "cascade" }),
+    tokenId: integer("token_id").notNull(),
+    refreshHash: text("refresh_hash").notNull().unique(),
+    scope: text("scope", { enum: ["read", "write"] }).notNull(),
+    createdAt: text("created_at").notNull(),
+    refreshedAt: text("refreshed_at"),
+    expiresAt: text("expires_at").notNull(),
+    revokedAt: text("revoked_at"),
+  },
+  (t) => [
+    index("oauth_grants_account_idx").on(t.accountId, t.clientId),
+    check("oauth_grants_scope_check", sql`${t.scope} IN ('read','write')`),
+  ],
+);
+
+/**
+ * The account's calendar feed: a secret link (stored as sha256) that calendar apps poll for the planner's
+ * time blocks. One per account; resetting it replaces the secret.
+ */
+export const calendarFeeds = sqliteTable("calendar_feeds", {
+  accountId: integer("account_id")
+    .primaryKey()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  createdAt: text("created_at").notNull(),
+  lastUsedAt: text("last_used_at"),
+});
+
+/**
+ * The account's AI assistant: which provider, its models and the working day the planner fills. The
+ * Claude API key is encrypted with the data key (purpose "ai-claude-key"); this table is never exported.
+ */
+export const aiSettings = sqliteTable("ai_settings", {
+  accountId: integer("account_id")
+    .primaryKey()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  provider: text("provider", { enum: ["none", "claude", "ollama"] })
+    .notNull()
+    .default("none"),
+  claudeModel: text("claude_model").notNull().default("claude-opus-5-5"),
+  claudeKeyEnc: text("claude_key_enc"),
+  ollamaUrl: text("ollama_url").notNull().default("http://localhost:11434"),
+  ollamaModel: text("ollama_model").notNull().default("jaahas/qwen3.5-uncensored:9b"),
+  dayStart: text("day_start").notNull().default("09:00"),
+  dayEnd: text("day_end").notNull().default("18:00"),
+  updatedAt: text("updated_at").notNull(),
+});

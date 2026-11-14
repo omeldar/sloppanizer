@@ -1,3 +1,4 @@
+import { UrlList } from "./planner.ts";
 import { z } from "zod";
 import { findScopeConflicts, LabelName } from "./labels.ts";
 import { normalizeTopic } from "./people.ts";
@@ -73,6 +74,8 @@ export const CreateTodo = z
     parentId: Id.optional(),
     /** Needs dueOn or plannedOn. */
     recurrence: RecurrenceRule.nullable().optional(),
+    /** Web links, in this order. */
+    urls: UrlList.optional(),
   })
   .superRefine((value, ctx) => checkScopes(ctx, value.labels, "labels"));
 export type CreateTodo = z.infer<typeof CreateTodo>;

@@ -58,3 +58,86 @@
   color: var(--text-3);
   font-size: 12px;
 }
+
+/* Touch screens: no keyboard legend. */
+@media (hover: none) and (pointer: coarse) {
+  .hint {
+    display: none;
+  }
+}
+
+.notes {
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-text);
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.notes:focus-visible {
+  outline: 2px solid var(--amber-line);
+  outline-offset: -1px;
+}
+
+.planRow,
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.linkChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-round);
+  background: var(--raised);
+  font-size: var(--fs-small);
+}
+
+.linkText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linkRemove {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-round);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.linkRemove:hover {
+  background: var(--sunken);
+  color: var(--text);
+}
+
+.linkInput {
+  flex: 1 1 180px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-small);
+}

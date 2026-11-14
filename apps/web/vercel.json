@@ -20,6 +20,10 @@
     {
       "source": "/(login|signup|setup|reset)",
       "destination": "/app.html"
+    },
+    {
+      "source": "/oauth/authorize",
+      "destination": "/app.html"
     }
   ],
   "headers": [
@@ -28,7 +32,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://organizerapi.omeldar.cloud; manifest-src 'self'; worker-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests"
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://organizerapi.omeldar.cloud http://localhost:* http://127.0.0.1:*; manifest-src 'self'; worker-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         },
         {
           "key": "Strict-Transport-Security",
@@ -97,7 +101,7 @@
       ]
     },
     {
-      "source": "/(app.html|login|signup|setup|reset)",
+      "source": "/(app.html|login|signup|setup|reset|oauth/authorize)",
       "headers": [
         {
           "key": "X-Robots-Tag",

@@ -15,6 +15,16 @@ they sat untouched, and tells you why each one is where it is.
 - Notes: Markdown pages, alone or in a project, pinned ones first.
 - Paste or drop images and files into any Markdown field; images show inline, other files are downloads.
 - Board (Open, In progress, Blocked, Done) and a week planner, both with drag and drop and keys.
+- Planner: reserve time in a week calendar for a todo or with a title (click a free slot, drag a todo from To
+  plan or the Day row onto a day, drag a block to move or resize it); todos planned for a day without a time wait in a row above it. Phones show one day at a time.
+  Settings, Calendar feed gives a secret link to subscribe to in Google Calendar, Apple Calendar or Outlook.
+- Web links on todos (tickets, docs, pull requests) with a label, and a new todo that takes notes, links, a
+  planned day and a time slot at once.
+- Works on phones: a drawer for the sidebar, a tab bar with a new todo button, bottom sheets for dialogs.
+- AI assistant (optional, Settings, AI assistant): Plan my day proposes time blocks from Next up and the free
+  time of the working day; Suggest steps proposes subtasks. Nothing is saved until you accept it. Runs on Claude
+  (your Anthropic API key, stored encrypted on the server) or on a local Ollama in the browser on that computer
+  (set `OLLAMA_ORIGINS` to the web app's origin for Ollama). Off, Sloppanizer is a plain todo app.
 - Search over todos, notes, comments and people (ignores case and accents), in the palette and on its own page.
 - People and contacts: a small directory of colleagues with team, email, the topics they help with and your own
   tags, so "whom do I ask about firewall rules?" has an answer. People statistics show who asks for how much
@@ -89,8 +99,37 @@ Settings (environment of the service, all optional): `ORGANIZER_PORT` (4711), `O
   The type is read from the file itself; PNG, JPEG, GIF and WebP show inline, everything else is served as a
   download. Files live in `~/.local/share/organizer/attachments/` and are part of the export.
 - Search: `GET /api/v1/search?q=...` over todos, notes, comments and people.
+- Web links: `POST /api/v1/todos/{id}/urls` (`{ urls: [{ url, label? }] }`), `PATCH`/`DELETE`
+  `/api/v1/todos/{id}/urls/{urlId}`; `urls` on `POST /api/v1/todos` too.
+- Planner: `GET /api/v1/blocks?from=YYYY-MM-DD&to=YYYY-MM-DD[&todoId=]` (days in the account's time zone, at
+  most 62), `POST /api/v1/blocks` (`{ todoId? , title?, startAt, endAt }`, ISO instants), `PATCH`/`DELETE`
+  `/api/v1/blocks/{id}`.
 
 ## MCP server
+
+### Hosted (every account)
+
+The API serves MCP over Streamable HTTP at `/api/v1/mcp` (here `https://organizerapi.omeldar.cloud/api/v1/mcp`).
+Create a token under Settings, API tokens, and send it as `Authorization: Bearer spz_...`. The panel of a new token
+shows the URL and the Claude Code command:
+
+```sh
+claude mcp add --transport http sloppanizer https://organizerapi.omeldar.cloud/api/v1/mcp   --header "Authorization: Bearer spz_..."
+```
+
+The tools are the ones listed below, on the token's own account, in the account's time zone. They call the REST
+routes with that token, so a read token can only read. Stateless: POST only, no session, no event stream.
+
+Clients that sign in with OAuth (claude.ai custom connectors on web, desktop and phone, and most MCP clients)
+need only the URL: add `https://organizerapi.omeldar.cloud/api/v1/mcp` as a connector and sign in. The client
+registers itself (`/oauth/register`, RFC 7591), the browser shows the consent page of the web app
+(`/oauth/authorize`: pick the account and read or read and change; needs a sign-in within the last 10 minutes),
+and the client gets a refresh token (90 days, rotated on use) and an access token (30 days). The access token is
+an API token named after the client: it shows under Settings, API tokens, and revoking it there disconnects the
+client. Connecting the same client again replaces its old grant. Discovery: `/.well-known/oauth-protected-resource`
+and `/.well-known/oauth-authorization-server`.
+
+### Local stdio
 
 A stdio MCP server for MCP clients, installed at `~/.local/lib/organizer/current/mcp/index.js`. It talks to the
 running organizer through the REST API with the token from a file, so the token never sits in the client config.
@@ -111,6 +150,9 @@ Tools:
 - Statistics and backup: `people_stats` (one line per person: requested, open, done, median time to done,
   contact count), `export_to_folder` (writes an export zip to the export folder).
 - Setup: `list_projects`, `create_project`, `list_labels`, `create_label`.
+- Web links: `create_todo` takes `links`; `add_web_link`, `remove_web_link`.
+- Planner (local time): `list_plan`, `plan_time` (a todo or a title, a day, start and end or minutes),
+  `move_block`, `delete_block`.
 
 Restore, settings and tokens are not offered as tools.
 
@@ -126,7 +168,7 @@ Client config (most clients use this shape; use the absolute node path that `ins
       "command": "/home/you/.nvm/versions/node/v24.21.0/bin/node",
       "args": ["/home/you/.local/lib/organizer/current/mcp/index.js"],
       "env": {
-        "ORGANIZER_URL": "http://127.0.0.1:4711",
+        "SLOPPANIZER_URL": "http://127.0.0.1:4711",
         "ORGANIZER_TOKEN_FILE": "/home/you/.local/share/organizer/mcp-token"
       }
     }

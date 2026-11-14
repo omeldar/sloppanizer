@@ -441,6 +441,63 @@ export const notes = sqliteTable(
   ],
 );
 
+/** Web links of a todo (tickets, docs, pull requests): the URL and an optional label, in order. */
+export const todoUrls = sqliteTable(
+  "todo_urls",
+  {
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    todoId: integer("todo_id").notNull(),
+    url: text("url").notNull(),
+    label: text("label").notNull().default(""),
+    position: real("position").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.id] }),
+    foreignKey({
+      name: "todo_urls_todo_fk",
+      columns: [t.accountId, t.todoId],
+      foreignColumns: [todos.accountId, todos.id],
+    }).onDelete("cascade"),
+    check("todo_urls_url_check", sql`length(${t.url}) BETWEEN 1 AND 2000`),
+    check("todo_urls_label_check", sql`length(${t.label}) <= 200`),
+    index("todo_urls_todo_idx").on(t.accountId, t.todoId, t.position),
+  ],
+);
+
+/**
+ * Planner: reserved time, for a todo or with its own title. Start and end are UTC instants; the web app
+ * and the tools show them in the account's time zone.
+ */
+export const timeBlocks = sqliteTable(
+  "time_blocks",
+  {
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    todoId: integer("todo_id"),
+    title: text("title").notNull().default(""),
+    startAt: text("start_at").notNull(),
+    endAt: text("end_at").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.id] }),
+    foreignKey({
+      name: "time_blocks_todo_fk",
+      columns: [t.accountId, t.todoId],
+      foreignColumns: [todos.accountId, todos.id],
+    }).onDelete("cascade"),
+    check("time_blocks_order_check", sql`${t.endAt} > ${t.startAt}`),
+    check("time_blocks_title_check", sql`length(${t.title}) <= 200`),
+    check("time_blocks_what_check", sql`${t.todoId} IS NOT NULL OR length(${t.title}) > 0`),
+    index("time_blocks_start_idx").on(t.accountId, t.startAt),
+    index("time_blocks_todo_idx").on(t.accountId, t.todoId),
+  ],
+);
+
 /**
  * Uploaded files, stored at <files dir>/<account id>/<id>. Ids are never reused (they are in Markdown
  * links). No owner columns: what uses an attachment is the Markdown that links it.
@@ -488,5 +545,7 @@ export const ID_TABLES = [
   "comments",
   "notes",
   "attachments",
+  "todo_urls",
+  "time_blocks",
 ] as const;
 export type IdTable = (typeof ID_TABLES)[number];

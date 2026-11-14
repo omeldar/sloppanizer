@@ -145,3 +145,27 @@
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
 }
+
+/* Touch screens: no keyboard legend. */
+@media (hover: none) and (pointer: coarse) {
+  .keysHint {
+    display: none;
+  }
+}
+
+/* Phones: one column at a time, swipe to the next. */
+@media (max-width: 640px) {
+  .board {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 86%;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    margin: 0 -14px;
+    padding: 0 14px 8px;
+    scroll-padding: 0 14px;
+  }
+  .column {
+    scroll-snap-align: start;
+  }
+}

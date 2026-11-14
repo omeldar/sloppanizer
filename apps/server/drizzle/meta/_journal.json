@@ -8,6 +8,34 @@
       "when": 1794574961725,
       "tag": "0000_sloppanizer",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794653156741,
+      "tag": "0001_oauth",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794654380284,
+      "tag": "0002_planner_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794656134035,
+      "tag": "0003_calendar_feed",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794658379300,
+      "tag": "0004_ai_settings",
+      "breakpoints": true
     }
   ]
 }
