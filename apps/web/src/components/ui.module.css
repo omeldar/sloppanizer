@@ -178,10 +178,11 @@
 
 .pageHeader {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
-  padding: 20px 0 14px;
+  gap: 12px 16px;
+  padding: 24px 0 16px;
 }
 
 .pageTitleRow {
@@ -192,9 +193,10 @@
 }
 
 .pageTitle {
-  font-size: var(--fs-h1);
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .pageMeta {
@@ -205,8 +207,33 @@
 
 .pageActions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+@media (max-width: 900px) {
+  /* The top bar names the page already. */
+  .pageTitle {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .pageHeader {
+    padding: 14px 0 12px;
+  }
+  .pageTitleRow {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .pageActions {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
 }
 
 .fieldButton {
@@ -233,4 +260,11 @@
 
 .fieldButton[data-empty] {
   color: var(--text-3);
+}
+
+/* Touch screens have no keyboard shortcuts to show. */
+@media (hover: none) and (pointer: coarse) {
+  .kbdGroup {
+    display: none;
+  }
 }

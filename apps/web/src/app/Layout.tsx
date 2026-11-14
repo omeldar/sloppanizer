@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, type ReactNode, useState } from "react";
 import { Kbd } from "../components/ui.tsx";
 import { BrandMark } from "./BrandMark.tsx";
 import { HelpOverlay } from "../features/help/HelpOverlay.tsx";
@@ -24,6 +24,11 @@ export function Layout() {
   const page = usePageProject();
   const activeBindings = useActiveBindings();
   const [helpBindings, setHelpBindings] = useState<KeyBinding[]>([]);
+  // Phones: the sidebar is a drawer, open on the page it was opened on, so any navigation closes it.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [drawerOn, setDrawerOn] = useState<string | null>(null);
+  const drawer = drawerOn === pathname;
+  const setDrawer = (open: boolean) => setDrawerOn(open ? pathname : null);
 
   const go = (to: string) => () => void navigate({ to });
   const globalKeys: KeyBinding[] = [
@@ -81,12 +86,19 @@ export function Layout() {
 
   return (
     <div className={styles.shell}>
-      <Sidebar />
-      <TopBar />
+      <Sidebar open={drawer} />
+      <div
+        className={styles.scrim}
+        data-open={drawer || undefined}
+        onClick={() => setDrawer(false)}
+        aria-hidden="true"
+      />
+      <TopBar onMenu={() => setDrawer(true)} />
       <main className={styles.main} id="main">
         <Outlet />
       </main>
       <StatusBar />
+      <TabBar onMore={() => setDrawer(true)} />
       <QuickAdd />
       <NewNoteDialog />
       <NewPersonDialog />
@@ -117,7 +129,7 @@ function usePageProject() {
   };
 }
 
-function Sidebar() {
+function Sidebar({ open }: { open: boolean }) {
   const isAdmin = useCurrentAccount()?.role === "admin";
   const signups = useSignups(isAdmin);
   const projects = useProjects();
@@ -126,7 +138,7 @@ function Sidebar() {
   const active = (projects.data ?? []).filter((p) => p.archivedAt === null);
 
   return (
-    <nav className={styles.sidebar} aria-label="Main">
+    <nav className={styles.sidebar} data-open={open || undefined} aria-label="Main">
       <Link to="/" className={styles.brand}>
         <BrandMark />
         <span>Sloppanizer</span>
@@ -214,11 +226,21 @@ function NavItem({
   );
 }
 
-function TopBar() {
+function TopBar({ onMenu }: { onMenu: () => void }) {
   const commands = useCommands();
   const page = usePageProject();
   return (
     <header className={styles.topbar}>
+      <button type="button" className={styles.menuButton} onClick={onMenu} aria-label="Open the menu">
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+          <path
+            d="M2 4.5h14M2 9h14M2 13.5h14"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
       <Breadcrumb />
       <div className={styles.topActions}>
         <button type="button" className={styles.search} onClick={() => commands.openPalette()}>
@@ -289,5 +311,86 @@ function Breadcrumb() {
         </li>
       ))}
     </ol>
+  );
+}
+
+/** Phones: the main places at the thumb, new todo in the middle, everything else in the drawer. */
+function TabBar({ onMore }: { onMore: () => void }) {
+  const commands = useCommands();
+  const page = usePageProject();
+  const stats = useStats();
+  const inbox = stats.data?.inbox ?? 0;
+  return (
+    <nav className={styles.tabbar} aria-label="Main places">
+      <TabLink to="/" label="Next up" exact icon={<path d="M4 10l4 4 8-9" />} />
+      <TabLink
+        to="/inbox"
+        label="Inbox"
+        badge={inbox > 0 ? inbox : undefined}
+        icon={<path d="M3 11h4l1.5 2.5h3L13 11h4M3 11l2-7h10l2 7v5H3z" />}
+      />
+      <button
+        type="button"
+        className={styles.tabAdd}
+        onClick={() => commands.openQuickAdd(page.quickAddDefaults())}
+        aria-label="New todo"
+      >
+        <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+          <path d="M11 4v14M4 11h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+        </svg>
+      </button>
+      <TabLink to="/week" label="Week" icon={<path d="M3 5h14v12H3zM3 9h14M7 3v4M13 3v4" />} />
+      <button type="button" className={styles.tab} onClick={onMore}>
+        <TabIcon>
+          <path d="M4 6h12M4 10h12M4 14h12" />
+        </TabIcon>
+        <span>More</span>
+      </button>
+    </nav>
+  );
+}
+
+function TabIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function TabLink({
+  to,
+  label,
+  icon,
+  badge,
+  exact,
+}: {
+  to: string;
+  label: string;
+  icon: ReactNode;
+  badge?: number | undefined;
+  exact?: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      className={styles.tab}
+      activeOptions={{ exact: exact ?? false }}
+      activeProps={{ "data-active": true } as Record<string, unknown>}
+    >
+      <TabIcon>{icon}</TabIcon>
+      <span>{label}</span>
+      {badge !== undefined && <span className={styles.tabBadge}>{badge}</span>}
+    </Link>
   );
 }
