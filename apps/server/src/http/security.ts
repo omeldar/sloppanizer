@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Clock } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import { getAccount, toAuthAccount } from "../services/accounts.ts";
+import { isPublicOAuthPath } from "../routes/oauth.ts";
 import { looksLikeAccessToken, readAccessToken } from "../services/auth/access-token.ts";
 import type { AuthServices } from "../services/auth/index.ts";
 import { useSession } from "../services/auth/sessions.ts";
@@ -170,6 +171,19 @@ export function registerSecurity(app: FastifyInstance, options: SecurityOptions)
     const host = request.headers.host;
     if (!host || !allowedHosts.has(hostName(host))) {
       return deny(reply, 421, "This server does not answer to that host name.");
+    }
+    if (isPublicOAuthPath(request.url.split("?")[0] ?? "")) {
+      // Discovery, registration and tokens: any MCP client, also from a browser. No cookies, no session.
+      reply.header("Access-Control-Allow-Origin", "*");
+      if (request.method === "OPTIONS") {
+        return reply
+          .header("Access-Control-Allow-Methods", "GET, POST")
+          .header("Access-Control-Allow-Headers", "authorization, content-type, mcp-protocol-version")
+          .header("Access-Control-Max-Age", "600")
+          .status(204)
+          .send();
+      }
+      return;
     }
     if (applyCors(request, reply, { webOrigins: config.webOrigins })) return reply;
 

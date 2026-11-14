@@ -4,7 +4,7 @@ import { type AccountStore, defaultAccount, findAccount, type StoredAccount } fr
  * What app.html shows for an address. Every tab runs one account under /u/<username>, so two tabs can
  * show two accounts and their caches never mix. The auth pages run without an account.
  */
-export type AuthPage = "login" | "signup" | "setup" | "reset";
+export type AuthPage = "login" | "signup" | "setup" | "reset" | "oauth";
 
 export type Entry =
   | { kind: "app"; account: StoredAccount; basepath: string }
@@ -25,6 +25,8 @@ export function loginFor(username: string, next?: string): string {
 export function resolveEntry(pathname: string, search: string, store: AccountStore): Entry {
   const page = /^\/(login|signup|setup|reset)\/?$/.exec(pathname)?.[1] as AuthPage | undefined;
   if (page && AUTH_PAGES.has(page)) return { kind: "auth", page };
+  // OAuth consent for MCP clients: picks among the signed-in accounts itself.
+  if (/^\/oauth\/authorize\/?$/.test(pathname)) return { kind: "auth", page: "oauth" };
 
   const match = /^\/u\/([^/]+)(\/.*)?$/.exec(pathname);
   const username = match?.[1] ? safeDecode(match[1]) : "";
@@ -47,6 +49,7 @@ export function resolveEntry(pathname: string, search: string, store: AccountSto
 export function afterLogin(username: string, next: string | null): string {
   const base = `${accountBase(username)}/`;
   if (next && next.startsWith(base) && !next.startsWith("//") && !next.includes("\\")) return next;
+  if (next && next.startsWith("/oauth/authorize?") && !next.includes("\\")) return next;
   return base;
 }
 

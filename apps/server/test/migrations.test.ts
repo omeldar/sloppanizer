@@ -51,7 +51,15 @@ function fillAccount(sqlite: Database.Database, account: number): void {
 
 /** Tables of the user data (every row belongs to an account). */
 function userTables(sqlite: Database.Database): string[] {
-  const auth = new Set(["accounts", "recovery_codes", "passkeys", "sessions", "login_throttle"]);
+  const auth = new Set([
+    "accounts",
+    "recovery_codes",
+    "passkeys",
+    "sessions",
+    "login_throttle",
+    "oauth_clients",
+    "oauth_grants",
+  ]);
   const rows = sqlite
     .prepare(
       `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
@@ -77,10 +85,11 @@ const expectedShape = (table: string) => ({
 });
 
 describe("baseline migration", () => {
-  it("is schema version 9, so every single-user export (8 or lower) counts as older", () => {
+  it("counts on from the single-user versions, so every single-user export (8 or lower) is older", () => {
     const { db } = freshDb();
-    expect(schemaVersion(db)).toBe(SCHEMA_BASE + 1);
-    expect(schemaVersion(db)).toBe(9);
+    // The baseline (9), then one per migration: 0001 oauth.
+    expect(schemaVersion(db)).toBe(SCHEMA_BASE + 2);
+    expect(schemaVersion(db)).toBe(10);
   });
 
   it("gives every user table an account_id and every id table the key (account_id, id)", () => {

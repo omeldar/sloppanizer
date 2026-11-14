@@ -104,7 +104,15 @@ claude mcp add --transport http sloppanizer https://organizerapi.omeldar.cloud/a
 
 The tools are the ones listed below, on the token's own account, in the account's time zone. They call the REST
 routes with that token, so a read token can only read. Stateless: POST only, no session, no event stream.
-Sign-in through OAuth (claude.ai custom connectors) is not built yet.
+
+Clients that sign in with OAuth (claude.ai custom connectors on web, desktop and phone, and most MCP clients)
+need only the URL: add `https://organizerapi.omeldar.cloud/api/v1/mcp` as a connector and sign in. The client
+registers itself (`/oauth/register`, RFC 7591), the browser shows the consent page of the web app
+(`/oauth/authorize`: pick the account and read or read and change; needs a sign-in within the last 10 minutes),
+and the client gets a refresh token (90 days, rotated on use) and an access token (30 days). The access token is
+an API token named after the client: it shows under Settings, API tokens, and revoking it there disconnects the
+client. Connecting the same client again replaces its old grant. Discovery: `/.well-known/oauth-protected-resource`
+and `/.well-known/oauth-authorization-server`.
 
 ### Local stdio
 

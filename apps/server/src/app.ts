@@ -25,6 +25,7 @@ import { labelRoutes } from "./routes/labels.ts";
 import { mcpRoutes } from "./routes/mcp.ts";
 import { metaRoutes } from "./routes/meta.ts";
 import { noteRoutes } from "./routes/notes.ts";
+import { oauthRoutes } from "./routes/oauth.ts";
 import { peopleStatsRoutes } from "./routes/people-stats.ts";
 import { peopleRoutes } from "./routes/people.ts";
 import { personTagRoutes } from "./routes/person-tags.ts";
@@ -144,6 +145,7 @@ export async function buildApp(options: BuildOptions) {
   restoreRoutes(app, deps);
   mcpRoutes(app, deps);
   registerAccountApi(app, deps, auth);
+  await oauthRoutes(app, deps, auth);
   await registerWeb(app, config.webDir);
 
   return { app, deps, auth };
