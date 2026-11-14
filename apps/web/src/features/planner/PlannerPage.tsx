@@ -12,11 +12,13 @@ import {
 import { Button, PageHeader } from "../../components/ui.tsx";
 import { timeZone, today } from "../../lib/format.ts";
 import { errorMessage } from "../../lib/api.ts";
-import { useBlocks, useNext, useTodos, useUpdateBlock } from "../../lib/queries.ts";
+import { useBlocks, useCreateBlock, useNext, useTodos, useUpdateBlock } from "../../lib/queries.ts";
+import { useTodoDrag } from "./useTodoDrag.ts";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { BlockDialog, type BlockDraft, draftOf } from "./BlockDialog.tsx";
 import styles from "./Planner.module.css";
 import {
+  blockSpan,
   blockTitle,
   minutesToTime,
   movedSpan,
@@ -55,7 +57,8 @@ function useNowMinutes(): { day: string; minutes: number } {
 
 /**
  * The planner: a week of days with time blocks for todos (or with their own title). Click or tap a
- * free slot to plan time there, a block to change it. Phones show one day at a time.
+ * free slot to plan time there, a block to change it; drag a todo from To plan or the Day row onto a
+ * day to give it an hour there. Phones show one day at a time.
  */
 export function PlannerPage() {
   const search = route.useSearch();
@@ -102,6 +105,27 @@ export function PlannerPage() {
     const [h = 9, m = 0] = start.split(":").map(Number);
     setDraft({ day, start, end: minutesToTime(Math.min(24 * 60, h * 60 + m + 60)), todo });
   };
+
+  const create = useCreateBlock();
+  const { drag, bind } = useTodoDrag({
+    firstHour: hours.first,
+    hourPx: HOUR_PX,
+    onClick: (todo) => planTodo(todo),
+    // A dropped todo gets an hour from where it landed; move or resize the block after.
+    onDrop: (todo, day, startMin) =>
+      create.mutate(
+        {
+          todoId: todo.id,
+          ...blockSpan(
+            day,
+            minutesToTime(startMin),
+            minutesToTime(Math.min(24 * 60, startMin + 60)),
+            timeZone,
+          ),
+        },
+        { onError: (failure) => toast.show({ tone: "error", message: errorMessage(failure) }) },
+      ),
+  });
 
   const planned = new Set((blocks.data ?? []).flatMap((b) => (b.todoId === null ? [] : [b.todoId])));
   const toPlan = (next.data?.items ?? [])
@@ -179,8 +203,9 @@ export function PlannerPage() {
                       key={todo.id}
                       type="button"
                       className={styles.dayTodo}
-                      title={`Plan time for ${todo.title}`}
-                      onClick={() => planTodo(todo, day)}
+                      title={`Drag into the day, or click to plan time for ${todo.title}`}
+                      data-dragging={drag?.active && drag.todo.id === todo.id ? true : undefined}
+                      {...bind(todo, { touch: true })}
                     >
                       {todo.title}
                     </button>
@@ -232,6 +257,18 @@ export function PlannerPage() {
                     aria-hidden="true"
                   />
                 )}
+                {drag?.active && drag.target?.day === day && (
+                  <span
+                    className={styles.dropPreview}
+                    style={{
+                      top: ((drag.target.startMin - hours.first * 60) / 60) * HOUR_PX,
+                      height: HOUR_PX - 2,
+                    }}
+                    aria-hidden="true"
+                  >
+                    {minutesToTime(drag.target.startMin)} {drag.todo.title}
+                  </span>
+                )}
                 {(placedByDay.get(day) ?? []).map((placed) => (
                   <BlockCard
                     key={`${placed.block.id}-${day}`}
@@ -267,7 +304,13 @@ export function PlannerPage() {
           <ul className={styles.toPlan}>
             {toPlan.map((todo) => (
               <li key={todo.id}>
-                <button type="button" className={styles.toPlanItem} onClick={() => planTodo(todo)}>
+                <button
+                  type="button"
+                  className={styles.toPlanItem}
+                  title="Drag onto the calendar, or click to plan time"
+                  data-dragging={drag?.active && drag.todo.id === todo.id ? true : undefined}
+                  {...bind(todo)}
+                >
                   <span className={styles.toPlanTitle}>{todo.title}</span>
                   <span className={styles.toPlanAction}>Plan</span>
                 </button>
@@ -277,6 +320,11 @@ export function PlannerPage() {
         </aside>
       </div>
 
+      {drag?.active && (
+        <div className={styles.ghost} style={{ left: drag.x + 12, top: drag.y + 12 }} aria-hidden="true">
+          {drag.todo.title}
+        </div>
+      )}
       <BlockDialog draft={draft} onClose={() => setDraft(null)} />
     </div>
   );

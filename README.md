@@ -15,8 +15,8 @@ they sat untouched, and tells you why each one is where it is.
 - Notes: Markdown pages, alone or in a project, pinned ones first.
 - Paste or drop images and files into any Markdown field; images show inline, other files are downloads.
 - Board (Open, In progress, Blocked, Done) and a week planner, both with drag and drop and keys.
-- Planner: reserve time in a week calendar for a todo or with a title (click a free slot, drag a block to move
-  or resize it); todos planned for a day without a time wait in a row above it. Phones show one day at a time.
+- Planner: reserve time in a week calendar for a todo or with a title (click a free slot, drag a todo from To
+  plan or the Day row onto a day, drag a block to move or resize it); todos planned for a day without a time wait in a row above it. Phones show one day at a time.
   Settings, Calendar feed gives a secret link to subscribe to in Google Calendar, Apple Calendar or Outlook.
 - Web links on todos (tickets, docs, pull requests) with a label, and a new todo that takes notes, links, a
   planned day and a time slot at once.
