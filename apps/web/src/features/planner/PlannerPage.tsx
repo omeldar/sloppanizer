@@ -1,6 +1,14 @@
 import { addDays, toLocalTime, weekDays } from "@organizer/shared";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { type CSSProperties, type MouseEvent, type PointerEvent, useEffect, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  type MouseEvent,
+  type PointerEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Button, PageHeader } from "../../components/ui.tsx";
 import { timeZone, today } from "../../lib/format.ts";
 import { errorMessage } from "../../lib/api.ts";
@@ -67,6 +75,7 @@ export function PlannerPage() {
   });
   const next = useNext({ mode: "smart" });
   const [draft, setDraft] = useState<BlockDraft | null>(null);
+  const swipe = useRef<{ x: number; y: number } | null>(null);
   const update = useUpdateBlock();
   const toast = useToast();
 
@@ -180,7 +189,25 @@ export function PlannerPage() {
               ))}
             </div>
           )}
-          <div className={styles.body}>
+          <div
+            className={styles.body}
+            onTouchStart={(event) => {
+              const touch = event.touches[0];
+              swipe.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+            }}
+            onTouchEnd={(event) => {
+              const from = swipe.current;
+              const touch = event.changedTouches[0];
+              swipe.current = null;
+              if (!from || !touch) return;
+              const dx = touch.clientX - from.x;
+              const dy = touch.clientY - from.y;
+              // A clear sideways swipe on a phone moves one day; scrolling stays vertical.
+              if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5 && window.innerWidth <= 640) {
+                go(addDays(selected, dx < 0 ? 1 : -1));
+              }
+            }}
+          >
             <div className={styles.axis} aria-hidden="true">
               {hourList.map((hour) => (
                 <span key={hour} className={styles.hourLabel}>
