@@ -8,6 +8,8 @@
 .github
 tmp
 apps/web
-apps/mcp
+apps/mcp/test
+apps/mcp/scripts
+apps/mcp/src/*.test.ts
 apps/server/test
 deploy

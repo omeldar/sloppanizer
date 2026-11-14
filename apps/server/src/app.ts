@@ -22,6 +22,7 @@ import { registerAccountApi } from "./routes/auth.ts";
 import { commentRoutes } from "./routes/comments.ts";
 import { exportRoutes } from "./routes/export.ts";
 import { labelRoutes } from "./routes/labels.ts";
+import { mcpRoutes } from "./routes/mcp.ts";
 import { metaRoutes } from "./routes/meta.ts";
 import { noteRoutes } from "./routes/notes.ts";
 import { peopleStatsRoutes } from "./routes/people-stats.ts";
@@ -141,6 +142,7 @@ export async function buildApp(options: BuildOptions) {
   exportRoutes(app, deps);
   settingsRoutes(app, deps);
   restoreRoutes(app, deps);
+  mcpRoutes(app, deps);
   registerAccountApi(app, deps, auth);
   await registerWeb(app, config.webDir);
 

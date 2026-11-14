@@ -39,8 +39,10 @@ export const REAUTH_WINDOW_MS = 10 * 60 * 1000;
  * - "write": session or a write token, even for GET (export).
  * - "session": a browser session only; tokens get 403.
  * - "admin": a session of an admin account. Everyone else gets the 404 of a route that does not exist.
+ * - "any": session or any token, also read tokens for POST. Only for routes that do nothing themselves
+ *   but call other API routes with the caller's own token (the MCP endpoint); those check the scope.
  */
-export type Access = "public" | "auto" | "write" | "session" | "admin";
+export type Access = "public" | "auto" | "write" | "session" | "admin" | "any";
 
 export type { Auth };
 
@@ -207,7 +209,7 @@ export function registerSecurity(app: FastifyInstance, options: SecurityOptions)
       if (access === "session") {
         return deny(reply, 403, "API tokens cannot use this endpoint. Use the Sloppanizer web app.");
       }
-      const needsWrite = access === "write" || unsafe;
+      const needsWrite = access === "write" || (unsafe && access !== "any");
       if (needsWrite && auth.scope !== "write") {
         return deny(reply, 403, "This token can only read. Use a token with the write scope for changes.");
       }

@@ -71,6 +71,9 @@ const MATRIX: [method: string, path: string, access: Access][] = [
   ["GET", `/restore/${"a".repeat(32)}`, "session"],
   ["DELETE", `/restore/${"a".repeat(32)}`, "session"],
   ["POST", `/restore/${"a".repeat(32)}/apply`, "session"],
+  ["POST", "/mcp", "read"],
+  ["GET", "/mcp", "read"],
+  ["DELETE", "/mcp", "read"],
 ];
 
 /** Reads the registered routes from Fastify's tree print: "METHOD /api/v1/..." without HEAD. */
