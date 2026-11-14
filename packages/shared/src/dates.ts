@@ -114,19 +114,40 @@ export function daysSince(instant: Date | string | number, today: string, timeZo
   return daysBetween(toLocalDate(instant, timeZone), today);
 }
 
+/** The zone's offset from UTC at an instant, in ms (wall clock minus UTC). */
+function offsetAt(instant: number, timeZone: string): number {
+  const w = wallClock(instant, timeZone);
+  const asUtc = Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second);
+  return asUtc - (instant - (((instant % 1000) + 1000) % 1000));
+}
+
 /** The UTC instant at which the given local date starts in the zone (handles DST shifts). */
 export function startOfLocalDay(date: string, timeZone: string): Date {
   const target = dateToUtcMs(date);
-  const offsetAt = (instant: number): number => {
-    const w = wallClock(instant, timeZone);
-    const asUtc = Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second);
-    return asUtc - (instant - (((instant % 1000) + 1000) % 1000));
-  };
-  let guess = target - offsetAt(target);
-  guess = target - offsetAt(guess);
+  let guess = target - offsetAt(target, timeZone);
+  guess = target - offsetAt(guess, timeZone);
   // A zone that skips midnight (DST at 00:00) starts the day at the first existing minute.
   if (toLocalDate(guess, timeZone) !== date) guess += 3_600_000;
   return new Date(guess);
+}
+
+/**
+ * The UTC instant of a local date and time ("HH:mm") in the zone. A time the zone skips (DST gap) lands
+ * an hour later; a time it repeats takes the first of the two.
+ */
+export function localTimeToInstant(date: string, time: string, timeZone: string): Date {
+  const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(time);
+  if (!match) throw new RangeError(`Not a time of day: ${time}`);
+  const target = dateToUtcMs(date) + (Number(match[1]) * 60 + Number(match[2])) * 60_000;
+  let guess = target - offsetAt(target, timeZone);
+  guess = target - offsetAt(guess, timeZone);
+  return new Date(guess);
+}
+
+/** Local wall-clock time of an instant, "HH:mm". */
+export function toLocalTime(instant: Date | string | number, timeZone: string): string {
+  const w = wallClock(toInstant(instant), timeZone);
+  return `${pad(w.hour)}:${pad(w.minute)}`;
 }
 
 /** Local wall-clock time of an instant, "YYYY-MM-DD HH:mm" (for thread lines and exports). */

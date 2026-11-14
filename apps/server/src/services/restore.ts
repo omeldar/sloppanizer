@@ -67,11 +67,13 @@ const SCRATCH_ACCOUNT = 1;
 /** Tables of each export format. Formats 1 to 3 come from the single-user organizer, 4 from Sloppanizer. */
 const FORMAT_TABLES: Record<number, readonly string[]> = {
   1: ["projects", "labels", "people", "todos", "todo_labels", "todo_people", "events", "settings"],
-  2: EXPORT_TABLES.filter((t) => t !== "todo_links"),
+  2: EXPORT_TABLES.filter((t) => !["todo_links", "todo_urls", "time_blocks"].includes(t)),
   // Format 3 adds todo_links (and manifest.sequences).
-  3: EXPORT_TABLES,
+  3: EXPORT_TABLES.filter((t) => t !== "todo_urls" && t !== "time_blocks"),
   // Format 4: one account, sequences of every id table, the account in the manifest.
-  4: EXPORT_TABLES,
+  4: EXPORT_TABLES.filter((t) => t !== "todo_urls" && t !== "time_blocks"),
+  // Format 5 adds web links of todos and the planner's time blocks.
+  5: EXPORT_TABLES,
 };
 /** The app that writes each format. */
 const FORMAT_APP: Record<number, "organizer" | "sloppanizer"> = {
@@ -79,6 +81,7 @@ const FORMAT_APP: Record<number, "organizer" | "sloppanizer"> = {
   2: "organizer",
   3: "organizer",
   4: "sloppanizer",
+  5: "sloppanizer",
 };
 
 /** What a restore needs from the server, besides the account's context. */

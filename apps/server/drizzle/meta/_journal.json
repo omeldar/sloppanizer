@@ -15,6 +15,13 @@
       "when": 1794653156741,
       "tag": "0001_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794654380284,
+      "tag": "0002_planner_links",
+      "breakpoints": true
     }
   ]
 }

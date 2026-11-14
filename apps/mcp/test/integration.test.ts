@@ -181,6 +181,12 @@ describe("MCP server against the real API", () => {
       [
         "add_comment",
         "add_subtasks",
+        "add_web_link",
+        "remove_web_link",
+        "list_plan",
+        "plan_time",
+        "move_block",
+        "delete_block",
         "bulk_update",
         "check_item",
         "link_todos",
@@ -713,5 +719,32 @@ describe("step 3 tools against the real API", () => {
     const contacts = await ok("people_stats", { role: "contact", team: "Network team" });
     expect(contacts).toMatch(/^People as contacts, todos: /);
     expect(contacts).toContain("Max Muster | Network team |");
+  });
+
+  it("keeps web links on a todo and plans time for it in local time", async () => {
+    const created = await ok("create_todo", {
+      title: "Review the rack PR",
+      links: [{ url: "https://github.com/example/rack/pull/7", label: "PR 7" }],
+    });
+    const id = idOf(created);
+    await ok("add_web_link", { todo: id, url: "wiki.example.com/rack" });
+    const detail = await ok("get_todo", { id });
+    expect(detail).toContain("PR 7 <https://github.com/example/rack/pull/7>");
+    expect(detail).toContain("<https://wiki.example.com/rack>");
+    const removed = await ok("remove_web_link", { todo: id, link: "https://wiki.example.com/rack" });
+    // The first line names the removed URL; the list after it must not have it any more.
+    expect(removed.split("\n").slice(1).join("\n")).not.toContain("wiki.example.com");
+
+    const planned = await ok("plan_time", { todo: id, date: "2026-11-20", start: "09:00", minutes: 90 });
+    expect(planned).toMatch(/block (\d+) \| 2026-11-20 09:00-10:30 \| #\d+ Review the rack PR/);
+    const block = Number(/block (\d+)/.exec(planned)?.[1]);
+    const plan = await ok("list_plan", { from: "2026-11-20", to: "2026-11-20" });
+    expect(plan).toContain(`block ${block} | 2026-11-20 09:00-10:30`);
+    const moved = await ok("move_block", { block, date: "2026-11-21", start: "14:00" });
+    expect(moved).toContain("2026-11-21 14:00-15:30");
+    await ok("plan_time", { title: "Gym", date: "2026-11-21", start: "18:00", end: "19:00" });
+    expect(await ok("list_plan", { from: "2026-11-21", to: "2026-11-21" })).toMatch(/Gym/);
+    expect(await ok("delete_block", { block })).toBe(`Deleted block ${block}.`);
+    expect(await ok("list_plan", { from: "2026-11-20", to: "2026-11-20" })).toContain("Nothing planned.");
   });
 });

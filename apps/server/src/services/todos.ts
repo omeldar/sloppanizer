@@ -27,6 +27,7 @@ import {
   type UpdateTodo,
 } from "@organizer/shared";
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
+import { insertUrls, urlsByTodo } from "./urls.ts";
 import { comments, events, labels, people, todoLabels, todoLinks, todoPeople, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, inTx, now, type Scoped } from "./context.ts";
@@ -90,6 +91,7 @@ export function hydrate(sc: Scoped, rows: readonly TodoRow[]): Todo[] {
     rows.map((r) => r.projectId),
   );
   const relations = todoRelations(sc, rows);
+  const urls = urlsByTodo(sc, ids);
   return rows.map((row) => ({
     id: row.id,
     projectId: row.projectId,
@@ -116,6 +118,7 @@ export function hydrate(sc: Scoped, rows: readonly TodoRow[]): Todo[] {
       checklist: countChecklist(row.descriptionMd),
     },
     links: relations.links.get(row.id) ?? { blocks: [], blockedBy: [], relatesTo: [] },
+    urls: urls.get(row.id) ?? [],
     recurrence: parseRecurrence(row.recurrence),
     previousOccurrenceId: row.recurrencePrevId,
     nextOccurrence: relations.next.get(row.id) ?? null,
@@ -243,6 +246,7 @@ export function insertTodo(
       .values(linked.map(({ p, role }) => ({ accountId, todoId: id, personId: p.id, role, createdAt: at })))
       .run();
   }
+  insertUrls(sc, at, id, input.urls ?? []);
   indexTodo(sc, row.id);
   const todo = hydrate(sc, [row])[0] as Todo;
   recordEvents(sc, actor, at, [
@@ -319,7 +323,7 @@ function deleteTodoRow(sc: Scoped, id: number): void {
   removeTodoFromIndex(sc, id);
 }
 
-function touchTodos(sc: Scoped, at: string, ids: readonly number[]): void {
+export function touchTodos(sc: Scoped, at: string, ids: readonly number[]): void {
   if (ids.length > 0)
     sc.db
       .update(todos)
@@ -389,6 +393,7 @@ function createNextOccurrence(sc: Scoped, at: string, actor: string, id: number,
       labels: todo.labels.map((l) => l.name),
       requestedBy: todo.requestedBy.map((p) => ({ personId: p.id })),
       contacts: todo.contacts.map((p) => ({ personId: p.id })),
+      urls: todo.urls.map((u) => ({ url: u.url, label: u.label })),
     },
     { recurrence: JSON.stringify(todo.recurrence), recurrencePrevId: todo.id },
   );

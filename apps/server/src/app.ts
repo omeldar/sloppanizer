@@ -26,6 +26,7 @@ import { mcpRoutes } from "./routes/mcp.ts";
 import { metaRoutes } from "./routes/meta.ts";
 import { noteRoutes } from "./routes/notes.ts";
 import { oauthRoutes } from "./routes/oauth.ts";
+import { plannerRoutes } from "./routes/planner.ts";
 import { peopleStatsRoutes } from "./routes/people-stats.ts";
 import { peopleRoutes } from "./routes/people.ts";
 import { personTagRoutes } from "./routes/person-tags.ts";
@@ -135,6 +136,7 @@ export async function buildApp(options: BuildOptions) {
   personTagRoutes(app, deps);
   todoRoutes(app, deps);
   todoRelationRoutes(app, deps);
+  plannerRoutes(app, deps);
   commentRoutes(app, deps);
   noteRoutes(app, deps);
   attachmentRoutes(app, deps);
