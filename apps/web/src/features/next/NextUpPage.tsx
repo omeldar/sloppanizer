@@ -6,6 +6,7 @@ import { EmptyState, ErrorState, Loading, PageHeader } from "../../components/ui
 import { useLabels, useNext, useProjects } from "../../lib/queries.ts";
 import styles from "../lists/Lists.module.css";
 import { hint } from "../../lib/device.ts";
+import { TodayPlan } from "../planner/TodayPlan.tsx";
 
 const route = getRouteApi("/");
 
@@ -84,6 +85,7 @@ export function NextUpPage() {
           </div>
         }
       />
+      <TodayPlan />
       {!data && !next.isError && <Loading />}
       {next.isError && <ErrorState error={next.error} onRetry={() => void next.refetch()} />}
       {data &&

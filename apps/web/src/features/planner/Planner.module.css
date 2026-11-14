@@ -492,3 +492,76 @@
   font-family: var(--font-mono);
   color: var(--text-2);
 }
+
+/* Today's plan above Next up */
+.today {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+  overflow: hidden;
+}
+
+.todayHead {
+  flex-shrink: 0;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.todayList {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: none;
+}
+
+.todayItem {
+  flex-shrink: 0;
+}
+
+.todayLink {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 280px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-round);
+  background: var(--strip);
+  color: var(--text);
+  font-size: var(--fs-small);
+  text-decoration: none;
+}
+
+.todayItem[data-now] .todayLink {
+  border-color: var(--amber-line);
+  background: var(--amber-tint);
+}
+
+.todayTime {
+  flex-shrink: 0;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.todayItem[data-now] .todayTime {
+  color: var(--amber-text);
+  font-weight: 700;
+}
+
+.todayTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
