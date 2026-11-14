@@ -67,3 +67,20 @@ p {
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
 }
+
+/*
+ * Touch screens: 16px text in fields (smaller makes iOS Safari zoom the page on focus) and fingertip
+ * sized controls.
+ */
+@media (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"]),
+  select,
+  textarea {
+    min-height: 40px;
+    font-size: 16px !important;
+  }
+  /* The standard buttons (components/ui.tsx); calendar blocks and chips keep their own size. */
+  button[data-variant] {
+    min-height: 38px;
+  }
+}
