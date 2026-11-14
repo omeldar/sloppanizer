@@ -1,7 +1,8 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { type CSSProperties, type ReactNode, useState } from "react";
+import { type CSSProperties, useState } from "react";
 import { Kbd } from "../components/ui.tsx";
 import { BrandMark } from "./BrandMark.tsx";
+import { Icon, type IconName } from "./icons.tsx";
 import { HelpOverlay } from "../features/help/HelpOverlay.tsx";
 import { Palette } from "../features/palette/Palette.tsx";
 import { NewNoteDialog } from "../features/notes/NewNoteDialog.tsx";
@@ -145,12 +146,12 @@ function Sidebar({ open }: { open: boolean }) {
         <span>Sloppanizer</span>
       </Link>
       <ul className={styles.nav}>
-        <NavItem to="/" label="Next up" keys="g n" exact />
-        <NavItem to="/inbox" label="Inbox" count={stats.data?.inbox} keys="g i" />
-        <NavItem to="/board" label="Board" keys="g b" />
-        <NavItem to="/planner" label="Planner" keys="g t" />
-        <NavItem to="/week" label="Week" keys="g w" />
-        <NavItem to="/notes" label="Notes" keys="g o" />
+        <NavItem to="/" icon="next" label="Next up" keys="g n" exact />
+        <NavItem to="/inbox" icon="inbox" label="Inbox" count={stats.data?.inbox} keys="g i" />
+        <NavItem to="/board" icon="board" label="Board" keys="g b" />
+        <NavItem to="/planner" icon="planner" label="Planner" keys="g t" />
+        <NavItem to="/week" icon="week" label="Week" keys="g w" />
+        <NavItem to="/notes" icon="notes" label="Notes" keys="g o" />
       </ul>
       <div className={styles.sectionHead}>
         <span>Projects</span>
@@ -186,10 +187,12 @@ function Sidebar({ open }: { open: boolean }) {
         )}
       </ul>
       <ul className={[styles.nav, styles.navBottom].join(" ")}>
-        <NavItem to="/labels" label="Labels" keys="g l" />
-        <NavItem to="/people" label="People" keys="g p" />
-        <NavItem to="/settings" label="Settings" keys="g s" />
-        {isAdmin && <NavItem to="/admin" label="Admin" count={signups.data?.length} keys="g a" />}
+        <NavItem to="/labels" icon="labels" label="Labels" keys="g l" />
+        <NavItem to="/people" icon="people" label="People" keys="g p" />
+        <NavItem to="/settings" icon="settings" label="Settings" keys="g s" />
+        {isAdmin && (
+          <NavItem to="/admin" icon="admin" label="Admin" count={signups.data?.length} keys="g a" />
+        )}
       </ul>
       <AccountSwitcher />
       <NewProjectDialog open={newProject} onOpenChange={setNewProject} />
@@ -199,12 +202,14 @@ function Sidebar({ open }: { open: boolean }) {
 
 function NavItem({
   to,
+  icon,
   label,
   count,
   keys,
   exact,
 }: {
   to: string;
+  icon: IconName;
   label: string;
   count?: number;
   keys: string;
@@ -218,6 +223,9 @@ function NavItem({
         activeOptions={{ exact: exact ?? false }}
         activeProps={{ "data-active": true } as Record<string, unknown>}
       >
+        <span className={styles.navIcon}>
+          <Icon name={icon} />
+        </span>
         <span className={styles.navLabel}>{label}</span>
         {count !== undefined && count > 0 && <span className={styles.count}>{count}</span>}
         <span className={styles.navKeys}>
@@ -325,13 +333,8 @@ function TabBar({ onMore }: { onMore: () => void }) {
   const inbox = stats.data?.inbox ?? 0;
   return (
     <nav className={styles.tabbar} aria-label="Main places">
-      <TabLink to="/" label="Next up" exact icon={<path d="M4 10l4 4 8-9" />} />
-      <TabLink
-        to="/inbox"
-        label="Inbox"
-        badge={inbox > 0 ? inbox : undefined}
-        icon={<path d="M3 11h4l1.5 2.5h3L13 11h4M3 11l2-7h10l2 7v5H3z" />}
-      />
+      <TabLink to="/" label="Next up" exact icon="next" />
+      <TabLink to="/inbox" label="Inbox" badge={inbox > 0 ? inbox : undefined} icon="inbox" />
       <button
         type="button"
         className={styles.tabAdd}
@@ -342,36 +345,12 @@ function TabBar({ onMore }: { onMore: () => void }) {
           <path d="M11 4v14M4 11h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
         </svg>
       </button>
-      <TabLink
-        to="/planner"
-        label="Planner"
-        icon={<path d="M3 5h14v12H3zM3 9h14M7 3v4M13 3v4M7 12.5h3v2.5H7z" />}
-      />
+      <TabLink to="/planner" label="Planner" icon="planner" />
       <button type="button" className={styles.tab} onClick={onMore}>
-        <TabIcon>
-          <path d="M4 6h12M4 10h12M4 14h12" />
-        </TabIcon>
+        <Icon name="more" size={22} />
         <span>More</span>
       </button>
     </nav>
-  );
-}
-
-function TabIcon({ children }: { children: ReactNode }) {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {children}
-    </svg>
   );
 }
 
@@ -384,7 +363,7 @@ function TabLink({
 }: {
   to: string;
   label: string;
-  icon: ReactNode;
+  icon: IconName;
   badge?: number | undefined;
   exact?: boolean;
 }) {
@@ -395,7 +374,7 @@ function TabLink({
       activeOptions={{ exact: exact ?? false }}
       activeProps={{ "data-active": true } as Record<string, unknown>}
     >
-      <TabIcon>{icon}</TabIcon>
+      <Icon name={icon} size={22} />
       <span>{label}</span>
       {badge !== undefined && <span className={styles.tabBadge}>{badge}</span>}
     </Link>

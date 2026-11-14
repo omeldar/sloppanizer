@@ -88,6 +88,18 @@
   box-shadow: var(--shadow-1);
 }
 
+.navIcon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+
+.navLink:hover .navIcon,
+.navLink[data-active] .navIcon {
+  color: var(--amber-text);
+}
+
 .navLabel {
   flex: 1;
   min-width: 0;
@@ -151,9 +163,11 @@
 
 .swatch {
   flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 1px;
+  width: 10px;
+  height: 10px;
+  /* Centered in the 18px icon column of the places above. */
+  margin: 0 4px;
+  border-radius: 3px;
   background: var(--swatch);
 }
 
