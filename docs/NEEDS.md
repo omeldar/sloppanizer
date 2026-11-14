@@ -8,7 +8,8 @@ Things Claude could not decide or do alone. Work continues on other things meanw
   3. Planner (time blocks), web links on todos, richer new todo (notes, links, plan day and time slot).
   4. Calendar feed (Settings): the planner in Google/Apple Calendar through a secret link.
   The release runs three database migrations (OAuth, planner, calendar feed); the server copies the database
-  before it migrates.
+  before it migrates. Checked 2026-11-14 on the VPS: the `dev` image started on a copy of the production data,
+  applied all migrations, kept the todos and answered health 200 (copy deleted afterwards).
 - After the next release: in claude.ai, Settings, Connectors, add a custom connector with
   `https://organizerapi.omeldar.cloud/api/v1/mcp` and sign in (works on the phone app too). Claude Code:
   `claude mcp add --transport http sloppanizer https://organizerapi.omeldar.cloud/api/v1/mcp`, then `/mcp` to sign in.
