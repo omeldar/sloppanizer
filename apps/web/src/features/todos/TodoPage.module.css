@@ -282,3 +282,46 @@
     display: none;
   }
 }
+
+.detailsToggle {
+  display: none;
+}
+
+/* Phones: the details fold into one line (status, project, due) above the text; Mark done stays. */
+@media (max-width: 640px) {
+  .detailsToggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px 14px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .detailsSummary {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .detailsMore {
+    color: var(--amber-text);
+    font-size: var(--fs-small);
+    font-weight: 600;
+  }
+  .side:not([data-open]) .fields,
+  .side:not([data-open]) .meta {
+    display: none;
+  }
+  /* The top bar names the todo's #id. */
+  .head > .id {
+    display: none;
+  }
+}
