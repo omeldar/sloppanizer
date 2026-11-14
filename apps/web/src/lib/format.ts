@@ -28,6 +28,29 @@ export function dueState(dueOn: string, now: Date = new Date()): DueState {
   return "later";
 }
 
+const SHORT_DAY = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const SHORT_DAY_YEAR = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+const WEEKDAY = new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" });
+
+/**
+ * A calendar date for lists: "Today", "Tomorrow", "Yesterday", the weekday within the next six days,
+ * else "13 Nov" (with the year when it is not this year).
+ */
+export function shortDate(date: string, now: Date = new Date()): string {
+  const days = daysBetween(today(now), date);
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days === -1) return "Yesterday";
+  const at = new Date(`${date}T12:00:00Z`);
+  if (days > 1 && days < 7) return WEEKDAY.format(at);
+  return date.slice(0, 4) === today(now).slice(0, 4) ? SHORT_DAY.format(at) : SHORT_DAY_YEAR.format(at);
+}
+
 /** "overdue 2d", "due today", "due tomorrow", "due in 5d". */
 export function dueText(dueOn: string, now: Date = new Date()): string {
   const days = daysBetween(today(now), dueOn);

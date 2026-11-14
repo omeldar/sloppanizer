@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, tookText } from "./format.ts";
+import { formatBytes, shortDate, tookText } from "./format.ts";
 
 describe("formatBytes", () => {
   it("keeps bytes whole and uses one decimal from KB on", () => {
@@ -17,5 +17,20 @@ describe("tookText", () => {
     expect(tookText({ status: "done", durationMs: 52 * 3_600_000 })).toBe("took 2d 4h");
     expect(tookText({ status: "done", durationMs: null })).toBeUndefined();
     expect(tookText({ status: "open", durationMs: 3_600_000 })).toBeUndefined();
+  });
+});
+
+describe("shortDate", () => {
+  const now = new Date("2026-11-14T10:00:00Z");
+  it("names near days and shortens the rest", () => {
+    expect(["2026-11-14", "2026-11-15", "2026-11-13"].map((d) => shortDate(d, now))).toEqual([
+      "Today",
+      "Tomorrow",
+      "Yesterday",
+    ]);
+    expect(shortDate("2026-11-18", now)).toBe("Wed");
+    expect(shortDate("2026-11-30", now)).toBe("30 Nov");
+    expect(shortDate("2026-11-01", now)).toBe("1 Nov");
+    expect(shortDate("2027-01-05", now)).toBe("5 Jan 2027");
   });
 });
