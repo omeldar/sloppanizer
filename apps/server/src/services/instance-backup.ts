@@ -1,4 +1,10 @@
-import { addDays, type InstanceBackup, SCHEMA_BASE, startOfLocalDay, toLocalDate } from "@organizer/shared";
+import {
+  addDays,
+  type InstanceBackup,
+  localTimeToInstant,
+  SCHEMA_BASE,
+  toLocalDate,
+} from "@organizer/shared";
 import Database from "better-sqlite3";
 import { count } from "drizzle-orm";
 import {
@@ -163,11 +169,11 @@ export async function createInstanceBackup(options: BackupOptions): Promise<Inst
 /** The next daily run after `nowMs` ("HH:MM" in the zone), or null when the schedule is off. */
 export function nextBackupAt(nowMs: number, backupAt: string | null, timeZone: string): Date | null {
   if (backupAt === null) return null;
-  const [hours, minutes] = backupAt.split(":").map(Number) as [number, number];
   const today = toLocalDate(nowMs, timeZone);
   for (const date of [today, addDays(today, 1), addDays(today, 2)]) {
-    const at = startOfLocalDay(date, timeZone).getTime() + (hours * 60 + minutes) * 60_000;
-    if (at > nowMs) return new Date(at);
+    // The wall-clock time of that day, so DST days run at the same local time too.
+    const at = localTimeToInstant(date, backupAt, timeZone);
+    if (at.getTime() > nowMs) return at;
   }
   return null;
 }
