@@ -565,3 +565,53 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Dragging a todo onto the calendar */
+.dayTodo,
+.toPlanItem {
+  user-select: none;
+}
+
+.dayTodo {
+  /* Draggable on touch screens: the chip must not start a scroll. */
+  touch-action: none;
+}
+
+.dayTodo[data-dragging],
+.toPlanItem[data-dragging] {
+  opacity: 0.45;
+}
+
+.dropPreview {
+  position: absolute;
+  z-index: 5;
+  left: 2px;
+  right: 2px;
+  overflow: hidden;
+  padding: 4px 8px;
+  border: 2px dashed var(--amber-line);
+  border-radius: 8px;
+  background: var(--amber-tint);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.ghost {
+  position: fixed;
+  z-index: 60;
+  max-width: 240px;
+  overflow: hidden;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--raised-2);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
