@@ -12,7 +12,14 @@ export interface WebHeaderOptions {
 }
 
 /** Paths of the app entry (app.html); everything else is the landing page, a static file or 404. */
-export const APP_PATH_PREFIXES = ["/u/", "/login", "/signup", "/setup", "/reset"] as const;
+export const APP_PATH_PREFIXES = [
+  "/u/",
+  "/login",
+  "/signup",
+  "/setup",
+  "/reset",
+  "/oauth/authorize",
+] as const;
 
 export function isAppPath(pathname: string): boolean {
   if (pathname === "/u") return true;

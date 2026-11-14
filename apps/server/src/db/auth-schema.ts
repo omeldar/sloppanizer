@@ -166,3 +166,45 @@ export const instanceSettings = sqliteTable("instance_settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
 });
+
+/**
+ * OAuth clients (dynamic client registration, RFC 7591): MCP clients like claude.ai register themselves.
+ * Public clients only (PKCE, no secret).
+ */
+export const oauthClients = sqliteTable("oauth_clients", {
+  /** The client_id: 24 random bytes base64url. */
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  /** JSON array of the exact redirect URIs. */
+  redirectUris: text("redirect_uris").notNull(),
+  createdAt: text("created_at").notNull(),
+  lastUsedAt: text("last_used_at"),
+});
+
+/**
+ * One account's consent to one client. Its access token is an API token of the account (token_id, so
+ * it shows on the tokens page and revoking it ends the grant); the refresh token is stored as sha256.
+ */
+export const oauthGrants = sqliteTable(
+  "oauth_grants",
+  {
+    id: integer("id").primaryKey(),
+    accountId: integer("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClients.id, { onDelete: "cascade" }),
+    tokenId: integer("token_id").notNull(),
+    refreshHash: text("refresh_hash").notNull().unique(),
+    scope: text("scope", { enum: ["read", "write"] }).notNull(),
+    createdAt: text("created_at").notNull(),
+    refreshedAt: text("refreshed_at"),
+    expiresAt: text("expires_at").notNull(),
+    revokedAt: text("revoked_at"),
+  },
+  (t) => [
+    index("oauth_grants_account_idx").on(t.accountId, t.clientId),
+    check("oauth_grants_scope_check", sql`${t.scope} IN ('read','write')`),
+  ],
+);

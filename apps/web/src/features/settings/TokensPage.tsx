@@ -14,6 +14,7 @@ import {
 } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { errorMessage } from "../../lib/api.ts";
+import { apiUrl } from "../../lib/config.ts";
 import { absoluteTime, relativeTime } from "../../lib/format.ts";
 import { createToken, useRevokeToken, useTokens } from "../../lib/queries.ts";
 import { useNow } from "../../lib/useNow.ts";
@@ -112,8 +113,8 @@ function TokensView() {
         }
       />
       <p className={styles.intro}>
-        Programs like the MCP server sign in with a token. Tokens can never open this page, restore data or
-        change settings.
+        Programs and MCP clients like Claude sign in with a token. Tokens can never open this page, restore
+        data or change settings.
       </p>
 
       {created && <CreatedPanel created={created} onClose={() => setCreated(null)} />}
@@ -165,25 +166,35 @@ function TokensView() {
 
 function CreatedPanel({ created, onClose }: { created: Created; onClose: () => void }) {
   const toast = useToast();
-  const copy = () =>
+  const copy = (text: string, what: string) =>
     void navigator.clipboard
-      .writeText(created.raw)
-      .then(() => toast.show({ message: `Copied the token ${created.name}` }))
+      .writeText(text)
+      .then(() => toast.show({ message: `Copied ${what}` }))
       .catch(() =>
-        toast.show({ tone: "error", message: "Could not copy. Select the token and copy it by hand." }),
+        toast.show({ tone: "error", message: "Could not copy. Select the text and copy it by hand." }),
       );
+  const mcpUrl = new URL(apiUrl("/mcp"), window.location.origin).href;
+  const claudeCommand = `claude mcp add --transport http sloppanizer ${mcpUrl} --header "Authorization: Bearer ${created.raw}"`;
   return (
     <section className={styles.created} aria-label={`New token ${created.name}`}>
       <h2 className={styles.createdTitle}>New token {created.name}</h2>
       <p className={styles.createdNote}>Copy it now. It is not shown again.</p>
       <div className={styles.rawRow}>
         <code className={styles.raw}>{created.raw}</code>
-        <Button variant="primary" onClick={copy}>
+        <Button variant="primary" onClick={() => copy(created.raw, `the token ${created.name}`)}>
           Copy
         </Button>
         <Button variant="ghost" onClick={onClose}>
           Done
         </Button>
+      </div>
+      <p className={styles.createdNote}>
+        MCP clients (Claude and others) connect to {mcpUrl} with the header Authorization: Bearer and this
+        token. In Claude Code:
+      </p>
+      <div className={styles.rawRow}>
+        <code className={styles.raw}>{claudeCommand}</code>
+        <Button onClick={() => copy(claudeCommand, "the Claude Code command")}>Copy</Button>
       </div>
     </section>
   );

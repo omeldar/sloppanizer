@@ -4,6 +4,9 @@
   "private": true,
   "description": "MCP stdio server for MCP clients; talks to the organizer REST API.",
   "type": "module",
+  "exports": {
+    "./server": "./src/server.ts"
+  },
   "scripts": {
     "dev": "node src/index.ts",
     "build": "node scripts/build.ts",

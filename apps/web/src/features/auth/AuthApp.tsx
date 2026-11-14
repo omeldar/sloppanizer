@@ -5,6 +5,7 @@ import type { AuthPage } from "../../lib/entry.ts";
 import styles from "./Auth.module.css";
 import { LoginPage, type Go } from "./LoginPage.tsx";
 import { AuthShell } from "./parts.tsx";
+import { ConsentPage } from "./ConsentPage.tsx";
 import { ResetPage } from "./ResetPage.tsx";
 import { SetupPage } from "./SetupPage.tsx";
 import { SignupPage } from "./SignupPage.tsx";
@@ -14,6 +15,7 @@ const TITLES: Record<AuthPage, string> = {
   signup: "Sign up",
   setup: "Set up",
   reset: "Reset your login",
+  oauth: "Connect an app",
 };
 
 /** The pages without an account: sign in, sign up, first setup and login reset. */
@@ -39,6 +41,7 @@ export function AuthApp({ page, search, go }: { page: AuthPage; search: URLSearc
   }, [needsConfig]);
 
   if (page === "login") return <LoginPage search={search} go={go} />;
+  if (page === "oauth") return <ConsentPage search={search} go={go} />;
   if (page === "reset") return <ResetPage go={go} />;
   if (page === "signup") return <SignupPage config={config} />;
   // Setup only while the instance has no admin; afterwards the page does not exist.

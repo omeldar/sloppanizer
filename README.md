@@ -92,6 +92,30 @@ Settings (environment of the service, all optional): `ORGANIZER_PORT` (4711), `O
 
 ## MCP server
 
+### Hosted (every account)
+
+The API serves MCP over Streamable HTTP at `/api/v1/mcp` (here `https://organizerapi.omeldar.cloud/api/v1/mcp`).
+Create a token under Settings, API tokens, and send it as `Authorization: Bearer spz_...`. The panel of a new token
+shows the URL and the Claude Code command:
+
+```sh
+claude mcp add --transport http sloppanizer https://organizerapi.omeldar.cloud/api/v1/mcp   --header "Authorization: Bearer spz_..."
+```
+
+The tools are the ones listed below, on the token's own account, in the account's time zone. They call the REST
+routes with that token, so a read token can only read. Stateless: POST only, no session, no event stream.
+
+Clients that sign in with OAuth (claude.ai custom connectors on web, desktop and phone, and most MCP clients)
+need only the URL: add `https://organizerapi.omeldar.cloud/api/v1/mcp` as a connector and sign in. The client
+registers itself (`/oauth/register`, RFC 7591), the browser shows the consent page of the web app
+(`/oauth/authorize`: pick the account and read or read and change; needs a sign-in within the last 10 minutes),
+and the client gets a refresh token (90 days, rotated on use) and an access token (30 days). The access token is
+an API token named after the client: it shows under Settings, API tokens, and revoking it there disconnects the
+client. Connecting the same client again replaces its old grant. Discovery: `/.well-known/oauth-protected-resource`
+and `/.well-known/oauth-authorization-server`.
+
+### Local stdio
+
 A stdio MCP server for MCP clients, installed at `~/.local/lib/organizer/current/mcp/index.js`. It talks to the
 running organizer through the REST API with the token from a file, so the token never sits in the client config.
 
@@ -126,7 +150,7 @@ Client config (most clients use this shape; use the absolute node path that `ins
       "command": "/home/you/.nvm/versions/node/v24.21.0/bin/node",
       "args": ["/home/you/.local/lib/organizer/current/mcp/index.js"],
       "env": {
-        "ORGANIZER_URL": "http://127.0.0.1:4711",
+        "SLOPPANIZER_URL": "http://127.0.0.1:4711",
         "ORGANIZER_TOKEN_FILE": "/home/you/.local/share/organizer/mcp-token"
       }
     }
