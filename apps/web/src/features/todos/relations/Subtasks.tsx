@@ -20,6 +20,7 @@ import { childrenParams, useSavePositions, useTodos } from "../../../lib/queries
 import { planMove } from "../../../lib/positions.ts";
 import { useTodoActions } from "../useTodoActions.ts";
 import styles from "./Relations.module.css";
+import { SuggestSteps } from "./SuggestSteps.tsx";
 import { SubtaskInput } from "./SubtaskInput.tsx";
 
 /** Where a child lands when it moves one step (alt+j / alt+k); null at the ends. */
@@ -139,6 +140,7 @@ export function Subtasks({ todo, inputRef }: { todo: Todo; inputRef?: Ref<HTMLIn
         </DndContext>
       )}
       <SubtaskInput todoId={todo.id} inputRef={inputRef} />
+      <SuggestSteps todo={todo} existing={list.map((c) => c.title)} />
     </section>
   );
 }

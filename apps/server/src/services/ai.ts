@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import Anthropic, { APIError, AuthenticationError, RateLimitError } from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import {
   type AiPrompt,
@@ -195,19 +195,19 @@ export const runClaude: ClaudeRunner = async ({ apiKey, model, prompt, schema })
     return response.parsed_output as never;
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    if (error instanceof Anthropic.AuthenticationError) {
+    if (error instanceof AuthenticationError) {
       throw new ApiError(
         "validation_failed",
         "The Claude API key was not accepted. Check it under Settings, AI assistant.",
       );
     }
-    if (error instanceof Anthropic.RateLimitError) {
+    if (error instanceof RateLimitError) {
       throw new ApiError(
         "too_many_requests",
         "Claude is busy or the account's limit is reached. Try again in a minute.",
       );
     }
-    if (error instanceof Anthropic.APIError) {
+    if (error instanceof APIError) {
       throw new ApiError(
         "conflict",
         `Claude answered with an error (${error.status ?? "no status"}). Try again.`,

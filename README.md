@@ -21,6 +21,10 @@ they sat untouched, and tells you why each one is where it is.
 - Web links on todos (tickets, docs, pull requests) with a label, and a new todo that takes notes, links, a
   planned day and a time slot at once.
 - Works on phones: a drawer for the sidebar, a tab bar with a new todo button, bottom sheets for dialogs.
+- AI assistant (optional, Settings, AI assistant): Plan my day proposes time blocks from Next up and the free
+  time of the working day; Suggest steps proposes subtasks. Nothing is saved until you accept it. Runs on Claude
+  (your Anthropic API key, stored encrypted on the server) or on a local Ollama in the browser on that computer
+  (set `OLLAMA_ORIGINS` to the web app's origin for Ollama). Off, Sloppanizer is a plain todo app.
 - Search over todos, notes, comments and people (ignores case and accents), in the palette and on its own page.
 - People and contacts: a small directory of colleagues with team, email, the topics they help with and your own
   tags, so "whom do I ask about firewall rules?" has an answer. People statistics show who asks for how much
