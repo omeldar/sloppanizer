@@ -676,3 +676,18 @@
     display: none;
   }
 }
+
+/* Phones: each person as a card, name over team and topics; the counts are on the person page. */
+@media (max-width: 640px) {
+  .bay .header {
+    display: none;
+  }
+  .bay .row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 10px 12px 10px 15px;
+  }
+  .bay .row .num {
+    display: none;
+  }
+}

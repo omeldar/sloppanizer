@@ -162,6 +162,28 @@
   box-shadow: var(--shadow-1);
 }
 
+.block[data-dragging] {
+  z-index: 10 !important;
+  opacity: 0.9;
+  box-shadow: var(--shadow-2);
+  cursor: grabbing;
+}
+
+.resize {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 7px;
+  cursor: ns-resize;
+}
+
+@media (hover: none) {
+  .resize {
+    display: none;
+  }
+}
+
 .block:hover {
   background: color-mix(in srgb, var(--block) 28%, var(--raised-2));
 }

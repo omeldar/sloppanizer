@@ -6,6 +6,7 @@ import { errorMessage } from "../../../lib/api.ts";
 import { useRemoveLink } from "../../../lib/queries.ts";
 import type { LinkKindValue } from "./AddLinkDialog.tsx";
 import styles from "./Relations.module.css";
+import { hint } from "../../../lib/device.ts";
 
 const GROUPS: { kind: LinkKindValue; title: string; pick: (todo: Todo) => TodoRef[] }[] = [
   { kind: "blocks", title: "Blocks", pick: (t) => t.links.blocks },
@@ -53,7 +54,12 @@ export function Links({ todo, onAdd }: { todo: Todo; onAdd: () => void }) {
         </Button>
       </div>
       {groups.length === 0 && (
-        <p className={styles.none}>No links. Press b to say what this todo blocks or waits for.</p>
+        <p className={styles.none}>
+          {hint(
+            "No links. Press b to say what this todo blocks or waits for.",
+            "No links. Use Add link to say what this todo blocks or waits for.",
+          )}
+        </p>
       )}
       {groups.map((group) => (
         <div key={group.kind} className={styles.linkGroup}>

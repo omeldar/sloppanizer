@@ -11,6 +11,7 @@ import { useUrlText } from "../../lib/useUrlText.ts";
 import { stepCursor, useScrollIntoView } from "../../lib/listCursor.ts";
 import { NoteEditor } from "./NoteEditor.tsx";
 import styles from "./Notes.module.css";
+import { hint } from "../../lib/device.ts";
 
 const listRoute = getRouteApi("/notes");
 const noteRoute = getRouteApi("/notes/$id");
@@ -97,7 +98,7 @@ function NotesLayout({
   const filtered = Boolean(search.q || search.project);
 
   return (
-    <div className={styles.layout}>
+    <div className={styles.layout} data-open={noteId !== null || undefined}>
       <section className={styles.listPane} aria-label="Notes">
         <div className={styles.listHead}>
           <h1 className={styles.heading}>Notes</h1>
@@ -137,7 +138,7 @@ function NotesLayout({
           <EmptyState>
             {filtered
               ? "No note matches. Clear the filter or pick another project."
-              : "No notes yet. Press n to write one."}
+              : hint("No notes yet. Press n to write one.", "No notes yet. Use New note to write one.")}
           </EmptyState>
         )}
         {pinned.length > 0 && (
@@ -154,6 +155,9 @@ function NotesLayout({
         )}
       </section>
       <section className={styles.editorPane} aria-label="Note">
+        <Link to="/notes" search={search} className={styles.back}>
+          ‹ All notes
+        </Link>
         {noteId === null ? (
           <div className={styles.placeholder}>
             <p>
