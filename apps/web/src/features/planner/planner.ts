@@ -1,4 +1,11 @@
-import { addDays, localTimeToInstant, startOfLocalDay, type TimeBlock, toLocalTime } from "@organizer/shared";
+import {
+  addDays,
+  localTimeToInstant,
+  startOfLocalDay,
+  type TimeBlock,
+  toLocalDate,
+  toLocalTime,
+} from "@organizer/shared";
 
 /** The planner's visible hours: 7:00 to 22:00, widened to fit blocks outside. */
 export const DEFAULT_FIRST_HOUR = 7;
@@ -116,4 +123,30 @@ export const blockTitle = (block: TimeBlock): string => block.todo?.title ?? blo
 export function nextQuarter(now: Date, timeZone: string): string {
   const [h = 0, m = 0] = toLocalTime(now, timeZone).split(":").map(Number);
   return minutesToTime(Math.min(23 * 60 + 45, Math.ceil((h * 60 + m + 1) / SNAP_MINUTES) * SNAP_MINUTES));
+}
+
+/**
+ * Where a dragged block lands: "move" shifts it by minutes and days and keeps its length; "resize"
+ * moves only its end (never shorter than 15 minutes).
+ */
+export function movedSpan(
+  block: Pick<TimeBlock, "startAt" | "endAt">,
+  deltaMin: number,
+  dayOffset: number,
+  mode: "move" | "resize",
+  timeZone: string,
+): { startAt: string; endAt: string } {
+  const start = Date.parse(block.startAt);
+  const end = Date.parse(block.endAt);
+  if (mode === "resize") {
+    return {
+      startAt: block.startAt,
+      endAt: new Date(Math.max(start + SNAP_MINUTES * 60_000, end + deltaMin * 60_000)).toISOString(),
+    };
+  }
+  const day = addDays(toLocalDate(block.startAt, timeZone), dayOffset);
+  const startMin = timeToMinutes(toLocalTime(block.startAt, timeZone)) + deltaMin;
+  const clamped = Math.max(0, Math.min(24 * 60 - SNAP_MINUTES, startMin));
+  const startAt = localTimeToInstant(day, minutesToTime(clamped), timeZone);
+  return { startAt: startAt.toISOString(), endAt: new Date(startAt.getTime() + (end - start)).toISOString() };
 }

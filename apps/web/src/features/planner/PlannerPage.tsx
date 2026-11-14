@@ -1,14 +1,17 @@
 import { addDays, toLocalTime, weekDays } from "@organizer/shared";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { type CSSProperties, type MouseEvent, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type MouseEvent, type PointerEvent, useEffect, useMemo, useState } from "react";
 import { Button, PageHeader } from "../../components/ui.tsx";
 import { timeZone, today } from "../../lib/format.ts";
-import { useBlocks, useNext } from "../../lib/queries.ts";
+import { errorMessage } from "../../lib/api.ts";
+import { useBlocks, useNext, useUpdateBlock } from "../../lib/queries.ts";
+import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { BlockDialog, type BlockDraft, draftOf } from "./BlockDialog.tsx";
 import styles from "./Planner.module.css";
 import {
   blockTitle,
   minutesToTime,
+  movedSpan,
   nextQuarter,
   type PlacedBlock,
   placeBlocks,
@@ -57,6 +60,8 @@ export function PlannerPage() {
   const blocks = useBlocks(first, last);
   const next = useNext({ mode: "smart" });
   const [draft, setDraft] = useState<BlockDraft | null>(null);
+  const update = useUpdateBlock();
+  const toast = useToast();
 
   const go = (day: string) => void navigate({ to: "/planner", search: day === now.day ? {} : { day } });
 
@@ -150,9 +155,10 @@ export function PlannerPage() {
                 </span>
               ))}
             </div>
-            {days.map((day) => (
+            {days.map((day, dayIndex) => (
               <div
                 key={day}
+                data-day={day}
                 className={styles.day}
                 data-selected={day === selected || undefined}
                 data-past={day < now.day || undefined}
@@ -171,7 +177,20 @@ export function PlannerPage() {
                     key={`${placed.block.id}-${day}`}
                     placed={placed}
                     firstHour={hours.first}
+                    dayIndex={dayIndex}
+                    dayCount={days.length}
                     onOpen={() => setDraft(draftOf(placed.block))}
+                    onDrop={(deltaMin, dayOffset, mode) =>
+                      update.mutate(
+                        {
+                          id: placed.block.id,
+                          patch: movedSpan(placed.block, deltaMin, dayOffset, mode, timeZone),
+                        },
+                        {
+                          onError: (failure) => toast.show({ tone: "error", message: errorMessage(failure) }),
+                        },
+                      )
+                    }
                   />
                 ))}
               </div>
@@ -203,21 +222,83 @@ export function PlannerPage() {
   );
 }
 
+interface Drag {
+  mode: "move" | "resize";
+  x: number;
+  y: number;
+  /** Width of a day column, for moving across days. */
+  colWidth: number;
+  moved: boolean;
+  deltaMin: number;
+  dayOffset: number;
+}
+
+/**
+ * One block. With a mouse it can be dragged: the body moves it (also to another day), the bottom edge
+ * resizes it, both in 15 minute steps; a click without moving opens it. Touch screens tap to open.
+ */
 function BlockCard({
   placed,
   firstHour,
+  dayIndex,
+  dayCount,
   onOpen,
+  onDrop,
 }: {
   placed: PlacedBlock;
   firstHour: number;
+  dayIndex: number;
+  dayCount: number;
   onOpen: () => void;
+  onDrop: (deltaMin: number, dayOffset: number, mode: "move" | "resize") => void;
 }) {
   const { block } = placed;
-  const top = ((placed.startMin - firstHour * 60) / 60) * HOUR_PX;
-  const height = Math.max(22, ((placed.endMin - placed.startMin) / 60) * HOUR_PX - 2);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const baseTop = ((placed.startMin - firstHour * 60) / 60) * HOUR_PX;
+  const baseHeight = Math.max(22, ((placed.endMin - placed.startMin) / 60) * HOUR_PX - 2);
+  const deltaPx = drag ? (drag.deltaMin / 60) * HOUR_PX : 0;
+  const top = drag?.mode === "move" ? baseTop + deltaPx : baseTop;
+  const height = drag?.mode === "resize" ? Math.max(HOUR_PX / 4 - 2, baseHeight + deltaPx) : baseHeight;
+
+  const start = (event: PointerEvent<HTMLElement>, mode: Drag["mode"]) => {
+    if (event.pointerType !== "mouse" || event.button !== 0) return;
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const column = (event.currentTarget.closest("[data-day]") as HTMLElement | null)?.offsetWidth ?? 0;
+    setDrag({
+      mode,
+      x: event.clientX,
+      y: event.clientY,
+      colWidth: column,
+      moved: false,
+      deltaMin: 0,
+      dayOffset: 0,
+    });
+  };
+  const move = (event: PointerEvent<HTMLElement>) => {
+    if (!drag) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    const moved = drag.moved || Math.abs(dx) > 4 || Math.abs(dy) > 4;
+    const deltaMin = snap((dy / HOUR_PX) * 60);
+    const offset = drag.mode === "move" && drag.colWidth > 0 ? Math.round(dx / drag.colWidth) : 0;
+    const dayOffset = Math.max(-dayIndex, Math.min(dayCount - 1 - dayIndex, offset));
+    setDrag({ ...drag, moved, deltaMin, dayOffset });
+  };
+  const end = () => {
+    if (!drag) return;
+    setDrag(null);
+    if (!drag.moved) {
+      if (drag.mode === "move") onOpen();
+      return;
+    }
+    if (drag.deltaMin !== 0 || drag.dayOffset !== 0) onDrop(drag.deltaMin, drag.dayOffset, drag.mode);
+  };
+
   const style = {
     top,
     height,
+    transform: drag?.dayOffset ? `translateX(${drag.dayOffset * drag.colWidth}px)` : undefined,
     // Overlaps cascade like a calendar: each later lane is indented and drawn on top, so every block
     // keeps most of the column's width.
     left: `calc(${placed.lane * Math.min(28, 60 / placed.lanes)}% + 2px)`,
@@ -232,11 +313,32 @@ function BlockCard({
       style={style}
       data-done={block.todo?.status === "done" || undefined}
       data-short={height < 40 || undefined}
-      onClick={onOpen}
+      data-dragging={drag?.moved || undefined}
+      onPointerDown={(event) => start(event, "move")}
+      onPointerMove={move}
+      onPointerUp={end}
+      onPointerCancel={() => setDrag(null)}
+      // Keyboard and touch: a click opens the block (a mouse click is handled on pointer up).
+      onClick={(event) => {
+        if (event.detail === 0 || !matchesMouse(event)) onOpen();
+      }}
       title={`${blockTitle(block)}, ${spanText(block, timeZone)}`}
     >
       <span className={styles.blockTitle}>{blockTitle(block)}</span>
       <span className={styles.blockTime}>{spanText(block, timeZone)}</span>
+      {!placed.continuesAfter && (
+        <span
+          className={styles.resize}
+          aria-hidden="true"
+          onPointerDown={(event) => start(event, "resize")}
+          onPointerMove={move}
+          onPointerUp={end}
+        />
+      )}
     </button>
   );
 }
+
+/** Whether a click came from a mouse (pointer events already handled it). */
+const matchesMouse = (event: MouseEvent<HTMLElement>): boolean =>
+  (event.nativeEvent as globalThis.PointerEvent).pointerType === "mouse";

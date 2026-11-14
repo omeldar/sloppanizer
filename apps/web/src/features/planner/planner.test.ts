@@ -1,6 +1,14 @@
 import type { TimeBlock } from "@organizer/shared";
 import { describe, expect, it } from "vitest";
-import { blockSpan, minutesToTime, nextQuarter, placeBlocks, snap, visibleHours } from "./planner.ts";
+import {
+  blockSpan,
+  minutesToTime,
+  movedSpan,
+  nextQuarter,
+  placeBlocks,
+  snap,
+  visibleHours,
+} from "./planner.ts";
 
 const TZ = "Europe/Zurich";
 
@@ -72,5 +80,20 @@ describe("time helpers", () => {
   it("starts a new block at the next quarter hour", () => {
     expect(nextQuarter(new Date("2026-11-12T08:07:00.000Z"), TZ)).toBe("09:15");
     expect(nextQuarter(new Date("2026-11-12T08:15:00.000Z"), TZ)).toBe("09:30");
+  });
+});
+
+describe("movedSpan", () => {
+  const b = { startAt: "2026-11-12T08:00:00.000Z", endAt: "2026-11-12T09:30:00.000Z" };
+  it("moves by minutes and days and keeps the length", () => {
+    expect(movedSpan(b, 45, 0, "move", TZ)).toEqual({
+      startAt: "2026-11-12T08:45:00.000Z",
+      endAt: "2026-11-12T10:15:00.000Z",
+    });
+    expect(movedSpan(b, 0, 2, "move", TZ).startAt).toBe("2026-11-14T08:00:00.000Z");
+  });
+  it("resizes the end, never below 15 minutes", () => {
+    expect(movedSpan(b, 30, 0, "resize", TZ).endAt).toBe("2026-11-12T10:00:00.000Z");
+    expect(movedSpan(b, -120, 0, "resize", TZ).endAt).toBe("2026-11-12T08:15:00.000Z");
   });
 });
