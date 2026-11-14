@@ -746,5 +746,9 @@ describe("step 3 tools against the real API", () => {
     expect(await ok("list_plan", { from: "2026-11-21", to: "2026-11-21" })).toMatch(/Gym/);
     expect(await ok("delete_block", { block })).toBe(`Deleted block ${block}.`);
     expect(await ok("list_plan", { from: "2026-11-20", to: "2026-11-20" })).toContain("Nothing planned.");
+
+    // overview shows what is planned for today.
+    await ok("plan_time", { title: "Standup", date: today, start: "23:00", minutes: 15 });
+    expect(await ok("overview")).toMatch(/Planned today[^\n]*\n.*Standup/);
   });
 });

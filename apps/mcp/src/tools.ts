@@ -357,7 +357,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       description:
         "A snapshot for planning: counts (open, overdue, due today, planned today, inbox, done last 7 days), " +
         "open todos per project, the oldest open todos and the open todos without a priority label. " +
-        "Use it at the start of a planning or review session.",
+        "Use it at the start of a planning or review session. Includes today's planned time blocks.",
       inputSchema: {
         oldest: z.number().int().min(1).max(50).default(10).describe("How many oldest open todos to list."),
         format,
@@ -365,11 +365,14 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       annotations: READ,
     },
     async (args) => {
-      const [me, stats, projects, page] = await Promise.all([
+      const day = ctx().today;
+      const [me, stats, projects, page, plan] = await Promise.all([
         api.get<Me>("/me"),
         api.get<Stats>("/stats"),
         api.get<Project[]>("/projects"),
         api.get<TodoPage>("/todos", { sort: "created", order: "asc", limit: 500 }),
+        // Today's planner; an older server without it just leaves the section out.
+        api.get<TimeBlock[]>("/blocks", { from: day, to: day }).catch(() => null),
       ]);
       const active = projects.filter((p) => !p.archivedAt);
       const oldest = page.items.slice(0, args.oldest);
@@ -382,6 +385,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           oldest,
           withoutPriority,
           activeTotal: page.total,
+          plannedToday: plan,
         });
       }
       const c = ctx();
@@ -389,9 +393,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         `Account ${me.account.username}`,
         `Today ${c.today} (${c.timeZone})`,
         statsLine(stats, c),
-        "",
-        "Open per project:",
       ];
+      if (plan) lines.push("", "Planned today (list_plan shows more days):", blockLines(plan));
+      lines.push("", "Open per project:");
       lines.push(`- inbox: ${stats.inbox}`);
       for (const p of active) lines.push(`- ${p.slug} (${p.name}): ${p.openCount}`);
       lines.push("", `Oldest open todos:`, todoLines(oldest, c, "None."));
