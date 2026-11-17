@@ -64,6 +64,7 @@ function person(overrides: Partial<Person> = {}): Person {
   return {
     ...max,
     notesMd: "",
+    languages: ["de", "en"],
     topics: ["firewall rules", "VPN"],
     tags: [
       {
@@ -277,13 +278,14 @@ describe("statsLine", () => {
 describe("personLine", () => {
   it("answers whom to ask: team, topics, tags, counts, then the short note", () => {
     expect(personLine(person())).toBe(
-      "person 9 | Max Muster | Network team | topics: firewall rules, VPN | tags: fast reply | contact for 3 (1 open) | note: Basel",
+      "person 9 | Max Muster | Network team | languages: German, English | topics: firewall rules, VPN | tags: fast reply | contact for 3 (1 open) | note: Basel",
     );
     expect(
       personLine(
         person({
           team: "",
           note: "",
+          languages: [],
           topics: [],
           tags: [],
           counts: { requested: 4, requestedOpen: 1, requestedDone: 3, contact: 0, contactOpen: 0 },
@@ -306,11 +308,12 @@ describe("personDetail", () => {
       ctx,
     );
     const lines = text.split("\n");
-    expect(lines.slice(0, 8)).toEqual([
+    expect(lines.slice(0, 9)).toEqual([
       "person 9 | Max Muster",
       "note: Basel",
       "team: Network team",
       "email: (none)",
+      "languages: German, English",
       "topics: firewall rules, VPN",
       "tags: fast reply",
       "requested 0 (0 open, 0 done), contact for 3 (1 open)",
@@ -321,6 +324,12 @@ describe("personDetail", () => {
       "Open todos they are a contact for (1):\n#142 open | Renew SSL certs | project homelab | open 41d | contact: Max Muster",
     );
     expect(text.endsWith("Notes:\nPrefers **Teams** over mail.")).toBe(true);
+    expect(personDetail(person({ languages: ["en"] }), { requested: [], contactFor: [] }, ctx)).toContain(
+      "\nlanguages: English\n",
+    );
+    expect(personDetail(person({ languages: [] }), { requested: [], contactFor: [] }, ctx)).toContain(
+      "\nlanguages: (not set)\n",
+    );
   });
 });
 

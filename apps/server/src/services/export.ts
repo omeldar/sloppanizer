@@ -7,6 +7,7 @@ import {
   type ExportManifest,
   formatDuration,
   INLINE_IMAGE_TYPES,
+  languageNames,
   toLocalDate,
   toLocalDateTime,
   todoDurationMs,
@@ -18,6 +19,7 @@ import { schemaVersion } from "../db/index.ts";
 import { ID_TABLES, todos } from "../db/schema.ts";
 import type { Ctx } from "./context.ts";
 import { owned } from "./owned.ts";
+import { decodeLanguages } from "./people.ts";
 import { type ZipEntry, zipStream } from "./zip-writer.ts";
 import { slugify } from "./projects.ts";
 import { LAST_EXPORT_AT, LOCAL_SETTING_KEYS, setSetting } from "./settings.ts";
@@ -93,8 +95,8 @@ the server's settings are left out). Export format ${EXPORT_FORMAT}.
   (also parent, subtasks, links, repeat, previous and next occurrence), then the description and
   the comments.
 - notes/: one Markdown file per note (NNNN-title.md): front matter, then the note.
-- people/: one Markdown file per person (NNNN-first-last.md): team, email, topics, tags, the todos
-  they requested or are a contact for, then the notes about them.
+- people/: one Markdown file per person (NNNN-first-last.md): team, email, languages, topics,
+  tags, the todos they requested or are a contact for, then the notes about them.
 
 In the Markdown files, links to uploaded files point into attachments/, so images show up in any
 Markdown viewer. The Markdown files are for reading and searching; a restore does not need them.
@@ -190,6 +192,7 @@ interface PersonRow {
   team: string;
   email: string;
   notes_md: string;
+  languages: string;
   created_at: string;
 }
 interface NamedRow {
@@ -427,6 +430,7 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
           name,
           team: person.team,
           email: person.email,
+          languages: languageNames(decodeLanguages(person.languages)),
           note: person.note,
           topics: (topicsByPerson.get(person.id) ?? [])
             .map((r) => topicNames.get(r.topic_id) ?? "")

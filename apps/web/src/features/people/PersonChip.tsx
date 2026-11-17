@@ -1,4 +1,4 @@
-import type { PersonBrief } from "@organizer/shared";
+import { languageNames, type PersonBrief } from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { HoverCard } from "../../components/HoverCard.tsx";
@@ -9,7 +9,7 @@ import styles from "./PersonChip.module.css";
 
 /**
  * A person on a todo: name and team, linking to their page. Hovering loads the full person
- * (topics, tags, email with Mail and Teams chat), which todo payloads leave out on purpose.
+ * (languages, topics, tags, email with Mail and Copy), which todo payloads leave out on purpose.
  */
 export function PersonChip({ person }: { person: PersonBrief }) {
   const [open, setOpen] = useState(false);
@@ -40,6 +40,11 @@ function PersonCard({ brief, load }: { brief: PersonBrief; load: boolean }) {
         {(full?.team ?? brief.team) && <span className={styles.cardTeam}>{full?.team ?? brief.team}</span>}
       </div>
       {brief.note && <p className={styles.cardNote}>{brief.note}</p>}
+      {full && full.languages.length > 0 && (
+        <p className={styles.cardRow}>
+          <span className={styles.cardLabel}>Speaks</span> {languageNames(full.languages).join(", ")}
+        </p>
+      )}
       {full && full.topics.length > 0 && (
         <p className={styles.cardRow}>
           <span className={styles.cardLabel}>Helps with</span> {full.topics.join(", ")}

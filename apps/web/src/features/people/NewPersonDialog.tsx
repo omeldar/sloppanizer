@@ -1,4 +1,4 @@
-import { DuplicatePersonDetails, type Person } from "@organizer/shared";
+import { DuplicatePersonDetails, type Person, type PersonLanguage } from "@organizer/shared";
 import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useId, useState } from "react";
 import { useCommands } from "../../app/commands.tsx";
@@ -6,6 +6,7 @@ import { Dialog, DialogActions, DialogBody } from "../../components/Dialog.tsx";
 import { Button, Field, TextInput } from "../../components/ui.tsx";
 import { ApiError, errorMessage } from "../../lib/api.ts";
 import { useCreatePerson, useTeams } from "../../lib/queries.ts";
+import { LanguagePicker } from "./LanguagePicker.tsx";
 import styles from "./People.module.css";
 
 export function NewPersonDialog() {
@@ -28,7 +29,9 @@ function NewPersonForm({ onDone }: { onDone: () => void }) {
   const navigate = useNavigate();
   const teams = useTeams();
   const teamList = useId();
+  const languagesLabel = useId();
   const [form, setForm] = useState({ firstName: "", lastName: "", note: "", team: "", email: "" });
+  const [languages, setLanguages] = useState<PersonLanguage[]>([]);
   const [duplicate, setDuplicate] = useState<Person | null>(null);
   const [error, setError] = useState<string | null>(null);
   const field = (key: keyof typeof form) => ({
@@ -45,6 +48,7 @@ function NewPersonForm({ onDone }: { onDone: () => void }) {
         note: form.note.trim(),
         team: form.team.trim(),
         email: form.email.trim(),
+        languages,
         allowDuplicate,
       });
       onDone();
@@ -84,6 +88,12 @@ function NewPersonForm({ onDone }: { onDone: () => void }) {
         <Field label="Email">
           <TextInput {...field("email")} type="email" maxLength={254} placeholder="name@example.com" />
         </Field>
+      </div>
+      <div className={styles.languageField}>
+        <span id={languagesLabel} className={styles.languageLabel}>
+          Languages
+        </span>
+        <LanguagePicker value={languages} onChange={setLanguages} labelledBy={languagesLabel} />
       </div>
       <datalist id={teamList}>
         {(teams.data ?? []).map((team) => (

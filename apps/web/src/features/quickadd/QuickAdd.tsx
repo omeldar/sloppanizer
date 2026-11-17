@@ -1,7 +1,7 @@
-import { type CreateTodo, UrlInput } from "@organizer/shared";
+import { type CreateTodo, TODO_TITLE_MAX, UrlInput } from "@organizer/shared";
 import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
-import { useCommands } from "../../app/commands.tsx";
+import { type QuickAddDefaults, useCommands } from "../../app/commands.tsx";
 import { Dialog } from "../../components/Dialog.tsx";
 import { LabelPill } from "../../components/LabelPill.tsx";
 import { Popover } from "../../components/Popover.tsx";
@@ -21,7 +21,7 @@ import { blockSpan, minutesToTime, timeToMinutes } from "../planner/planner.ts";
 import { urlHost } from "../todos/relations/WebLinks.tsx";
 import { personRef } from "../todos/TodoPickerDialog.tsx";
 import styles from "./QuickAdd.module.css";
-import { parseQuickTitle } from "./tokens.ts";
+import { fitTitle, parseQuickTitle } from "./tokens.ts";
 
 export function QuickAdd() {
   const { quickAdd, close } = useCommands();
@@ -33,26 +33,27 @@ export function QuickAdd() {
       width={600}
       placement="top"
     >
-      {quickAdd && <QuickAddForm projectSlug={quickAdd.projectSlug} onDone={() => close("quickAdd")} />}
+      {quickAdd && <QuickAddForm defaults={quickAdd} onDone={() => close("quickAdd")} />}
     </Dialog>
   );
 }
 
-function QuickAddForm({ projectSlug, onDone }: { projectSlug?: string; onDone: () => void }) {
+function QuickAddForm({ defaults, onDone }: { defaults: QuickAddDefaults; onDone: () => void }) {
   const projects = useProjects();
   const labels = useLabels();
   const create = useCreateTodo();
   const toast = useToast();
   const navigate = useNavigate();
 
-  const [text, setText] = useState("");
+  const [start] = useState(() => fitTitle(defaults.title ?? ""));
+  const [text, setText] = useState(start.title);
   const [projectId, setProjectId] = useState<number | null>(
-    () => projects.data?.find((p) => p.slug === projectSlug)?.id ?? null,
+    () => projects.data?.find((p) => p.slug === defaults.projectSlug)?.id ?? null,
   );
   const [picked, setPicked] = useState<string[]>([]);
   const [people, setPeople] = useState<PersonChoice[]>([]);
   const [dueOn, setDueOn] = useState("");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(defaults.descriptionMd ?? "");
   const [links, setLinks] = useState<UrlInput[]>([]);
   const [linkText, setLinkText] = useState("");
   const [plannedOn, setPlannedOn] = useState("");
@@ -166,6 +167,12 @@ function QuickAddForm({ projectSlug, onDone }: { projectSlug?: string; onDone: (
         aria-label="Notes"
         rows={3}
       />
+      {start.cutFrom !== null && (
+        <p className={styles.note} role="status">
+          The text had {start.cutFrom} characters, more than a title holds. The title keeps the first{" "}
+          {TODO_TITLE_MAX}.
+        </p>
+      )}
       {parsed.unknown.length > 0 && (
         <p className={styles.note}>
           No label named {parsed.unknown.map((t) => `~${t}`).join(", ")}; it stays in the title.

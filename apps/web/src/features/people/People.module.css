@@ -691,3 +691,48 @@
     display: none;
   }
 }
+
+.languageField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.languageLabel {
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.languages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.language {
+  min-width: 64px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.language:hover {
+  color: var(--text);
+}
+
+.language[aria-pressed="true"] {
+  border-color: var(--amber);
+  background: var(--amber-tint);
+  color: var(--amber-text);
+  font-weight: 600;
+}
+
+.language:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}

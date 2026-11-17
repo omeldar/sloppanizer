@@ -151,12 +151,9 @@ test("a person with team, email, topic and tag becomes a contact and is found by
   const tags = await getJson<Array<{ id: number; name: string }>>(api, "/person-tags");
   made.tags.push(...tags.filter((t) => t.name === `fast reply ${stamp}`).map((t) => t.id));
 
-  // Mail and Teams links carry the address.
+  // Mail carries the address; there is no Teams chat link.
   await expect(details.getByRole("link", { name: "Mail" })).toHaveAttribute("href", `mailto:${email}`);
-  await expect(details.getByRole("link", { name: "Teams chat" })).toHaveAttribute(
-    "href",
-    `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(email)}`,
-  );
+  await expect(details.getByRole("link", { name: "Teams chat" })).toHaveCount(0);
 
   // Add as a contact on a todo.
   const id = await createTodo(`Open port 443 ${word}`, { projectId });

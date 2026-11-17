@@ -12,6 +12,7 @@ export async function fillEveryTable(t: Pick<TestApp, "call" | "create" | "accou
     topics: ["dns"],
     tags: ["fast reply"],
     notesMd: "Prefers chat",
+    languages: ["de"],
   });
   const upload = await t.call(
     "POST",

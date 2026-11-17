@@ -3,6 +3,10 @@ import { createContext, type ReactNode, useContext, useMemo, useState } from "re
 export interface QuickAddDefaults {
   /** Start in this project (the page the todo was added from). */
   projectSlug?: string;
+  /** Start with this title (cut to the title limit, with a note in the dialog when it was longer). */
+  title?: string;
+  /** Start with this description (Markdown). */
+  descriptionMd?: string;
 }
 
 /** Actions of the todo page that is open, for the palette (null on other pages). */

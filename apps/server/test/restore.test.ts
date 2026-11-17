@@ -1,4 +1,4 @@
-import type { BackupFile, RestorePreview, RestoreResult, Settings, Todo } from "@organizer/shared";
+import type { BackupFile, Person, RestorePreview, RestoreResult, Settings, Todo } from "@organizer/shared";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -62,7 +62,7 @@ describe("restore upload and preview", () => {
       format: 5,
       exportedAt: "2026-11-11T10:00:00.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 13,
+      schemaVersion: 14,
       attachments: { count: 1, bytes: 11, missing: [] },
       warnings: [],
       expiresAt: "2026-11-11T11:00:00.000Z",
@@ -565,6 +565,8 @@ describe("restore apply", () => {
         email: "",
       },
     ]);
+    // Columns the old format lacks get their defaults: no languages.
+    expect(json<Person>(await t.call("GET", "/api/v1/people/1")).languages).toEqual([]);
     expect(json<{ total: number }>(await t.call("GET", "/api/v1/todos?status=all")).total).toBe(1);
     expect(readdirSync(t.filesDir)).toEqual([]);
     // Ids are not reused even though format 1 has no sequences: the next todo comes after 7.
