@@ -36,6 +36,13 @@
       "when": 1794658379300,
       "tag": "0004_ai_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794921904808,
+      "tag": "0005_person_languages",
+      "breakpoints": true
     }
   ]
 }

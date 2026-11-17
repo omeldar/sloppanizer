@@ -69,6 +69,7 @@ function person(overrides: Partial<Person> = {}): Person {
     team: "Network team",
     email: "",
     notesMd: "",
+    languages: [],
     topics: ["VPN"],
     tags: [],
     counts: { requested: 0, requestedOpen: 0, requestedDone: 0, contact: 1, contactOpen: 1 },
@@ -218,13 +219,14 @@ describe("people tools", () => {
     expect(result.text).toMatch(/^Updated person 9 \| Max Muster/);
   });
 
-  it("create_person passes team, email, topics and tags", async () => {
+  it("create_person passes team, email, languages, topics and tags", async () => {
     const { call, calls } = await connect(() => person());
     await call("create_person", {
       firstName: "Max",
       lastName: "Muster",
       team: "Network team",
       email: "max@example.com",
+      languages: ["en", "de"],
       topics: ["VPN"],
       tags: ["fast reply"],
     });
@@ -233,9 +235,19 @@ describe("people tools", () => {
       lastName: "Muster",
       team: "Network team",
       email: "max@example.com",
+      languages: ["de", "en"],
       topics: ["VPN"],
       tags: ["fast reply"],
     });
+  });
+
+  it("update_person sets languages, also to none, and refuses unknown codes before calling the API", async () => {
+    const { call, calls } = await connect(() => person());
+    await call("update_person", { person: 9, languages: [] });
+    expect(calls).toEqual([{ method: "PATCH", path: "/people/9", body: { languages: [] } }]);
+    const refused = await call("update_person", { person: 9, languages: ["fr"] });
+    expect(refused.isError).toBe(true);
+    expect(calls).toHaveLength(1);
   });
 
   it("explains unknown person tags and a taken tag name", async () => {

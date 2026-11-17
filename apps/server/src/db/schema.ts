@@ -103,6 +103,8 @@ export const people = sqliteTable(
     team: text("team").notNull().default(""),
     email: text("email").notNull().default(""),
     notesMd: text("notes_md").notNull().default(""),
+    /** Language codes, comma-separated in the order of PERSON_LANGUAGES ("de,en"; "" = not set). */
+    languages: text("languages").notNull().default(""),
   },
   (t) => [
     primaryKey({ columns: [t.accountId, t.id] }),

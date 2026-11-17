@@ -982,6 +982,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     team: CreatePerson.shape.team.describe('Team or department, e.g. "Network team".'),
     email: CreatePerson.shape.email.describe("Email address (enables the mail link); empty text removes it."),
     notes: CreatePerson.shape.notesMd.describe("Longer notes about the person in Markdown."),
+    languages: CreatePerson.shape.languages.describe(
+      'Languages to use with them: "de" (German), "en" (English), both, or [] for not set. Replaces the full set.',
+    ),
   };
 
   tool(
@@ -989,7 +992,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     {
       title: "Create person",
       description:
-        "Add a person to the directory, with team, email, topics they help with and person tags. create_todo " +
+        "Add a person to the directory, with team, email, languages, topics they help with and person tags. create_todo " +
         "and update_todo also create people by name. Fails if the name exists, unless allowDuplicate is true " +
         "(then give a note that tells them apart).",
       inputSchema: {
@@ -1015,7 +1018,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     {
       title: "Update person",
       description:
-        "Change a person: name, short note, team, email, notes, topics and tags. topics/tags replace the full " +
+        "Change a person: name, short note, team, email, notes, languages, topics and tags. topics/tags replace the full " +
         "set; addTopics/removeTopics and addTags/removeTags change only those. Does not touch their todos.",
       inputSchema: {
         person: PersonInput.describe('Person id, or "First Last" (exact name).'),

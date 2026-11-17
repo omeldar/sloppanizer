@@ -29,6 +29,51 @@ describe("people", () => {
     expect((await t.call("GET", "/api/v1/people/99")).statusCode).toBe(404);
   });
 
+  it("saves languages as a set of known codes, empty when not given", async () => {
+    const t = await makeApp();
+    const none = await t.create<Person>("/api/v1/people", { firstName: "No", lastName: "Language" });
+    expect(none.languages).toEqual([]);
+    const anna = await t.create<Person>("/api/v1/people", {
+      firstName: "Anna",
+      lastName: "Meier",
+      languages: ["en", "de"],
+    });
+    expect(anna.languages).toEqual(["de", "en"]);
+    const stored = () => t.deps.db.$client.prepare("SELECT languages FROM people WHERE id = ?").get(anna.id);
+    expect(stored()).toEqual({ languages: "de,en" });
+
+    const patch = (body: unknown) => t.call("PATCH", `/api/v1/people/${anna.id}`, body);
+    expect(json<Person>(await patch({ languages: ["en"] })).languages).toEqual(["en"]);
+    expect(json<Person>(await t.call("GET", `/api/v1/people/${anna.id}`)).languages).toEqual(["en"]);
+    // Other edits leave the languages alone.
+    expect(json<Person>(await patch({ team: "Network" })).languages).toEqual(["en"]);
+    expect(json<Person>(await patch({ languages: [] })).languages).toEqual([]);
+    expect(stored()).toEqual({ languages: "" });
+
+    const bad = [["fr"], ["German"], ["DE"], ["de", "en", "de"], "de", null];
+    const refused = await Promise.all(
+      bad.flatMap((languages) => [
+        patch({ languages }),
+        t.call("POST", "/api/v1/people", { firstName: "X", lastName: "Y", languages }),
+      ]),
+    );
+    expect(refused.map((r) => [r.statusCode, r.json().error.code])).toEqual(
+      refused.map(() => [422, "validation_failed"]),
+    );
+    expect(stored()).toEqual({ languages: "" });
+    expect(json<Person[]>(await t.call("GET", "/api/v1/people")).map((p) => p.lastName)).toEqual([
+      "Language",
+      "Meier",
+    ]);
+  });
+
+  it("leaves out language codes it does not know when reading", async () => {
+    const t = await makeApp();
+    const anna = await t.create<Person>("/api/v1/people", { firstName: "Anna", lastName: "Meier" });
+    t.deps.db.$client.prepare("UPDATE people SET languages = 'fr,en' WHERE id = ?").run(anna.id);
+    expect(json<Person>(await t.call("GET", `/api/v1/people/${anna.id}`)).languages).toEqual(["en"]);
+  });
+
   it("answers 409 with the existing person for a namesake, unless allowDuplicate", async () => {
     const t = await makeApp();
     const anna = await t.create<Person>("/api/v1/people", { firstName: "Anna", lastName: "Meier" });

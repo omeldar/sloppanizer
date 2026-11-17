@@ -1,8 +1,18 @@
 import { UrlList } from "./planner.ts";
 import { z } from "zod";
 import { findScopeConflicts, LabelName } from "./labels.ts";
-import { normalizeTopic } from "./people.ts";
-import { CalendarDate, Color, Id, Slug, Timestamp, TodoStatus, TokenScope } from "./primitives.ts";
+import { normalizeTopic, sortLanguages } from "./people.ts";
+import {
+  CalendarDate,
+  Color,
+  Id,
+  PERSON_LANGUAGES,
+  PersonLanguage,
+  Slug,
+  Timestamp,
+  TodoStatus,
+  TokenScope,
+} from "./primitives.ts";
 import { RecurrenceRule } from "./recurrence.ts";
 
 const Title = z
@@ -192,6 +202,11 @@ const Email = z.union([
   z.email("Use an email address like name@example.com, or an empty text for none.").max(254),
 ]);
 const PersonNotes = z.string().max(200_000, "Keep the notes under 200000 characters.");
+/** The full set of languages ([] = none); repeats are dropped and the order is fixed (German, English). */
+const LanguageList = z
+  .array(PersonLanguage)
+  .max(PERSON_LANGUAGES.length, "Give each language at most once.")
+  .transform(sortLanguages);
 
 /** Topic name: trimmed, inner whitespace collapsed, 1..60 characters, no commas. */
 export const TopicName = z
@@ -229,6 +244,7 @@ export const CreatePerson = z.strictObject({
   team: Team.optional(),
   email: Email.optional(),
   notesMd: PersonNotes.optional(),
+  languages: LanguageList.optional(),
   /** Find-or-create by name. */
   topics: TopicList.optional(),
   /** Tags must exist (422 { unknownTags }). */
@@ -244,6 +260,7 @@ export const UpdatePerson = z
     team: Team.optional(),
     email: Email.optional(),
     notesMd: PersonNotes.optional(),
+    languages: LanguageList.optional(),
     topics: TopicList.optional(),
     addTopics: TopicList.optional(),
     removeTopics: TopicList.optional(),

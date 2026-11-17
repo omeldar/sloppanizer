@@ -5,7 +5,10 @@ import {
   type Person,
   type PersonBrief,
   type PersonCounts,
+  PERSON_LANGUAGES,
+  type PersonLanguage,
   type PersonRef,
+  sortLanguages,
   type UpdatePerson,
 } from "@organizer/shared";
 import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
@@ -31,6 +34,16 @@ export const toPersonBrief = (row: Omit<PersonRow, "accountId">): PersonBrief =>
   team: row.team,
   email: row.email,
 });
+
+/** The stored language column ("de,en") as codes; codes this version does not know are left out. */
+export function decodeLanguages(stored: string): PersonLanguage[] {
+  const codes = stored.split(",");
+  return PERSON_LANGUAGES.filter((code) => codes.includes(code));
+}
+
+/** Codes as stored: no repeats, the order of PERSON_LANGUAGES, comma-separated ("" = none). */
+export const encodeLanguages = (languages: readonly PersonLanguage[]): string =>
+  sortLanguages(languages).join(",");
 
 const NO_COUNTS: PersonCounts = {
   requested: 0,
@@ -96,6 +109,7 @@ export function loadPeople(sc: Scoped, rows: readonly PersonRow[]): Person[] {
   return rows.map((row) => ({
     ...toPersonBrief(row),
     notesMd: row.notesMd,
+    languages: decodeLanguages(row.languages),
     topics: topicMap.get(row.id) ?? [],
     tags: tagMap.get(row.id) ?? [],
     counts: countMap.get(row.id) ?? NO_COUNTS,
@@ -334,6 +348,7 @@ export function createPerson(ctx: Ctx, input: CreatePerson): Person {
       team: input.team ?? "",
       email: input.email ?? "",
       notesMd: input.notesMd ?? "",
+      languages: encodeLanguages(input.languages ?? []),
       createdAt: at,
       updatedAt: at,
     });
@@ -353,6 +368,10 @@ export function updatePerson(ctx: Ctx, id: number, input: UpdatePerson): Person 
     for (const key of ["firstName", "lastName", "note", "team", "email", "notesMd"] as const) {
       const value = input[key];
       if (value !== undefined && value !== current[key]) patch[key] = value;
+    }
+    if (input.languages !== undefined) {
+      const languages = encodeLanguages(input.languages);
+      if (languages !== current.languages) patch.languages = languages;
     }
     const linksChanged = applyLinks(sc, at, id, {
       topics: { set: input.topics, add: input.addTopics, remove: input.removeTopics },

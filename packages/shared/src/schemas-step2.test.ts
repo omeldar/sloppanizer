@@ -100,6 +100,21 @@ describe("person inputs", () => {
     expect(ok(CreatePerson, { ...base, notesMd: "x".repeat(200_001) })).toBe(false);
   });
 
+  it("takes languages as known codes only, without repeats, in a fixed order", () => {
+    const base = { firstName: "A", lastName: "B" };
+    expect(CreatePerson.parse({ ...base, languages: ["en", "de"] }).languages).toEqual(["de", "en"]);
+    expect(CreatePerson.parse({ ...base, languages: ["en", "en"] }).languages).toEqual(["en"]);
+    expect(CreatePerson.parse({ ...base, languages: [] }).languages).toEqual([]);
+    expect(CreatePerson.parse(base).languages).toBeUndefined();
+    expect(ok(CreatePerson, { ...base, languages: ["fr"] })).toBe(false);
+    expect(ok(CreatePerson, { ...base, languages: ["German"] })).toBe(false);
+    expect(ok(CreatePerson, { ...base, languages: ["DE"] })).toBe(false);
+    expect(ok(CreatePerson, { ...base, languages: "de" })).toBe(false);
+    expect(ok(CreatePerson, { ...base, languages: ["de", "en", "de"] })).toBe(false);
+    expect(UpdatePerson.parse({ languages: [] })).toEqual({ languages: [] });
+    expect(ok(UpdatePerson, { languages: ["de", "it"] })).toBe(false);
+  });
+
   it("rejects full sets together with add or remove, and an empty patch", () => {
     expect(ok(UpdatePerson, { topics: ["a"], addTopics: ["b"] })).toBe(false);
     expect(ok(UpdatePerson, { tags: [], removeTags: ["b"] })).toBe(false);
@@ -198,10 +213,11 @@ describe("outputs", () => {
     expect(ok(PersonBrief, { ...brief, notesMd: "" })).toBe(false);
   });
 
-  it("needs counts, topics and tags on the full Person", () => {
+  it("needs counts, topics, tags and languages on the full Person", () => {
     const person = {
       ...brief,
       notesMd: "",
+      languages: ["en"],
       topics: ["VPN"],
       tags: [],
       counts: { requested: 1, requestedOpen: 1, requestedDone: 0, contact: 0, contactOpen: 0 },
@@ -211,6 +227,10 @@ describe("outputs", () => {
     expect(Person.parse(person)).toEqual(person);
     const { counts: _counts, ...noCounts } = person;
     expect(ok(Person, noCounts)).toBe(false);
+    const { languages: _languages, ...noLanguages } = person;
+    expect(ok(Person, noLanguages)).toBe(false);
+    expect(ok(Person, { ...person, languages: ["fr"] })).toBe(false);
+    expect(ok(PersonBrief, { ...brief, languages: [] })).toBe(false);
   });
 
   it("discriminates activity items on type", () => {

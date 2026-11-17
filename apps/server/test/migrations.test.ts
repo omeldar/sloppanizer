@@ -1,10 +1,12 @@
 import { SCHEMA_BASE } from "@organizer/shared";
 import Database from "better-sqlite3";
-import { mkdtempSync, rmSync } from "node:fs";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { type Db, openDb, SINGLE_USER_DATA_DIR, schemaVersion } from "../src/db/index.ts";
+import { type Db, MIGRATIONS_DIR, openDb, SINGLE_USER_DATA_DIR, schemaVersion } from "../src/db/index.ts";
 import { ID_TABLES } from "../src/db/schema.ts";
 
 const roots: string[] = [];
@@ -89,9 +91,10 @@ const expectedShape = (table: string) => ({
 describe("baseline migration", () => {
   it("counts on from the single-user versions, so every single-user export (8 or lower) is older", () => {
     const { db } = freshDb();
-    // The baseline (9), then one per migration: 0001 oauth, 0002 planner and links, 0003 calendar feed, 0004 ai settings.
-    expect(schemaVersion(db)).toBe(SCHEMA_BASE + 5);
-    expect(schemaVersion(db)).toBe(13);
+    // The baseline (9), then one per migration: 0001 oauth, 0002 planner and links, 0003 calendar feed, 0004 ai
+    // settings, 0005 person languages.
+    expect(schemaVersion(db)).toBe(SCHEMA_BASE + 6);
+    expect(schemaVersion(db)).toBe(14);
   });
 
   it("gives every user table an account_id and every id table the key (account_id, id)", () => {
@@ -217,5 +220,66 @@ describe("baseline migration", () => {
     old.close();
     expect(() => openDb(file)).toThrow(SINGLE_USER_DATA_DIR);
     expect(SINGLE_USER_DATA_DIR).toContain("import the old export zip into an account");
+  });
+});
+
+/** A copy of the migrations folder that stops before the migration with this tag. */
+function migrationsBefore(tag: string): string {
+  const dir = join(mkdtempSync(join(tmpdir(), "sloppanizer-migrations-")), "drizzle");
+  roots.push(dirname(dir));
+  mkdirSync(join(dir, "meta"), { recursive: true });
+  const journal = JSON.parse(readFileSync(join(MIGRATIONS_DIR, "meta", "_journal.json"), "utf8")) as {
+    entries: { tag: string }[];
+  };
+  const stop = journal.entries.findIndex((e) => e.tag === tag);
+  expect(stop).toBeGreaterThan(0);
+  const entries = journal.entries.slice(0, stop);
+  for (const { tag: name } of entries)
+    copyFileSync(join(MIGRATIONS_DIR, `${name}.sql`), join(dir, `${name}.sql`));
+  writeFileSync(join(dir, "meta", "_journal.json"), JSON.stringify({ ...journal, entries }));
+  return dir;
+}
+
+const peopleRows = (sqlite: Database.Database) =>
+  sqlite
+    .prepare(
+      "SELECT account_id, id, first_name, last_name, team, email, notes_md FROM people ORDER BY account_id, id",
+    )
+    .all();
+
+describe("person languages migration", () => {
+  it("keeps the people of every account and gives them no languages", () => {
+    const file = tempFile();
+    const old = new Database(file);
+    old.pragma("foreign_keys = ON");
+    migrate(drizzle(old), { migrationsFolder: migrationsBefore("0005_person_languages") });
+    const columns = () =>
+      (old.prepare("SELECT name FROM pragma_table_info('people')").all() as { name: string }[]).map(
+        (c) => c.name,
+      );
+    expect(columns()).not.toContain("languages");
+    const add = old.prepare(
+      `INSERT INTO accounts (id, username, display_name, time_zone, status, webauthn_user_id, created_at, updated_at)
+       VALUES (?, ?, ?, 'UTC', 'active', ?, ?, ?)`,
+    );
+    add.run(1, "anna", "Anna", "w-anna", T, T);
+    add.run(2, "bo", "Bo", "w-bo", T, T);
+    fillAccount(old, 1);
+    fillAccount(old, 2);
+    old.exec(`
+      UPDATE people SET team = 'Network', email = 'ada@example.com', notes_md = 'Knows DNS' WHERE account_id = 1;
+      INSERT INTO person_topics VALUES (1, 1, 1, '${T}');
+      INSERT INTO todo_people VALUES (1, 1, 1, 'requester', '${T}');
+    `);
+    const before = peopleRows(old);
+    old.close();
+
+    const { $client: sqlite } = openDb(file);
+    expect(peopleRows(sqlite)).toEqual(before);
+    expect(sqlite.prepare("SELECT DISTINCT languages FROM people").all()).toEqual([{ languages: "" }]);
+    // Links to the people survive too (the column is added in place, the table is not rebuilt).
+    expect(sqlite.prepare("SELECT count(*) AS n FROM person_topics").get()).toEqual({ n: 1 });
+    expect(sqlite.prepare("SELECT count(*) AS n FROM todo_people").get()).toEqual({ n: 1 });
+    sqlite.close();
   });
 });

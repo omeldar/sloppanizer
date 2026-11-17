@@ -1,4 +1,4 @@
-import type { Comment, Note, PersonTag, Topic } from "@organizer/shared";
+import type { Comment, Note, Person, PersonTag, Topic } from "@organizer/shared";
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { fillEveryTable } from "./fixtures.ts";
@@ -73,6 +73,7 @@ describe("accounts never see each other's data", () => {
       ["DELETE", `/api/v1/notes/${ids.note}`],
       ["GET", `/api/v1/people/${ids.person}`],
       ["PATCH", `/api/v1/people/${ids.person}`, { note: "taken" }],
+      ["PATCH", `/api/v1/people/${ids.person}`, { languages: ["en"] }],
       ["DELETE", `/api/v1/people/${ids.person}`],
       ["GET", `/api/v1/stats/people/${ids.person}`],
       ["PATCH", `/api/v1/person-tags/${ids.tag}`, { name: "taken" }],
@@ -131,6 +132,26 @@ describe("accounts never see each other's data", () => {
     for (const secret of ["Rack", "Müller", "Prefers chat", "shot.png", "Lab"]) {
       expect(everything).not.toContain(secret);
     }
+  });
+
+  it("keeps a person's languages to their account, even with the same person id", async () => {
+    const { t, bobby, ids } = await twoAccounts();
+    expect(json<Person>(await t.call("GET", `/api/v1/people/${ids.person}`)).languages).toEqual(["de"]);
+    expect(json<unknown[]>(await bobby.call("GET", "/api/v1/people"))).toEqual([]);
+    // Bobby's first person gets the same id as Anna's; each account sees and changes only its own.
+    const own = await bobby.create<Person>("/api/v1/people", { firstName: "Bo", lastName: "Lind" });
+    expect(own.id).toBe(ids.person);
+    expect(own.languages).toEqual([]);
+    expect(
+      json<Person>(await bobby.call("PATCH", `/api/v1/people/${own.id}`, { languages: ["en"] })).languages,
+    ).toEqual(["en"]);
+    expect(
+      json<Person[]>(await bobby.call("GET", "/api/v1/people")).map((p) => [p.lastName, p.languages]),
+    ).toEqual([["Lind", ["en"]]]);
+    expect(json<Person>(await t.call("GET", `/api/v1/people/${ids.person}`))).toMatchObject({
+      lastName: "Müller",
+      languages: ["de"],
+    });
   });
 
   it("counts ids per account from 1", async () => {

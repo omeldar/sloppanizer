@@ -70,7 +70,7 @@ describe("GET /export.zip", () => {
       format: 5,
       exportedAt: "2026-11-14T13:04:05.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 13,
+      schemaVersion: 14,
       account: { username: "anna" },
       attachments: { count: 0, bytes: 0, missing: [] },
     });
@@ -173,12 +173,13 @@ describe("export format 5", () => {
 
     // Rows for the new tables straight into the database: this test is about the export, not the endpoints.
     sqlite
-      .prepare("UPDATE people SET team = ?, email = ?, notes_md = ?, note = ? WHERE id = ?")
+      .prepare("UPDATE people SET team = ?, email = ?, notes_md = ?, note = ?, languages = ? WHERE id = ?")
       .run(
         "Network team",
         "anna@example.com",
         "Knows the **old** setup.\n![net](/api/v1/attachments/2/net.txt)",
         "Basel",
+        "de,en",
         anna,
       );
     sqlite
@@ -348,6 +349,7 @@ describe("export format 5", () => {
       name: "Anna Meier",
       team: "Network team",
       email: "anna@example.com",
+      languages: ["German", "English"],
       note: "Basel",
       topics: ["firewall rules", "VPN"],
       tags: ["fast reply"],
@@ -358,6 +360,7 @@ describe("export format 5", () => {
     expect(annaMd.body).toBe("Knows the **old** setup.\n![net](../attachments/2-net.txt)\n");
     expect(frontMatter(text("people/0002-max-muller.md")).meta).toMatchObject({
       name: "Max Müller",
+      languages: [],
       topics: [],
       tags: [],
       requested: [],

@@ -5,6 +5,7 @@ import {
   describeRecurrence,
   formatDuration,
   type Label,
+  languageNames,
   type NextUp,
   type Note,
   type NoteSummary,
@@ -171,13 +172,15 @@ const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n =
 
 /**
  * One line per person, e.g.
- * `person 7 | Max Muster | Network team | topics: firewall rules, VPN | tags: fast reply | contact for 3 | note: Basel`.
+ * `person 7 | Max Muster | Network team | languages: German | topics: firewall rules, VPN | tags: fast reply |
+ * contact for 3 | note: Basel`.
  * Takes the brief form too (inside todos and 409 candidates); then only the parts it has.
  */
 export function personLine(person: PersonBrief | Person): string {
   const parts = [`person ${person.id}`, person.displayName];
   if (person.team) parts.push(person.team);
   if ("topics" in person) {
+    if (person.languages.length > 0) parts.push(`languages: ${languageNames(person.languages).join(", ")}`);
     if (person.topics.length > 0) parts.push(`topics: ${person.topics.join(", ")}`);
     if (person.tags.length > 0) parts.push(`tags: ${person.tags.map((t) => t.name).join(", ")}`);
     const { requested, requestedOpen, contact, contactOpen } = person.counts;
@@ -199,6 +202,9 @@ export function personDetail(
   if (person.note) lines.push(`note: ${person.note}`);
   lines.push(`team: ${person.team || "(none)"}`);
   lines.push(`email: ${person.email || "(none)"}`);
+  lines.push(
+    `languages: ${person.languages.length > 0 ? languageNames(person.languages).join(", ") : "(not set)"}`,
+  );
   lines.push(`topics: ${person.topics.length > 0 ? person.topics.join(", ") : "(none)"}`);
   lines.push(`tags: ${person.tags.length > 0 ? person.tags.map((t) => t.name).join(", ") : "(none)"}`);
   lines.push(

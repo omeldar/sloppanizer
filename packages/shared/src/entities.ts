@@ -4,6 +4,7 @@ import {
   Color,
   EventKind,
   Id,
+  PersonLanguage,
   SearchKind,
   Slug,
   Timestamp,
@@ -102,6 +103,8 @@ export const Person = z.strictObject({
   email: z.string(),
   /** Long notes in Markdown. */
   notesMd: z.string(),
+  /** Languages to use with them ([] = not set), in the order of PERSON_LANGUAGES. */
+  languages: z.array(PersonLanguage),
   /** Topic names (stored spelling), by name. */
   topics: z.array(z.string()),
   /** By name. */
