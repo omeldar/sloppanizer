@@ -53,4 +53,57 @@ describe("readTextSelection", () => {
     selectText(line.firstChild as Node, 0, 2);
     expect(readTextSelection(container)?.text).toBe("Call **Anna**\nthen the");
   });
+
+  it("reads a preview selection across markup as the rendered text, without the markdown", () => {
+    render(
+      <div data-testid="preview">
+        <p>
+          Call <strong>Anna</strong> about
+        </p>
+        <ul>
+          <li>the VPN</li>
+        </ul>
+      </div>,
+    );
+    const preview = screen.getByTestId("preview");
+    const first = preview.querySelector("p")?.firstChild as Node;
+    const last = preview.querySelector("li")?.firstChild as Node;
+    const range = document.createRange();
+    range.setStart(first, 0);
+    range.setEnd(last, 7);
+    const selection = document.getSelection() as Selection;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const text = readTextSelection(preview)?.text ?? "";
+    expect(text).toContain("Call Anna about");
+    expect(text).toContain("the VPN");
+    expect(text).not.toMatch(/[*#]/);
+  });
+
+  it("ignores a selection that starts inside the container and ends outside it", () => {
+    render(
+      <div>
+        <p data-testid="inside">Inside text</p>
+        <p data-testid="outside">Outside text</p>
+      </div>,
+    );
+    const range = document.createRange();
+    range.setStart(screen.getByTestId("inside").firstChild as Node, 2);
+    range.setEnd(screen.getByTestId("outside").firstChild as Node, 4);
+    const selection = document.getSelection() as Selection;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    expect(readTextSelection(screen.getByTestId("inside"))).toBeNull();
+  });
+
+  it("ignores a blank selection in the editor, taking the document's text", async () => {
+    const { container } = renderWithApp(
+      <MarkdownEditor label="Text" value={"Call\n\n   \nAnna"} onChange={() => {}} />,
+    );
+    const view = EditorView.findFromDOM(await screen.findByLabelText("Text")) as EditorView;
+    act(() => view.dispatch({ selection: { anchor: 4, head: 9 } }));
+    const line = container.querySelector(".cm-line") as Element;
+    selectText(line.firstChild as Node, 0, 2);
+    expect(readTextSelection(container)).toBeNull();
+  });
 });

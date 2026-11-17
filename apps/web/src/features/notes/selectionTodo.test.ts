@@ -19,4 +19,9 @@ describe("selectionToTodo", () => {
       descriptionMd: "    code line\n    next",
     });
   });
+
+  it("gives empty values for a selection of only spaces and line breaks", () => {
+    expect(selectionToTodo(" \n\t \n", "title")).toEqual({ title: "" });
+    expect(selectionToTodo(" \n\t \n", "description")).toEqual({ descriptionMd: "" });
+  });
 });

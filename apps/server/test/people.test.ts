@@ -67,6 +67,31 @@ describe("people", () => {
     ]);
   });
 
+  it("stores a repeated language once, on create and on edit", async () => {
+    const t = await makeApp();
+    const anna = await t.create<Person>("/api/v1/people", {
+      firstName: "Anna",
+      lastName: "Meier",
+      languages: ["en", "en"],
+    });
+    expect(anna.languages).toEqual(["en"]);
+    const patched = await t.call("PATCH", `/api/v1/people/${anna.id}`, { languages: ["de", "de"] });
+    expect(json<Person>(patched).languages).toEqual(["de"]);
+    const stored = t.deps.db.$client.prepare("SELECT languages FROM people WHERE id = ?").get(anna.id);
+    expect(stored).toEqual({ languages: "de" });
+  });
+
+  it("reads a stored value of only unknown codes or stray commas as no language", async () => {
+    const t = await makeApp();
+    const readStored = async (raw: string) => {
+      const person = await t.create<Person>("/api/v1/people", { firstName: "P", lastName: raw || "none" });
+      t.deps.db.$client.prepare("UPDATE people SET languages = ? WHERE id = ?").run(raw, person.id);
+      return json<Person>(await t.call("GET", `/api/v1/people/${person.id}`)).languages;
+    };
+    const raws = ["fr", ",", "fr,it", "en,,de"];
+    expect(await Promise.all(raws.map(readStored))).toEqual([[], [], [], ["de", "en"]]);
+  });
+
   it("leaves out language codes it does not know when reading", async () => {
     const t = await makeApp();
     const anna = await t.create<Person>("/api/v1/people", { firstName: "Anna", lastName: "Meier" });
