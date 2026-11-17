@@ -83,6 +83,8 @@
   --fs-title: 24px;
 
   --radius-pill: 6px;
+  /* Label pill height; rows of pills that clip leave a pixel of room around it (see Strip.module.css). */
+  --pill-h: 18px;
   --radius-panel: 10px;
   --radius-dialog: 16px;
   --radius-round: 999px;
