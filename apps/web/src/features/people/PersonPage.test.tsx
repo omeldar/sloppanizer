@@ -66,3 +66,31 @@ describe("person page email actions", () => {
     expect(document.querySelector('a[href*="teams.microsoft.com"]')).toBeNull();
   });
 });
+
+describe("person page languages", () => {
+  it("saves the full set on each click and keeps a quick second click", async () => {
+    let current = makePerson("Anna", "Meier", 1, { languages: ["en"] });
+    const { calls } = renderAppAt("/people/1", ({ method, path, body }: RecordedCall) => {
+      if (path === "/api/v1/people/1") {
+        if (method === "PATCH") current = { ...current, ...(body as Partial<typeof current>) };
+        return { body: current };
+      }
+      if (path.startsWith("/api/v1/topics")) return { body: [] };
+      if (path.startsWith("/api/v1/todos?")) return { body: { items: [], total: 0, limit: 50, offset: 0 } };
+      if (path.startsWith("/api/v1/teams") || path.startsWith("/api/v1/person-tags")) return { body: [] };
+      if (path === "/api/v1/projects" || path === "/api/v1/labels") return { body: [] };
+      return { status: 404, body: { error: { code: "not_found", message: "Not here." } } };
+    });
+    const group = await screen.findByRole("group", { name: "Languages" }, LAZY_PAGE);
+    const german = within(group).getByRole("button", { name: "German" });
+    const english = within(group).getByRole("button", { name: "English" });
+    expect([german, english].map((b) => b.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
+    fireEvent.click(german);
+    fireEvent.click(english);
+    expect([german, english].map((b) => b.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
+    const patches = () => calls.filter((c) => c.method === "PATCH").map((c) => c.body);
+    await waitFor(() => expect(patches()).toEqual([{ languages: ["de", "en"] }, { languages: ["de"] }]));
+    await waitFor(() => expect(current.languages).toEqual(["de"]));
+    expect([german, english].map((b) => b.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
+  });
+});
