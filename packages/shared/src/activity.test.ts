@@ -82,13 +82,13 @@ describe("describeEvent", () => {
 
   it("describes planned and due date changes", () => {
     expect(dates({ dueOn: null, plannedOn: null }, { dueOn: null, plannedOn: "2026-11-14" })).toBe(
-      "planned for 2026-11-14",
+      "planned for 14.11.2026",
     );
     expect(dates({ dueOn: null, plannedOn: "2026-11-14" }, { dueOn: null, plannedOn: null })).toBe(
       "removed the plan date",
     );
     expect(dates({ dueOn: null, plannedOn: null }, { dueOn: "2026-11-20", plannedOn: "2026-11-14" })).toBe(
-      "planned for 2026-11-14 and set the due date to 2026-11-20",
+      "planned for 14.11.2026 and set the due date to 20.11.2026",
     );
     expect(dates({ dueOn: "2026-11-20", plannedOn: null }, { dueOn: null, plannedOn: null })).toBe(
       "removed the due date",
@@ -160,11 +160,11 @@ describe("describeEvent for step 3 kinds", () => {
       describeEvent(
         event("recurred", { next: { id: 143, title: "x", dueOn: "2026-11-19", plannedOn: null } }),
       ),
-    ).toBe("created the next one, #143, for 2026-11-19");
+    ).toBe("created the next one, #143, for 19.11.2026");
     expect(
       describeEvent(
         event("recurred", { next: { id: 143, title: null, dueOn: null, plannedOn: "2026-11-20" } }),
       ),
-    ).toBe("created the next one, #143, for 2026-11-20");
+    ).toBe("created the next one, #143, for 20.11.2026");
   });
 });

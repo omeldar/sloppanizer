@@ -1,5 +1,7 @@
 import {
   describeRecurrence,
+  formatDayMonth,
+  isCalendarDate,
   nextOccurrence,
   normalizeRecurrence,
   ordinal,
@@ -38,7 +40,7 @@ export function presets(anchor: string): Preset[] {
     { label: "Every weekday", rule: rule({ every: "week", weekdays: WORKWEEK }) },
     { label: `Every week on ${WEEKDAY_SHORT[weekday]}`, rule: rule({ every: "week", weekdays: [weekday] }) },
     { label: `Every month on the ${ordinal(day)}`, rule: rule({ every: "month", monthDay: day }) },
-    { label: `Every year on ${yearDate}`, rule: rule({ every: "year", yearDate }) },
+    { label: `Every year on ${formatDayMonth(yearDate)}`, rule: rule({ every: "year", yearDate }) },
   ];
 }
 
@@ -63,8 +65,12 @@ export type Check =
 /** Validates a rule the way the server does and says when the next one would be. */
 export function checkRule(input: RecurrenceRuleInput, anchor: string, today: string): Check {
   const parsed = RecurrenceRule.safeParse(input);
-  if (!parsed.success)
-    return { ok: false, problem: parsed.error.issues[0]?.message ?? "This repeat does not work." };
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    // The form takes the date in the year as "14.03.", the API as "03-14": say it the form's way.
+    if (issue?.path[0] === "yearDate") return { ok: false, problem: YEAR_DATE_PROBLEM };
+    return { ok: false, problem: issue?.message ?? "This repeat does not work." };
+  }
   const problem = recurrenceProblem(parsed.data, anchor);
   if (problem) return { ok: false, problem };
   const rule = normalizeRecurrence(parsed.data, anchor);
@@ -76,6 +82,18 @@ export function checkRule(input: RecurrenceRuleInput, anchor: string, today: str
   };
 }
 
+export const YEAR_DATE_PROBLEM = "Use a day and month like 14.03.";
+
+/** What the user typed for a date in the year, "14.03." or "14.3", as the rule's "03-14"; null if no such day. */
+export function parseYearDate(text: string): string | null {
+  const match = /^\s*(\d{1,2})\.(\d{1,2})\.?\s*$/.exec(text);
+  if (!match) return null;
+  const [, day = "", month = ""] = match;
+  const value = `${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  // 2000 is a leap year, so 29.02. counts.
+  return isCalendarDate(`2000-${value}`) ? value : null;
+}
+
 /** Custom form state, kept flat so switching units keeps what the user typed. */
 export interface Draft {
   every: RecurrenceRule["every"];
@@ -85,6 +103,7 @@ export interface Draft {
   monthDay: number;
   nth: 1 | 2 | 3 | 4 | -1;
   nthWeekday: Weekday;
+  /** As the user reads and types it, "14.03.". */
   yearDate: string;
   basis: "schedule" | "done";
   until: string;
@@ -101,7 +120,7 @@ export function draftFrom(rule: RecurrenceRule | null, anchor: string): Draft {
     monthDay: full.monthDay ?? day,
     nth: full.monthWeekday?.nth ?? (Math.min(4, Math.ceil(day / 7)) as 1 | 2 | 3 | 4),
     nthWeekday: full.monthWeekday?.weekday ?? weekdayOf(anchor),
-    yearDate: full.yearDate ?? anchor.slice(5),
+    yearDate: formatDayMonth(full.yearDate ?? anchor.slice(5)),
     basis: full.basis,
     until: full.until ?? "",
   };
@@ -122,6 +141,6 @@ export function ruleFrom(draft: Draft): RecurrenceRuleInput {
       ? { ...base, monthDay: draft.monthDay }
       : { ...base, monthWeekday: { nth: draft.nth, weekday: draft.nthWeekday } };
   }
-  if (draft.every === "year") return { ...base, yearDate: draft.yearDate };
+  if (draft.every === "year") return { ...base, yearDate: parseYearDate(draft.yearDate) ?? draft.yearDate };
   return base;
 }

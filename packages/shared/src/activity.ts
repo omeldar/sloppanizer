@@ -1,3 +1,4 @@
+import { formatDate } from "./dates.ts";
 import type { ActivityEvent } from "./entities.ts";
 import { STATUS_LABELS, TODO_STATUSES, type TodoStatus } from "./primitives.ts";
 import { describeRecurrence, RecurrenceRule } from "./recurrence.ts";
@@ -57,10 +58,14 @@ function describeProject(to: unknown): string {
 function describeDates(from: Record<string, unknown>, to: Record<string, unknown>): string {
   const parts: string[] = [];
   if (from.plannedOn !== to.plannedOn) {
-    parts.push(typeof to.plannedOn === "string" ? `planned for ${to.plannedOn}` : "removed the plan date");
+    parts.push(
+      typeof to.plannedOn === "string" ? `planned for ${formatDate(to.plannedOn)}` : "removed the plan date",
+    );
   }
   if (from.dueOn !== to.dueOn) {
-    parts.push(typeof to.dueOn === "string" ? `set the due date to ${to.dueOn}` : "removed the due date");
+    parts.push(
+      typeof to.dueOn === "string" ? `set the due date to ${formatDate(to.dueOn)}` : "removed the due date",
+    );
   }
   return parts.length > 0 ? parts.join(" and ") : "changed the dates";
 }
@@ -115,7 +120,7 @@ function describeRecurred(next: unknown): string {
   if (!isRecord(next) || typeof next.id !== "number") return "created the next one";
   const date = typeof next.dueOn === "string" ? next.dueOn : next.plannedOn;
   return typeof date === "string"
-    ? `created the next one, #${next.id}, for ${date}`
+    ? `created the next one, #${next.id}, for ${formatDate(date)}`
     : `created the next one, #${next.id}`;
 }
 

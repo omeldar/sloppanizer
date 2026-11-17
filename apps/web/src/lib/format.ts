@@ -1,4 +1,19 @@
-import { daysBetween, daysSince, formatDuration, systemTimeZone, toLocalDate } from "@organizer/shared";
+import {
+  daysBetween,
+  daysSince,
+  formatDate,
+  formatDateTime,
+  formatDayMonth,
+  formatDuration,
+  systemTimeZone,
+  toLocalDate,
+} from "@organizer/shared";
+
+/**
+ * Every date the app shows goes through here: "03.10.2026", or "03.10." where only short text fits.
+ * Never month names, the same for every browser locale. Data keeps "YYYY-MM-DD".
+ */
+export { formatDate, formatDayMonth };
 
 export const timeZone = systemTimeZone();
 
@@ -28,27 +43,35 @@ export function dueState(dueOn: string, now: Date = new Date()): DueState {
   return "later";
 }
 
-const SHORT_DAY = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
-const SHORT_DAY_YEAR = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  timeZone: "UTC",
-});
 const WEEKDAY = new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" });
+
+/** The short weekday of a calendar date, "Mon". */
+export function weekdayName(date: string): string {
+  return WEEKDAY.format(new Date(`${date}T12:00:00Z`));
+}
+
+/** Weekday and short date for day headers and lists of days, "Mon 03.10.". */
+export function dayLabel(date: string): string {
+  return `${weekdayName(date)} ${formatDayMonth(date)}`;
+}
+
+/** A month of the year, "2026-10" as "10.2026". */
+export function formatMonth(month: string): string {
+  const [year, number] = month.split("-");
+  return number ? `${number}.${year}` : month;
+}
 
 /**
  * A calendar date for lists: "Today", "Tomorrow", "Yesterday", the weekday within the next six days,
- * else "13 Nov" (with the year when it is not this year).
+ * else "13.11." (the full "13.11.2027" when it is not this year).
  */
 export function shortDate(date: string, now: Date = new Date()): string {
   const days = daysBetween(today(now), date);
   if (days === 0) return "Today";
   if (days === 1) return "Tomorrow";
   if (days === -1) return "Yesterday";
-  const at = new Date(`${date}T12:00:00Z`);
-  if (days > 1 && days < 7) return WEEKDAY.format(at);
-  return date.slice(0, 4) === today(now).slice(0, 4) ? SHORT_DAY.format(at) : SHORT_DAY_YEAR.format(at);
+  if (days > 1 && days < 7) return weekdayName(date);
+  return date.slice(0, 4) === today(now).slice(0, 4) ? formatDayMonth(date) : formatDate(date);
 }
 
 /** "overdue 2d", "due today", "due tomorrow", "due in 5d". */
@@ -60,20 +83,14 @@ export function dueText(dueOn: string, now: Date = new Date()): string {
   return `due in ${days}d`;
 }
 
-const absolute = new Intl.DateTimeFormat("en-CA", {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-  timeZone,
-});
-
-/** "2026-11-11 14:30" in local time. */
+/** "11.11.2026 14:30" in local time. */
 export function absoluteTime(instant: string): string {
-  const parts = Object.fromEntries(absolute.formatToParts(new Date(instant)).map((p) => [p.type, p.value]));
-  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour === "24" ? "00" : parts.hour}:${parts.minute}`;
+  return formatDateTime(instant, timeZone);
+}
+
+/** The local calendar day of an instant, "11.11.2026". */
+export function absoluteDate(instant: string): string {
+  return formatDate(toDate(instant));
 }
 
 /** "just now", "12m ago", "3h ago", "4d ago". */

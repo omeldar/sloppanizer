@@ -56,12 +56,25 @@
 .dayNumber {
   display: grid;
   place-items: center;
-  width: 30px;
+  min-width: 30px;
   height: 30px;
+  padding: 0 8px;
   border-radius: var(--radius-round);
   color: var(--text);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Phones: seven "17.11." side by side need a smaller date. */
+@media (max-width: 640px) {
+  .dayNumber {
+    min-width: 0;
+    height: 24px;
+    padding: 0 3px;
+    font-size: min(12px, 3.3vw);
+  }
 }
 
 .dayHead[data-today] .dayNumber {

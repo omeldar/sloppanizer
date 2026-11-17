@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, shortDate, tookText } from "./format.ts";
+import {
+  absoluteDate,
+  absoluteTime,
+  dayLabel,
+  formatBytes,
+  formatMonth,
+  shortDate,
+  tookText,
+  weekdayName,
+} from "./format.ts";
 
 describe("formatBytes", () => {
   it("keeps bytes whole and uses one decimal from KB on", () => {
@@ -29,8 +38,47 @@ describe("shortDate", () => {
       "Yesterday",
     ]);
     expect(shortDate("2026-11-18", now)).toBe("Wed");
-    expect(shortDate("2026-11-30", now)).toBe("30 Nov");
-    expect(shortDate("2026-11-01", now)).toBe("1 Nov");
-    expect(shortDate("2027-01-05", now)).toBe("5 Jan 2027");
+    expect(shortDate("2026-11-30", now)).toBe("30.11.");
+    expect(shortDate("2026-11-01", now)).toBe("01.11.");
+    expect(shortDate("2026-02-03", now)).toBe("03.02.");
+  });
+
+  it("writes the full date for another year, also right across new year", () => {
+    expect(shortDate("2027-01-05", now)).toBe("05.01.2027");
+    expect(shortDate("2025-11-14", now)).toBe("14.11.2025");
+    const newYearsEve = new Date("2026-12-31T10:00:00Z");
+    expect(shortDate("2027-01-09", newYearsEve)).toBe("09.01.2027");
+    expect(shortDate("2026-12-20", newYearsEve)).toBe("20.12.");
+  });
+
+  it("does not depend on the browser language", () => {
+    const formatted = ["2026-03-04", "2026-10-03"].map((d) => shortDate(d, now));
+    expect(formatted.join(" ")).not.toMatch(/[a-z]/i);
+  });
+});
+
+describe("day labels", () => {
+  it("puts the English short weekday before the short date", () => {
+    expect(weekdayName("2026-11-16")).toBe("Mon");
+    expect(dayLabel("2026-11-16")).toBe("Mon 16.11.");
+    expect(dayLabel("2027-01-03")).toBe("Sun 03.01.");
+  });
+});
+
+describe("formatMonth", () => {
+  it("writes month and year with a two-digit month", () => {
+    expect(formatMonth("2026-03")).toBe("03.2026");
+    expect(formatMonth("2026-11")).toBe("11.2026");
+  });
+});
+
+describe("absoluteDate", () => {
+  it("gives the local day of an instant in the full format", () => {
+    // Midday UTC is the same calendar day in nearly every zone the tests run in.
+    expect(absoluteDate("2026-01-05T12:00:00Z")).toBe("05.01.2026");
+  });
+
+  it("writes date and 24-hour time without month names", () => {
+    expect(absoluteTime("2026-01-05T12:07:00Z")).toMatch(/^05\.01\.2026 \d\d:07$/);
   });
 });

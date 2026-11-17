@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { type APIRequestContext, type BrowserContext, expect, type Page, test } from "@playwright/test";
+import { formatDate } from "@organizer/shared";
 import { strFromU8, unzipSync } from "fflate";
 import {
   API,
@@ -291,7 +292,8 @@ test("week: drag onto Wednesday plans it, back to Unplanned clears it, shift+l m
   const wednesday = localDate(2, new Date(`${monday}T12:00:00`));
   const thursday = localDate(3, new Date(`${monday}T12:00:00`));
   await page.goto("/week");
-  const day = (date: string) => page.getByRole("region", { name: new RegExp(`${date}$`) });
+  const day = (date: string) =>
+    page.getByRole("region", { name: new RegExp(`${formatDate(date).replaceAll(".", "\\.")}$`) });
   const unplanned = page.getByRole("region", { name: "Unplanned", exact: true });
   const card = (zone: ReturnType<typeof day>) => zone.getByRole("listitem").filter({ hasText: `#${id}` });
   await expect(card(unplanned)).toBeVisible();

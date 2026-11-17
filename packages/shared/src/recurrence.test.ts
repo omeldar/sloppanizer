@@ -73,7 +73,9 @@ describe("RecurrenceRule", () => {
   });
 
   it("flags an end date before the anchor", () => {
-    expect(recurrenceProblem({ until: "2026-11-01" }, "2026-11-12")).toMatch(/before/);
+    expect(recurrenceProblem({ until: "2026-11-01" }, "2026-11-12")).toBe(
+      "The repeat ends (01.11.2026) before the todo's date (12.11.2026).",
+    );
     expect(recurrenceProblem({ until: "2026-11-12" }, "2026-11-12")).toBeNull();
     expect(recurrenceProblem({ until: null }, "2026-11-12")).toBeNull();
   });
@@ -259,9 +261,9 @@ describe("describeRecurrence", () => {
     expect(describeRecurrence({ every: "month", monthWeekday: { nth: -1, weekday: "fri" } })).toBe(
       "every month on the last Friday",
     );
-    expect(describeRecurrence({ every: "year", yearDate: "03-14" })).toBe("every year on 03-14");
+    expect(describeRecurrence({ every: "year", yearDate: "03-14" })).toBe("every year on 14.03.");
     expect(describeRecurrence({ every: "day", interval: 3, basis: "done" })).toBe("every 3 days after done");
     expect(describeRecurrence({ every: "week", interval: 2 })).toBe("every 2 weeks");
-    expect(describeRecurrence({ every: "day", until: "2026-12-31" })).toBe("every day until 2026-12-31");
+    expect(describeRecurrence({ every: "day", until: "2026-12-31" })).toBe("every day until 31.12.2026");
   });
 });

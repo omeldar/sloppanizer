@@ -1,10 +1,10 @@
 import {
+  formatDateTime,
   SEARCH_KINDS,
   type SearchHit,
   type SearchKind,
   type SearchQuery,
   type SearchResult,
-  toLocalDateTime,
   type TodoStatus,
 } from "@organizer/shared";
 import { and, eq, inArray, type SQL, sql } from "drizzle-orm";
@@ -191,7 +191,7 @@ function toHits(
         return {
           ...base(row, m?.title ?? "", plainText(row.body)),
           todoId: row.todoId,
-          subtitle: m ? `${m.actor}, ${toLocalDateTime(m.createdAt, ctx.timeZone)}` : null,
+          subtitle: m ? `${m.actor}, ${formatDateTime(m.createdAt, ctx.timeZone)}` : null,
         };
       });
     }

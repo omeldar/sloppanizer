@@ -49,6 +49,7 @@ import {
   UpdateTodo,
   addDays as addLocalDays,
   CalendarDate as PlanDate,
+  formatDate,
   localTimeToInstant,
   type TimeBlock,
   toLocalDate as planLocalDate,
@@ -391,7 +392,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       const c = ctx();
       const lines = [
         `Account ${me.account.username}`,
-        `Today ${c.today} (${c.timeZone})`,
+        `Today ${formatDate(c.today)} (${c.timeZone})`,
         statsLine(stats, c),
       ];
       if (plan) lines.push("", "Planned today (list_plan shows more days):", blockLines(plan));
@@ -1387,12 +1388,12 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   const blockLine = (b: TimeBlock): string => {
     const day = planLocalDate(b.startAt, deps.timeZone);
     const endDay = planLocalDate(b.endAt, deps.timeZone);
-    const endText = `${endDay === day ? "" : `${endDay} `}${toLocalTime(b.endAt, deps.timeZone)}`;
+    const endText = `${endDay === day ? "" : `${formatDate(endDay)} `}${toLocalTime(b.endAt, deps.timeZone)}`;
     const what = b.todo
       ? `#${b.todo.id} ${b.todo.title}${b.todo.status === "done" ? " (done)" : ""}`
       : b.title;
     const project = b.project ? ` [${b.project.name}]` : "";
-    return `block ${b.id} | ${day} ${toLocalTime(b.startAt, deps.timeZone)}-${endText} | ${what}${project}`;
+    return `block ${b.id} | ${formatDate(day)} ${toLocalTime(b.startAt, deps.timeZone)}-${endText} | ${what}${project}`;
   };
   const blockLines = (blocks: readonly TimeBlock[]): string =>
     blocks.length === 0 ? "Nothing planned." : blocks.map(blockLine).join("\n");
@@ -1416,7 +1417,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       const from = args.from ?? ctx().today;
       const to = args.to ?? addLocalDays(from, 6);
       const blocks = await api.get<TimeBlock[]>("/blocks", { from, to, todoId: args.todo });
-      return out(args.format, blocks, (data) => `Plan ${from} to ${to}:\n${blockLines(data)}`);
+      return out(
+        args.format,
+        blocks,
+        (data) => `Plan ${formatDate(from)} to ${formatDate(to)}:\n${blockLines(data)}`,
+      );
     },
   );
 

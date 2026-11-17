@@ -57,7 +57,7 @@ describe("token page", () => {
     expect(within(active).queryByText("Old script")).toBeNull();
     const group = screen.getByText("Revoked and expired (2)").closest("details");
     expect(group?.open).toBe(false);
-    expect(within(group as HTMLElement).getByText(/^Expired 202[56]-/)).toBeTruthy();
+    expect(within(group as HTMLElement).getByText(/^Expired \d\d\.\d\d\.202[56] \d\d:\d\d$/)).toBeTruthy();
   });
 
   it("shows the raw value once after create and keeps it out of every cache", async () => {

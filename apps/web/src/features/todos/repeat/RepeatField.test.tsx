@@ -25,7 +25,7 @@ describe("repeat panel", () => {
     const form = screen.getByRole("form", { name: "Custom repeat" });
     fireEvent.change(within(form).getByLabelText("Interval"), { target: { value: "2" } });
     fireEvent.click(within(form).getByRole("button", { name: "Mon" }));
-    expect(within(form).getByText(/every 2 weeks on Mon, Thu\. Next: /)).toBeTruthy();
+    expect(within(form).getByText(/every 2 weeks on Mon, Thu\. Next: \d\d\.\d\d\.\d{4}$/)).toBeTruthy();
 
     // Counted from done: a plain interval, the weekday toggles go away.
     fireEvent.click(within(form).getByLabelText("from when it is done"));
@@ -34,7 +34,7 @@ describe("repeat panel", () => {
     fireEvent.click(within(form).getByLabelText("from the schedule"));
 
     fireEvent.change(within(form).getByLabelText("Ends on"), { target: { value: "2026-11-01" } });
-    expect(within(form).getByText(/ends \(2026-11-01\) before/)).toBeTruthy();
+    expect(within(form).getByText(/ends \(01\.11\.2026\) before/)).toBeTruthy();
     const save = within(form).getByRole("button", { name: "Save repeat" }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     fireEvent.click(within(form).getByRole("button", { name: "Never" }));
