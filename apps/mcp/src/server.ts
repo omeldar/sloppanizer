@@ -15,7 +15,8 @@ export function createServer(config: McpConfig, fetchImpl?: typeof fetch): McpSe
         "and contacts on a todo record whom to ask about it. Each todo has a thread (get_activity, add_comment). " +
         "Todos can have subtasks, a Markdown checklist (check_item), links (blocks, relates to) and a repeat rule; " +
         "people_stats shows who asks for how much and how fast it gets done. Todos keep web links (add_web_link). " +
-        "The planner holds time blocks in the user's local time: list_plan shows them, plan_time reserves time for a todo.",
+        "The planner holds time blocks in the user's local time: list_plan shows them, plan_time reserves time for a todo. " +
+        "Replies write dates as dd.MM.yyyy (03.10.2026); tool inputs take dates as YYYY-MM-DD (2026-10-03).",
     },
   );
   registerTools(server, {

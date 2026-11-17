@@ -16,7 +16,7 @@ import { MiniStrip } from "../../components/strip/MiniStrip.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { Announce, Button, ErrorState, Kbd, Loading, PageHeader } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
-import { today, tookText } from "../../lib/format.ts";
+import { formatDate, formatDayMonth, today, tookText, weekdayName } from "../../lib/format.ts";
 import { useTodos } from "../../lib/queries.ts";
 import { useScrollIntoView } from "../../lib/listCursor.ts";
 import { useTodoActions } from "../todos/useTodoActions.ts";
@@ -25,11 +25,11 @@ import styles from "./Week.module.css";
 
 const route = getRouteApi("/week");
 
-const DAY_NAME = new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" });
 const UNPLANNED = "unplanned";
 
-function dayName(date: string): string {
-  return DAY_NAME.format(new Date(`${date}T12:00:00Z`));
+/** "Wed 18.11.2026" for labels, announcements and toasts. */
+function dayText(date: string): string {
+  return `${weekdayName(date)} ${formatDate(date)}`;
 }
 
 interface Lists {
@@ -82,7 +82,7 @@ export function WeekPage() {
         title="Week"
         meta={
           <span className={styles.range}>
-            {start} to {end}
+            {formatDate(start)} to {formatDate(end)}
           </span>
         }
         actions={
@@ -162,9 +162,7 @@ function WeekBoard({ days, today: now }: { days: string[]; today: string }) {
     });
     if (!saved) return;
     toast.show({
-      message: plannedOn
-        ? `Planned #${todo.id} for ${dayName(plannedOn)} ${plannedOn}`
-        : `Unplanned #${todo.id}`,
+      message: plannedOn ? `Planned #${todo.id} for ${dayText(plannedOn)}` : `Unplanned #${todo.id}`,
       action: { label: "Undo", run: () => void patch(todo.id, { plannedOn: before }) },
     });
   };
@@ -265,9 +263,7 @@ function WeekBoard({ days, today: now }: { days: string[]; today: string }) {
           text={
             selected
               ? `#${selected.todo.id} ${selected.todo.title}, ${
-                  days[selected.col]
-                    ? `${dayName(days[selected.col] as string)} ${days[selected.col]}`
-                    : "not planned this week"
+                  days[selected.col] ? dayText(days[selected.col] as string) : "not planned this week"
                 }`
               : ""
           }
@@ -283,11 +279,11 @@ function WeekBoard({ days, today: now }: { days: string[]; today: string }) {
                 "data-past": date < now || undefined,
                 "data-cursor": (cursor.col === col && cursor.id === null) || undefined,
               }}
-              label={`${dayName(date)} ${date}`}
+              label={dayText(date)}
               head={
                 <>
-                  <span className={styles.dayName}>{dayName(date)}</span>
-                  <span className={styles.dayDate}>{date.slice(5)}</span>
+                  <span className={styles.dayName}>{weekdayName(date)}</span>
+                  <span className={styles.dayDate}>{formatDayMonth(date)}</span>
                   <span className={styles.dayCount}>{lists.days.get(date)?.length || ""}</span>
                 </>
               }

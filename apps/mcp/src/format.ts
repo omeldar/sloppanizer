@@ -3,6 +3,8 @@ import {
   daysBetween,
   describeEvent,
   describeRecurrence,
+  formatDate,
+  formatDateTime,
   formatDuration,
   type Label,
   languageNames,
@@ -23,7 +25,6 @@ import {
   type TodoRef,
   type Topic,
   toLocalDate,
-  toLocalDateTime,
   waitingReason,
 } from "@organizer/shared";
 
@@ -54,7 +55,7 @@ export const personName = (person: Pick<PersonBrief, "displayName">): string => 
 
 /**
  * One line per todo, e.g.
- * `#142 open | Renew SSL certs | priority::high, homelab | project homelab | due 2026-11-09 (overdue 2d) | open 41d | req: Anna Meier`
+ * `#142 open | Renew SSL certs | priority::high, homelab | project homelab | due 09.11.2026 (overdue 2d) | open 41d | req: Anna Meier`
  * and, when they apply, `| 2/5 subtasks | checklist 3/7 | waiting on #12 | repeats every week`.
  */
 export function todoLine(todo: Todo, ctx: DateContext): string {
@@ -63,11 +64,15 @@ export function todoLine(todo: Todo, ctx: DateContext): string {
   parts.push(todo.project ? `project ${todo.project.slug}` : "inbox");
   const done = todo.status === "done";
   if (todo.dueOn)
-    parts.push(done ? `due ${todo.dueOn}` : `due ${todo.dueOn} (${relativeDue(todo.dueOn, ctx.today)})`);
-  if (todo.plannedOn && !done) parts.push(`planned ${todo.plannedOn}`);
+    parts.push(
+      done
+        ? `due ${formatDate(todo.dueOn)}`
+        : `due ${formatDate(todo.dueOn)} (${relativeDue(todo.dueOn, ctx.today)})`,
+    );
+  if (todo.plannedOn && !done) parts.push(`planned ${formatDate(todo.plannedOn)}`);
   if (done && todo.doneAt) {
     const took = todo.durationMs === null ? "" : `, took ${formatDuration(todo.durationMs)}`;
-    parts.push(`done ${toLocalDate(todo.doneAt, ctx.timeZone)}${took}`);
+    parts.push(`done ${formatDate(toLocalDate(todo.doneAt, ctx.timeZone))}${took}`);
   } else {
     parts.push(`open ${Math.max(0, daysBetween(toLocalDate(todo.createdAt, ctx.timeZone), ctx.today))}d`);
   }
@@ -88,8 +93,10 @@ export function todoLines(todos: readonly Todo[], ctx: DateContext, empty = "No 
   return todos.length === 0 ? empty : todos.map((todo) => todoLine(todo, ctx)).join("\n");
 }
 
-const local = (instant: string, ctx: DateContext): string =>
-  `${toLocalDate(instant, ctx.timeZone)} (${ago(toLocalDate(instant, ctx.timeZone), ctx.today)})`;
+const local = (instant: string, ctx: DateContext): string => {
+  const date = toLocalDate(instant, ctx.timeZone);
+  return `${formatDate(date)} (${ago(date, ctx.today)})`;
+};
 
 const contactRef = (p: PersonBrief): string =>
   `${p.displayName} (person ${p.id}${p.team ? `, ${p.team}` : ""})`;
@@ -100,7 +107,7 @@ export function todoDetail(todo: Todo, ctx: DateContext, subtasks: readonly Todo
   if (todo.parent) lines.push(`Subtask of #${todo.parent.id} ${todo.parent.title}`);
   lines.push(`created ${local(todo.createdAt, ctx)}`);
   lines.push(`last activity ${local(todo.lastActivityAt, ctx)}`);
-  if (todo.plannedOn) lines.push(`planned ${todo.plannedOn} (${ago(todo.plannedOn, ctx.today)})`);
+  if (todo.plannedOn) lines.push(`planned ${formatDate(todo.plannedOn)} (${ago(todo.plannedOn, ctx.today)})`);
   if (todo.requestedBy.length > 0) {
     lines.push(
       `requested by: ${todo.requestedBy.map((p) => `${p.displayName} (person ${p.id})`).join(", ")}`,
@@ -140,7 +147,7 @@ export function todoDetail(todo: Todo, ctx: DateContext, subtasks: readonly Todo
 
 export function nextUpText(next: NextUp, timeZone: string): string {
   const ctx = { today: next.today, timeZone };
-  const lines = [`Next up (${next.mode}), today ${next.today}:`];
+  const lines = [`Next up (${next.mode}), today ${formatDate(next.today)}:`];
   if (next.items.length === 0) lines.push("Nothing open. Add todos with create_todo.");
   next.items.forEach((item, index) => {
     const why = item.reasons.map((reason) => reason.label).join(", ");
@@ -241,7 +248,9 @@ export function personStatLine(stat: PersonStat): string {
 /** The period and totals, then one line per person. */
 export function peopleStatsText(stats: PeopleStats): string {
   const period =
-    stats.from || stats.to ? ` created ${stats.from ?? "any time"} to ${stats.to ?? "today"}` : "";
+    stats.from || stats.to
+      ? ` created ${stats.from ? formatDate(stats.from) : "any time"} to ${stats.to ? formatDate(stats.to) : "today"}`
+      : "";
   const { totals } = stats;
   const median = totals.medianDoneMs === null ? "" : `, median took ${formatDuration(totals.medianDoneMs)}`;
   const role = stats.role === "requester" ? "requesters" : "contacts";
@@ -266,26 +275,26 @@ export function personTagLine(tag: PersonTag): string {
 const indentRest = (text: string): string => text.trim().replaceAll("\n", "\n  ");
 
 /**
- * One line per thread item, oldest first, e.g. `2026-11-12 14:03 you: changed status from Open to Done`;
- * comments carry their text: `2026-11-12 14:05 planner commented (comment 12): Ordered the part.`
+ * One line per thread item, oldest first, e.g. `12.11.2026 14:03 you: changed status from Open to Done`;
+ * comments carry their text: `12.11.2026 14:05 planner commented (comment 12): Ordered the part.`
  */
 export function activityLine(item: ActivityItem, timeZone: string): string {
   if (item.type === "event") {
     const { event } = item;
-    return `${toLocalDateTime(event.createdAt, timeZone)} ${event.actor}: ${describeEvent(event)}`;
+    return `${formatDateTime(event.createdAt, timeZone)} ${event.actor}: ${describeEvent(event)}`;
   }
   const { comment } = item;
   const edited = comment.editedAt ? ", edited" : "";
-  return `${toLocalDateTime(comment.createdAt, timeZone)} ${comment.actor} commented (comment ${comment.id}${edited}): ${indentRest(comment.bodyMd)}`;
+  return `${formatDateTime(comment.createdAt, timeZone)} ${comment.actor} commented (comment ${comment.id}${edited}): ${indentRest(comment.bodyMd)}`;
 }
 
 const oneLine = (text: string): string => text.replace(/\s+/g, " ").trim();
 
-/** `note 4 | Title | project homelab | pinned | updated 2026-11-12 | excerpt` */
+/** `note 4 | Title | project homelab | pinned | updated 12.11.2026 | excerpt` */
 export function noteLine(note: NoteSummary | Note, ctx: DateContext): string {
   const parts = [`note ${note.id}`, note.title, note.project ? `project ${note.project.slug}` : "no project"];
   if (note.pinnedAt) parts.push("pinned");
-  parts.push(`updated ${toLocalDate(note.updatedAt, ctx.timeZone)}`);
+  parts.push(`updated ${formatDate(toLocalDate(note.updatedAt, ctx.timeZone))}`);
   const excerpt = oneLine("excerpt" in note ? note.excerpt : "");
   if (excerpt) parts.push(excerpt);
   return parts.join(" | ");

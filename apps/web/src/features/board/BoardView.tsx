@@ -18,7 +18,7 @@ import { MiniStrip } from "../../components/strip/MiniStrip.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { Announce, Button, ErrorState, Loading } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
-import { today, tookText } from "../../lib/format.ts";
+import { formatDate, today, tookText } from "../../lib/format.ts";
 import { type TodoListParams, useTodos } from "../../lib/queries.ts";
 import { useTodoActions } from "../todos/useTodoActions.ts";
 import styles from "./Board.module.css";
@@ -237,7 +237,7 @@ export function BoardView({ filters }: { filters: BoardFilters }) {
             footer={
               status === "done" && (
                 <div className={styles.doneFoot}>
-                  <span className={styles.since}>since {doneAfter}</span>
+                  <span className={styles.since}>since {formatDate(doneAfter)}</span>
                   <Button size="sm" variant="ghost" onClick={() => setDoneDays((d) => d + 30)}>
                     Show older
                   </Button>

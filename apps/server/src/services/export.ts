@@ -5,11 +5,11 @@ import {
   describeRecurrence,
   EXPORT_FORMAT,
   type ExportManifest,
+  formatDateTime,
   formatDuration,
   INLINE_IMAGE_TYPES,
   languageNames,
   toLocalDate,
-  toLocalDateTime,
   todoDurationMs,
 } from "@organizer/shared";
 import { asc } from "drizzle-orm";
@@ -177,7 +177,7 @@ export interface ExportComment {
 export function commentsSection(comments: readonly ExportComment[], timeZone: string): string {
   if (comments.length === 0) return "";
   const blocks = comments.map(
-    (c) => `### ${c.actor}, ${toLocalDateTime(c.createdAt, timeZone)}\n\n${c.bodyMd.replace(/\s+$/, "")}`,
+    (c) => `### ${c.actor}, ${formatDateTime(c.createdAt, timeZone)}\n\n${c.bodyMd.replace(/\s+$/, "")}`,
   );
   return `## Comments\n\n${blocks.join("\n\n")}`;
 }

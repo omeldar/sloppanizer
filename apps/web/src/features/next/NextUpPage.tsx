@@ -4,6 +4,7 @@ import { StripList } from "../../components/strip/StripList.tsx";
 import stripStyles from "../../components/strip/Strip.module.css";
 import { EmptyState, ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
 import { useLabels, useNext, useProjects } from "../../lib/queries.ts";
+import { formatDate } from "../../lib/format.ts";
 import styles from "../lists/Lists.module.css";
 import { hint } from "../../lib/device.ts";
 import { TodayPlan } from "../planner/TodayPlan.tsx";
@@ -37,7 +38,7 @@ export function NextUpPage() {
     <>
       <PageHeader
         title="Next up"
-        meta={data ? `${data.items.length} ranked, today ${data.today}` : undefined}
+        meta={data ? `${data.items.length} ranked, today ${formatDate(data.today)}` : undefined}
         actions={
           <div className={styles.filters}>
             <div className={styles.modes} role="group" aria-label="Ranking">

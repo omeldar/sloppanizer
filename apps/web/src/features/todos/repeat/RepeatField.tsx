@@ -2,7 +2,7 @@ import { describeRecurrence, ordinal, type RecurrenceRule, WEEKDAYS, type Weekda
 import { type FormEvent, useId, useState } from "react";
 import { Popover } from "../../../components/Popover.tsx";
 import { Button, FieldButton } from "../../../components/ui.tsx";
-import { today as localToday } from "../../../lib/format.ts";
+import { formatDate, today as localToday } from "../../../lib/format.ts";
 import { checkRule, type Draft, draftFrom, presets, ruleFrom, sameRule, WEEKDAY_SHORT } from "./repeat.ts";
 import styles from "./Repeat.module.css";
 
@@ -279,10 +279,10 @@ function CustomForm({
           <span>On</span>
           <input
             className={styles.text}
-            aria-label="Date in the year (MM-DD)"
+            aria-label="Day and month (dd.MM.)"
             value={draft.yearDate}
-            maxLength={5}
-            placeholder="03-14"
+            maxLength={6}
+            placeholder="14.03."
             onChange={(e) => set({ yearDate: e.target.value })}
           />
         </label>
@@ -329,7 +329,7 @@ function CustomForm({
       <p className={styles.preview} data-problem={!check.ok || undefined} aria-live="polite">
         {check.ok
           ? check.next
-            ? `${check.text}. Next: ${check.next}`
+            ? `${check.text}. Next: ${formatDate(check.next)}`
             : `${check.text}. No next one: the end date has passed.`
           : check.problem}
       </p>

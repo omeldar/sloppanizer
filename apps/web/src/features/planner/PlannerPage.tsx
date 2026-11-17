@@ -13,7 +13,7 @@ import {
   useState,
 } from "react";
 import { Button, PageHeader } from "../../components/ui.tsx";
-import { timeZone, today } from "../../lib/format.ts";
+import { dayLabel, formatDate, formatDayMonth, timeZone, today, weekdayName } from "../../lib/format.ts";
 import { errorMessage } from "../../lib/api.ts";
 import { useBlocks, useCreateBlock, useNext, useTodos, useUpdateBlock } from "../../lib/queries.ts";
 import { useEdgeScroll } from "./useEdgeScroll.ts";
@@ -50,11 +50,6 @@ interface Proposal {
 /** The grid always shows the whole day; it scrolls inside itself. */
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const HOUR_PX = 52;
-const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: "short", timeZone: "UTC" });
-const DAY_NUMBER = new Intl.DateTimeFormat(undefined, { day: "numeric", timeZone: "UTC" });
-const MONTH = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-
-const asDate = (day: string) => new Date(`${day}T12:00:00Z`);
 
 /** Today and the minutes after local midnight now. */
 function readNow(): { day: string; minutes: number } {
@@ -199,7 +194,7 @@ export function PlannerPage() {
     <div className={styles.page} data-fill>
       <PageHeader
         title="Planner"
-        meta={`${MONTH.format(asDate(first))} – ${MONTH.format(asDate(last))}`}
+        meta={`${formatDate(first)} – ${formatDate(last)}`}
         actions={
           <>
             <Button size="sm" onClick={() => go(addDays(selected, -7))} aria-label="Previous week">
@@ -234,10 +229,7 @@ export function PlannerPage() {
       {proposal && proposal.blocks.length > 0 && (
         <div className={styles.proposalBar} role="region" aria-label="Proposed plan">
           <div className={styles.proposalText}>
-            <strong>
-              Proposed for {WEEKDAY.format(asDate(proposal.day))} {DAY_NUMBER.format(asDate(proposal.day))}:
-            </strong>{" "}
-            {proposal.note}
+            <strong>Proposed for {dayLabel(proposal.day)}:</strong> {proposal.note}
           </div>
           <ul className={styles.proposalList}>
             {proposal.blocks.map((b) => (
@@ -292,8 +284,8 @@ export function PlannerPage() {
                 data-selected={day === selected || undefined}
                 onClick={() => go(day)}
               >
-                <span className={styles.weekday}>{WEEKDAY.format(asDate(day))}</span>
-                <span className={styles.dayNumber}>{DAY_NUMBER.format(asDate(day))}</span>
+                <span className={styles.weekday}>{weekdayName(day)}</span>
+                <span className={styles.dayNumber}>{formatDayMonth(day)}</span>
                 {(placedByDay.get(day)?.length ?? 0) > 0 && (
                   <span className={styles.dot} aria-hidden="true" />
                 )}

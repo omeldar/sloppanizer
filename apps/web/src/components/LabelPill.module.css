@@ -2,7 +2,9 @@
   display: inline-flex;
   align-items: stretch;
   flex-shrink: 0;
-  height: 18px;
+  /* Never wider than its row: the value shortens with an ellipsis and the border stays whole. */
+  max-width: 100%;
+  height: var(--pill-h);
   border: 1px solid var(--label);
   border-radius: var(--radius-pill);
   font-family: var(--font-mono);
@@ -15,12 +17,16 @@
 }
 
 .scope {
+  flex-shrink: 0;
   padding: 0 5px;
   background: var(--label);
   color: var(--ink);
 }
 
 .value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 0 5px;
   background: var(--raised);
   color: var(--text);

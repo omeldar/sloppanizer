@@ -150,10 +150,29 @@ export function toLocalTime(instant: Date | string | number, timeZone: string): 
   return `${pad(w.hour)}:${pad(w.minute)}`;
 }
 
-/** Local wall-clock time of an instant, "YYYY-MM-DD HH:mm" (for thread lines and exports). */
-export function toLocalDateTime(instant: Date | string | number, timeZone: string): string {
+/*
+ * Dates for people to read: "03.10.2026", or "03.10." where only short text fits. The same for every
+ * locale and never with month names. Data and APIs keep "YYYY-MM-DD"; only text shown to people uses these.
+ */
+
+const DAY_MONTH_PATTERN = /^(?:\d{4}-)?(\d{2})-(\d{2})$/;
+
+/** "2026-10-03" as "03.10.2026". Anything that is not a calendar date is returned as is. */
+export function formatDate(date: string): string {
+  const match = DATE_PATTERN.exec(date);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : date;
+}
+
+/** "2026-10-03" (or a year date "10-03") as "03.10.". Anything else is returned as is. */
+export function formatDayMonth(date: string): string {
+  const match = DAY_MONTH_PATTERN.exec(date);
+  return match ? `${match[2]}.${match[1]}.` : date;
+}
+
+/** Local date and time of an instant in the zone, "03.10.2026 14:30" (thread lines, exports, tooltips). */
+export function formatDateTime(instant: Date | string | number, timeZone: string): string {
   const w = wallClock(toInstant(instant), timeZone);
-  return `${pad(w.year, 4)}-${pad(w.month)}-${pad(w.day)} ${pad(w.hour)}:${pad(w.minute)}`;
+  return `${pad(w.day)}.${pad(w.month)}.${pad(w.year, 4)} ${pad(w.hour)}:${pad(w.minute)}`;
 }
 
 /** 1 = Monday ... 7 = Sunday, for a calendar date. */

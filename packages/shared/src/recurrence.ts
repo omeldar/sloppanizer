@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { addDays, daysBetween, isCalendarDate } from "./dates.ts";
+import { addDays, daysBetween, formatDate, formatDayMonth, isCalendarDate } from "./dates.ts";
 import { CalendarDate } from "./primitives.ts";
 
 /**
@@ -181,7 +181,7 @@ export function normalizeRecurrence(rule: RecurrenceRuleInput, anchor: string): 
 /** Why a rule does not fit the anchor date, or null when it is fine. */
 export function recurrenceProblem(rule: Pick<RecurrenceRule, "until">, anchor: string): string | null {
   if (rule.until !== undefined && rule.until !== null && rule.until < anchor)
-    return `The repeat ends (${rule.until}) before the todo's date (${anchor}).`;
+    return `The repeat ends (${formatDate(rule.until)}) before the todo's date (${formatDate(anchor)}).`;
   return null;
 }
 
@@ -322,7 +322,7 @@ const WORKWEEK = ["mon", "tue", "wed", "thu", "fri"];
 /**
  * The rule in plain words: "every day", "every weekday", "every 2 weeks on Mon, Thu", "every month
  * on the 15th", "every month on the last day", "every month on the 2nd Tuesday", "every year on
- * 03-14", "every 3 days after done", plus " until 2026-12-31".
+ * 14.03.", "every 3 days after done", plus " until 31.12.2026".
  */
 export function describeRecurrence(rule: RecurrenceRuleInput): string {
   const interval = rule.interval ?? 1;
@@ -339,8 +339,8 @@ export function describeRecurrence(rule: RecurrenceRuleInput): string {
   } else if (rule.every === "month" && rule.monthDay !== undefined) {
     text += rule.monthDay === -1 ? " on the last day" : ` on the ${ordinal(rule.monthDay)}`;
   } else if (rule.every === "year" && rule.yearDate) {
-    text += ` on ${rule.yearDate}`;
+    text += ` on ${formatDayMonth(rule.yearDate)}`;
   }
-  if (rule.until) text += ` until ${rule.until}`;
+  if (rule.until) text += ` until ${formatDate(rule.until)}`;
   return text;
 }

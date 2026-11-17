@@ -2,7 +2,7 @@ import { addDays } from "@organizer/shared";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { shortDate, today } from "../../lib/format.ts";
+import { formatDate, shortDate, today } from "../../lib/format.ts";
 import { makeBrief, makeLabel, makeTodo, renderWithApp } from "../../test/render.tsx";
 import { StripRow } from "./StripRow.tsx";
 
@@ -60,7 +60,7 @@ describe("StripRow", () => {
     const date = addDays(today(), -2);
     const due = await screen.findByText(shortDate(date));
     expect(due.dataset.state).toBe("overdue");
-    expect(due.title).toBe(`${date}, overdue 2d`);
+    expect(due.title).toBe(`${formatDate(date)}, overdue 2d`);
   });
 
   it("shows how long a done todo took instead of its age", async () => {

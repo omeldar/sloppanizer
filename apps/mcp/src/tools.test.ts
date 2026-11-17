@@ -316,7 +316,7 @@ describe("thread tools", () => {
   it("get_activity shows the newest items when limited", async () => {
     const { call } = await connect(() => activity);
     expect((await call("get_activity", { todo: 142, limit: 1 })).text).toBe(
-      "#142 activity (2 items, the newest 1):\n2026-11-11 09:00 planner commented (comment 5): Asked Max.",
+      "#142 activity (2 items, the newest 1):\n11.11.2026 09:00 planner commented (comment 5): Asked Max.",
     );
     const all = await call("get_activity", { todo: 142 });
     expect(all.text.split("\n")).toHaveLength(3);
@@ -695,7 +695,7 @@ describe("step 3 tools", () => {
       },
     });
     expect(text.split("\n")).toEqual([
-      "People as requesters, todos created 2026-01-01 to today: 14 (3 open, 11 done, median took 2d 4h):",
+      "People as requesters, todos created 01.01.2026 to today: 14 (3 open, 11 done, median took 2d 4h):",
       "Anna Meier | Platform | requested 14, open 3, done 11, median took 2d 4h | contact 5",
       "Max Muster | requested 0, open 0, done 0 | contact 2",
     ]);

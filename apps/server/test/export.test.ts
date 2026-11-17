@@ -307,11 +307,11 @@ describe("export format 5", () => {
         "",
         "## Comments",
         "",
-        "### you, 2026-11-11 14:05",
+        "### you, 11.11.2026 14:05",
         "",
         "Asked Max.",
         "",
-        "### planner, 2026-11-12 09:00",
+        "### planner, 12.11.2026 09:00",
         "",
         // The file is missing, so the link stays as it was.
         "Done: [log](/api/v1/attachments/3/log.pdf)",
@@ -432,7 +432,7 @@ describe("export Markdown helpers", () => {
         "Europe/Zurich",
       ),
     ).toBe(
-      "## Comments\n\n### you, 2026-11-12 14:03\n\nFirst **one**\n\n### planner, 2026-03-29 03:30\n\nSecond",
+      "## Comments\n\n### you, 12.11.2026 14:03\n\nFirst **one**\n\n### planner, 29.03.2026 03:30\n\nSecond",
     );
   });
 });

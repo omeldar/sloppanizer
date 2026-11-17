@@ -33,7 +33,7 @@ import {
 } from "../../components/ui.tsx";
 import { useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { ApiError, errorMessage } from "../../lib/api.ts";
-import { absoluteTime, toDate } from "../../lib/format.ts";
+import { absoluteDate, absoluteTime } from "../../lib/format.ts";
 import {
   useCreatePersonTag,
   useDeletePerson,
@@ -621,7 +621,7 @@ function PersonTodoRow({ todo }: { todo: Todo }) {
         {STATUS_LABELS[todo.status]}
       </span>
       <span className={styles.todoDate} title={`Created ${absoluteTime(todo.createdAt)}`}>
-        {toDate(todo.createdAt)}
+        {absoluteDate(todo.createdAt)}
       </span>
       <span className={styles.todoDate}>
         {todo.doneAt && todo.durationMs !== null ? `took ${formatDuration(todo.durationMs)}` : ""}

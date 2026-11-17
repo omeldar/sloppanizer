@@ -3,7 +3,7 @@ import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { type CSSProperties, useState } from "react";
 import { EmptyState, ErrorState, Loading, PageHeader, TextInput } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
-import { today as localToday, toDate } from "../../lib/format.ts";
+import { absoluteDate, formatDate, today as localToday } from "../../lib/format.ts";
 import { useLabels, usePeopleStats, useProjects } from "../../lib/queries.ts";
 import { stepCursor, useScrollIntoView } from "../../lib/listCursor.ts";
 import { joinList, splitList, TagFilter, TeamFilter } from "./filters.tsx";
@@ -200,7 +200,7 @@ export function PeopleStatsPage() {
           </li>
           {stats.data?.from && (
             <li className={styles.range}>
-              {stats.data.from} to {stats.data.to ?? "today"}
+              {formatDate(stats.data.from)} to {stats.data.to ? formatDate(stats.data.to) : "today"}
             </li>
           )}
         </ul>
@@ -389,7 +389,7 @@ function StatRow({
           <td data-num>{tookText(requested.p90DoneMs)}</td>
           <td data-num>{daysText(requested.oldestOpenDays)}</td>
           <td data-num>{contact.total}</td>
-          <td className={styles.when}>{requested.lastAt ? toDate(requested.lastAt) : "-"}</td>
+          <td className={styles.when}>{requested.lastAt ? absoluteDate(requested.lastAt) : "-"}</td>
         </>
       ) : (
         <td data-num>{requested.total}</td>

@@ -1,7 +1,7 @@
 import { PRIORITY_SCOPE, parseLabelName, priorityOf, type Todo } from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
 import { forwardRef, type HTMLAttributes } from "react";
-import { dueState, dueText, shortDate } from "../../lib/format.ts";
+import { dueState, dueText, formatDate, shortDate } from "../../lib/format.ts";
 import { LabelPill } from "../LabelPill.tsx";
 import styles from "./MiniStrip.module.css";
 import { hasFacts, TodoFacts } from "./TodoFacts.tsx";
@@ -70,7 +70,7 @@ export const MiniStrip = forwardRef<HTMLDivElement, Props>(function MiniStrip(
               <span
                 className={styles.due}
                 data-state={done ? "later" : dueState(todo.dueOn)}
-                title={`${todo.dueOn}, ${dueText(todo.dueOn)}`}
+                title={`${formatDate(todo.dueOn)}, ${dueText(todo.dueOn)}`}
               >
                 {shortDate(todo.dueOn)}
               </span>
