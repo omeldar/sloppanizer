@@ -17,17 +17,12 @@ export interface TodoDrag {
 }
 
 /** The day column ([data-day]) under a point and the snapped start of a block dropped there. */
-export function slotAt(
-  x: number,
-  y: number,
-  firstHour: number,
-  hourPx: number,
-): { day: string; startMin: number } | null {
+export function slotAt(x: number, y: number, hourPx: number): { day: string; startMin: number } | null {
   const column = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-day]");
   const day = column?.dataset.day;
   if (!column || !day) return null;
   const top = column.getBoundingClientRect().top;
-  const minutes = snap(firstHour * 60 + ((y - top) / hourPx) * 60 - 15);
+  const minutes = snap(((y - top) / hourPx) * 60 - 15);
   return { day, startMin: Math.max(0, Math.min(23 * 60, minutes)) };
 }
 
@@ -37,7 +32,6 @@ export function slotAt(
  * a click.
  */
 export function useTodoDrag(options: {
-  firstHour: number;
   hourPx: number;
   onDrop: (todo: DragTodo, day: string, startMin: number) => void;
   onClick: (todo: DragTodo) => void;
@@ -61,7 +55,7 @@ export function useTodoDrag(options: {
         x: event.clientX,
         y: event.clientY,
         active: true,
-        target: slotAt(event.clientX, event.clientY, options.firstHour, options.hourPx),
+        target: slotAt(event.clientX, event.clientY, options.hourPx),
       });
     },
     onPointerUp: () => {
@@ -81,5 +75,10 @@ export function useTodoDrag(options: {
     },
   });
 
-  return { drag, bind };
+  /** Finds the slot under the pointer again after the calendar scrolled beneath it. */
+  const retarget = () => {
+    if (drag?.active) setDrag({ ...drag, target: slotAt(drag.x, drag.y, options.hourPx) });
+  };
+
+  return { drag, bind, retarget };
 }

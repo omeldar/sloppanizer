@@ -280,6 +280,11 @@
   padding: 0 24px 48px;
 }
 
+/* A page that fills the main area and scrolls inside itself (the planner) brings its own bottom gap. */
+.main:has(> [data-fill]) {
+  padding-bottom: 0;
+}
+
 /* Status bar */
 .statusbar {
   grid-area: status;

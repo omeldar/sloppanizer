@@ -8,7 +8,7 @@ import { timeZone } from "../../lib/format.ts";
 import { useCreateBlock, useDeleteBlock, useUpdateBlock } from "../../lib/queries.ts";
 import { TodoSearchPicker } from "../todos/relations/TodoSearchPicker.tsx";
 import styles from "./Planner.module.css";
-import { blockSpan, minutesToTime, timeToMinutes } from "./planner.ts";
+import { blockSpan, lengthMinutes, minutesToTime, timeToMinutes } from "./planner.ts";
 
 export interface BlockDraft {
   /** An existing block to edit, or none for a new one. */
@@ -45,12 +45,13 @@ function BlockForm({ draft, onClose }: { draft: BlockDraft; onClose: () => void 
   const [title, setTitle] = useState(draft.block?.title ?? "");
   const [day, setDay] = useState(draft.day);
   const [start, setStart] = useState(draft.start);
-  const [end, setEnd] = useState(draft.end);
+  // A time field cannot show 24:00: midnight at the end is 00:00, which blockSpan reads as the next day.
+  const [end, setEnd] = useState(draft.end === "24:00" ? "00:00" : draft.end);
   const [error, setError] = useState<string | null>(null);
   const busy = create.isPending || update.isPending || remove.isPending;
 
-  const setLength = (minutes: number) =>
-    setEnd(minutesToTime(Math.min(24 * 60, timeToMinutes(start) + minutes)));
+  // Late blocks may run past midnight into the next day.
+  const setLength = (minutes: number) => setEnd(minutesToTime((timeToMinutes(start) + minutes) % (24 * 60)));
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -127,7 +128,7 @@ function BlockForm({ draft, onClose }: { draft: BlockDraft; onClose: () => void 
             key={minutes}
             type="button"
             className={styles.length}
-            data-on={timeToMinutes(end) - timeToMinutes(start) === minutes || undefined}
+            data-on={lengthMinutes(start, end) === minutes || undefined}
             onClick={() => setLength(minutes)}
           >
             {minutes < 60 ? `${minutes} min` : `${minutes / 60} h`}

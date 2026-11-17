@@ -2,12 +2,14 @@ import type { TimeBlock } from "@organizer/shared";
 import { describe, expect, it } from "vitest";
 import {
   blockSpan,
+  edgeScrollStep,
+  lengthMinutes,
   minutesToTime,
   movedSpan,
   nextQuarter,
   placeBlocks,
+  scrollStartMinutes,
   snap,
-  visibleHours,
 } from "./planner.ts";
 
 const TZ = "Europe/Zurich";
@@ -50,15 +52,81 @@ describe("placeBlocks", () => {
     expect([second?.startMin, second?.endMin, second?.continuesBefore]).toEqual([0, 90, true]);
     expect(placeBlocks([night], "2026-11-14", TZ)).toEqual([]);
   });
+});
 
-  it("widens the visible hours to every block", () => {
-    const early = placeBlocks(
-      [block(5, "2026-11-12T04:00:00.000Z", "2026-11-12T05:00:00.000Z")],
-      "2026-11-12",
-      TZ,
-    );
-    expect(visibleHours(early)).toEqual({ first: 5, last: 22 });
-    expect(visibleHours([])).toEqual({ first: 7, last: 22 });
+describe("placeBlocks on whole and odd length days", () => {
+  it("places a block from 00:00 to 24:00 as the whole day, continuing nowhere", () => {
+    const whole = block(5, "2026-11-11T23:00:00.000Z", "2026-11-12T23:00:00.000Z");
+    const [p] = placeBlocks([whole], "2026-11-12", TZ);
+    expect([p?.startMin, p?.endMin, p?.continuesBefore, p?.continuesAfter]).toEqual([0, 1440, false, false]);
+    expect(placeBlocks([whole], "2026-11-13", TZ)).toEqual([]);
+    expect(placeBlocks([whole], "2026-11-11", TZ)).toEqual([]);
+  });
+
+  it("ends a block that stops exactly at midnight on its own day only", () => {
+    const evening = block(6, "2026-11-12T21:00:00.000Z", "2026-11-12T23:00:00.000Z");
+    expect(placeBlocks([evening], "2026-11-13", TZ)).toEqual([]);
+    expect(placeBlocks([evening], "2026-11-12", TZ)[0]?.continuesAfter).toBe(false);
+  });
+
+  it("counts a 23 hour day (clocks go forward) and a 25 hour day (clocks go back)", () => {
+    const spring = block(7, "2026-03-28T23:00:00.000Z", "2026-03-29T22:00:00.000Z");
+    expect(placeBlocks([spring], "2026-03-29", TZ)[0]).toMatchObject({ startMin: 0, endMin: 23 * 60 });
+    const autumn = block(8, "2026-10-24T22:00:00.000Z", "2026-10-25T23:00:00.000Z");
+    expect(placeBlocks([autumn], "2026-10-25", TZ)[0]).toMatchObject({ startMin: 0, endMin: 25 * 60 });
+  });
+});
+
+describe("scrollStartMinutes", () => {
+  it("opens an hour before now on the week with today", () => {
+    expect(scrollStartMinutes(true, 14 * 60 + 20)).toBe(13 * 60 + 20);
+  });
+
+  it("never opens before midnight in the first hour of the day", () => {
+    expect(scrollStartMinutes(true, 25)).toBe(0);
+  });
+
+  it("opens at 07:00 on a week without today, whatever the time", () => {
+    expect(scrollStartMinutes(false, 25)).toBe(7 * 60);
+    expect(scrollStartMinutes(false, 23 * 60)).toBe(7 * 60);
+  });
+});
+
+describe("edgeScrollStep", () => {
+  const area = { top: 100, bottom: 600, left: 50, right: 850 };
+
+  it("leaves the grid alone while the pointer is away from its edges", () => {
+    expect(edgeScrollStep({ x: 400, y: 350 }, area)).toBe(0);
+    expect(edgeScrollStep({ x: 400, y: 148 }, area)).toBe(0);
+    expect(edgeScrollStep({ x: 400, y: 552 }, area)).toBe(0);
+  });
+
+  it("scrolls up near the top and down near the bottom, faster closer to the edge", () => {
+    const slowUp = edgeScrollStep({ x: 400, y: 140 }, area);
+    const fastUp = edgeScrollStep({ x: 400, y: 105 }, area);
+    expect(slowUp).toBeLessThan(0);
+    expect(fastUp).toBeLessThan(slowUp);
+    const slowDown = edgeScrollStep({ x: 400, y: 560 }, area);
+    const fastDown = edgeScrollStep({ x: 400, y: 595 }, area);
+    expect(slowDown).toBeGreaterThan(0);
+    expect(fastDown).toBeGreaterThan(slowDown);
+  });
+
+  it("keeps full speed past the edge (over the day heads or below the grid)", () => {
+    expect(edgeScrollStep({ x: 400, y: 20 }, area)).toBe(-16);
+    expect(edgeScrollStep({ x: 400, y: 900 }, area)).toBe(16);
+  });
+
+  it("starts scrolling only inside the edge zone and treats the grid's side lines as inside", () => {
+    expect(edgeScrollStep({ x: 400, y: 148 }, area)).toBe(0);
+    expect(edgeScrollStep({ x: 400, y: 147 }, area)).toBeLessThan(0);
+    expect(edgeScrollStep({ x: 50, y: 105 }, area)).toBeLessThan(0);
+    expect(edgeScrollStep({ x: 850, y: 595 }, area)).toBeGreaterThan(0);
+  });
+
+  it("does not scroll while the pointer is beside the grid (over the To plan list)", () => {
+    expect(edgeScrollStep({ x: 900, y: 595 }, area)).toBe(0);
+    expect(edgeScrollStep({ x: 10, y: 105 }, area)).toBe(0);
   });
 });
 
@@ -75,6 +143,22 @@ describe("time helpers", () => {
     });
     expect(blockSpan("2026-11-12", "23:00", "01:00", TZ).endAt).toBe("2026-11-13T00:00:00.000Z");
     expect(blockSpan("2026-11-12", "22:00", "24:00", TZ).endAt).toBe("2026-11-12T23:00:00.000Z");
+  });
+
+  it("measures a block's length, past midnight too", () => {
+    expect(lengthMinutes("09:00", "10:30")).toBe(90);
+    expect(lengthMinutes("23:00", "00:00")).toBe(60);
+    expect(lengthMinutes("23:00", "02:00")).toBe(180);
+    expect(lengthMinutes("23:00", "24:00")).toBe(60);
+    expect(lengthMinutes("08:00", "08:00")).toBe(24 * 60);
+  });
+
+  it("handles a block on a 23 hour day and the 24:00 end on a clock change day", () => {
+    expect(blockSpan("2026-03-29", "22:00", "24:00", TZ)).toEqual({
+      startAt: "2026-03-29T20:00:00.000Z",
+      endAt: "2026-03-29T22:00:00.000Z",
+    });
+    expect(blockSpan("2026-10-25", "00:00", "24:00", TZ).endAt).toBe("2026-10-25T23:00:00.000Z");
   });
 
   it("starts a new block at the next quarter hour", () => {

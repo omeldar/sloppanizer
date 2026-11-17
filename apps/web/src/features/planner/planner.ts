@@ -7,10 +7,9 @@ import {
   toLocalTime,
 } from "@organizer/shared";
 
-/** The planner's visible hours: 7:00 to 22:00, widened to fit blocks outside. */
-export const DEFAULT_FIRST_HOUR = 7;
-export const DEFAULT_LAST_HOUR = 22;
 export const SNAP_MINUTES = 15;
+/** The planner shows the whole day; it opens at this hour unless it shows today. */
+export const DAY_START_HOUR = 7;
 
 export interface PlacedBlock {
   block: TimeBlock;
@@ -72,15 +71,25 @@ export function placeBlocks(blocks: readonly TimeBlock[], day: string, timeZone:
   return placed;
 }
 
-/** First and last visible hour: the defaults, widened to every placed block. */
-export function visibleHours(placed: readonly PlacedBlock[]): { first: number; last: number } {
-  let first = DEFAULT_FIRST_HOUR;
-  let last = DEFAULT_LAST_HOUR;
-  for (const p of placed) {
-    first = Math.min(first, Math.floor(p.startMin / 60));
-    last = Math.max(last, Math.ceil(p.endMin / 60));
-  }
-  return { first: Math.max(0, first), last: Math.min(24, last) };
+/**
+ * Where the planner's grid opens, in minutes after midnight: an hour before now on the week with today
+ * (so the next hours are in view), the start of a normal day on other weeks.
+ */
+export const scrollStartMinutes = (showsToday: boolean, nowMinutes: number): number =>
+  showsToday ? Math.max(0, nowMinutes - 60) : DAY_START_HOUR * 60;
+
+/** Pixels per animation frame to scroll an area while a drag nears its top or bottom edge (negative: up). */
+export function edgeScrollStep(
+  point: { x: number; y: number },
+  area: { top: number; bottom: number; left: number; right: number },
+  edge = 48,
+  fastest = 16,
+): number {
+  if (point.x < area.left || point.x > area.right) return 0;
+  const speed = (depth: number) => Math.ceil(fastest * Math.min(1, depth / edge));
+  if (point.y < area.top + edge) return -speed(area.top + edge - point.y);
+  if (point.y > area.bottom - edge) return speed(point.y - (area.bottom - edge));
+  return 0;
 }
 
 /** Rounds minutes to the planner's 15 minute grid. */
@@ -95,6 +104,12 @@ export function minutesToTime(minutes: number): string {
 export function timeToMinutes(time: string): number {
   const [h = "0", m = "0"] = time.split(":");
   return Number(h) * 60 + Number(m);
+}
+
+/** Minutes from start to end ("HH:mm"); an end at or before the start is the next day, like blockSpan. */
+export function lengthMinutes(start: string, end: string): number {
+  const day = 24 * 60;
+  return (timeToMinutes(end) - timeToMinutes(start) + day) % day || day;
 }
 
 /** The instants of a block on a local day from start to end ("HH:mm"); an end at or before the start is the next day. */
