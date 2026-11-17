@@ -1,22 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mailtoUrl, normalizeTopic, teamsChatUrl } from "./people.ts";
+import { mailtoUrl, normalizeTopic } from "./people.ts";
 
 describe("normalizeTopic", () => {
   it("trims and collapses inner whitespace, keeps the spelling", () => {
     expect(normalizeTopic("  Firewall \t  rules\n")).toBe("Firewall rules");
     expect(normalizeTopic("SAP")).toBe("SAP");
     expect(normalizeTopic("   ")).toBe("");
-  });
-});
-
-describe("teamsChatUrl", () => {
-  it("encodes the address as the users parameter", () => {
-    expect(teamsChatUrl("max.muster@example.com")).toBe(
-      "https://teams.microsoft.com/l/chat/0/0?users=max.muster%40example.com",
-    );
-    expect(teamsChatUrl(" a+b&c@example.com ")).toBe(
-      "https://teams.microsoft.com/l/chat/0/0?users=a%2Bb%26c%40example.com",
-    );
   });
 });
 

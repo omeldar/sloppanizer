@@ -9,7 +9,7 @@ import styles from "./PersonChip.module.css";
 
 /**
  * A person on a todo: name and team, linking to their page. Hovering loads the full person
- * (topics, tags, email with Mail and Teams chat), which todo payloads leave out on purpose.
+ * (topics, tags, email with Mail and Copy), which todo payloads leave out on purpose.
  */
 export function PersonChip({ person }: { person: PersonBrief }) {
   const [open, setOpen] = useState(false);

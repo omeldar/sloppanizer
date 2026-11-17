@@ -980,9 +980,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       'Short hint shown next to the name, e.g. "Platform team, Basel" (tells namesakes apart).',
     ),
     team: CreatePerson.shape.team.describe('Team or department, e.g. "Network team".'),
-    email: CreatePerson.shape.email.describe(
-      "Email address (enables mail and chat links); empty text removes it.",
-    ),
+    email: CreatePerson.shape.email.describe("Email address (enables the mail link); empty text removes it."),
     notes: CreatePerson.shape.notesMd.describe("Longer notes about the person in Markdown."),
   };
 

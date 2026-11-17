@@ -9,7 +9,10 @@ await import("./PersonPage.tsx");
 
 afterEach(() => vi.unstubAllGlobals());
 
-const person = makePerson("Anna", "Meier", 1, { topics: ["DNS", "Backup"] });
+const person = makePerson("Anna", "Meier", 1, {
+  topics: ["DNS", "Backup"],
+  email: "anna.meier@example.com",
+});
 
 /** The person page; the page's topic list knows DNS but not Backup (as if past its limit). */
 function renderPerson() {
@@ -50,5 +53,16 @@ describe("person page topics", () => {
     const dialog = await screen.findByRole("dialog", { name: "Rename Backup" });
     expect(within(dialog).getByRole<HTMLInputElement>("textbox", { name: /New name/ }).value).toBe("Backup");
     expect(topicCalls(calls).map((c) => c.path)).toContain("/api/v1/topics?q=Backup&limit=20");
+  });
+});
+
+describe("person page email actions", () => {
+  it("offers Mail and Copy for the address, but no Teams chat", async () => {
+    renderPerson();
+    const mail = await screen.findByRole("link", { name: "Mail" }, LAZY_PAGE);
+    expect(mail.getAttribute("href")).toBe("mailto:anna.meier@example.com");
+    expect(screen.getByRole("button", { name: "Copy" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Teams/ })).toBeNull();
+    expect(document.querySelector('a[href*="teams.microsoft.com"]')).toBeNull();
   });
 });
