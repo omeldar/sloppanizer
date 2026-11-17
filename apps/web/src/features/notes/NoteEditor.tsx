@@ -12,6 +12,7 @@ import { ApiError, errorMessage } from "../../lib/api.ts";
 import { absoluteTime, relativeTime } from "../../lib/format.ts";
 import { useDeleteNote, useNote, useUpdateNote } from "../../lib/queries.ts";
 import styles from "./Notes.module.css";
+import { SelectionTodoMenu } from "./SelectionTodoMenu.tsx";
 
 export function NoteEditor({ id, write }: { id: number; write: boolean }) {
   const note = useNote(id);
@@ -109,15 +110,17 @@ function NoteBody({ note, write }: { note: Note; write: boolean }) {
           </Button>
         </div>
       </header>
-      <MarkdownField
-        title="Text"
-        value={note.bodyMd}
-        startWriting={write}
-        // oxlint-disable-next-line jsx-a11y/no-autofocus -- a new note opens ready to type
-        autoFocus={write}
-        save={(bodyMd) => save({ bodyMd })}
-        emptyText="Nothing written yet. Choose Write to start."
-      />
+      <SelectionTodoMenu>
+        <MarkdownField
+          title="Text"
+          value={note.bodyMd}
+          startWriting={write}
+          // oxlint-disable-next-line jsx-a11y/no-autofocus -- a new note opens ready to type
+          autoFocus={write}
+          save={(bodyMd) => save({ bodyMd })}
+          emptyText="Nothing written yet. Choose Write to start."
+        />
+      </SelectionTodoMenu>
       <DeleteNoteDialog note={note} open={confirmDelete} onOpenChange={setConfirmDelete} />
     </article>
   );

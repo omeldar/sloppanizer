@@ -15,11 +15,13 @@ import {
 } from "./primitives.ts";
 import { RecurrenceRule } from "./recurrence.ts";
 
+/** Longest todo title, in characters (UTF-16 code units, as the server counts). */
+export const TODO_TITLE_MAX = 300;
 const Title = z
   .string()
   .trim()
   .min(1, "Give the todo a title.")
-  .max(300, "Keep the title at 300 characters or fewer.");
+  .max(TODO_TITLE_MAX, `Keep the title at ${TODO_TITLE_MAX} characters or fewer.`);
 const Markdown = z.string().max(200_000, "Keep the description under 200000 characters.");
 const PersonName = z.string().trim().min(1).max(100);
 const LabelList = z.array(LabelName).max(50);

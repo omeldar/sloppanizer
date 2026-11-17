@@ -293,3 +293,42 @@
     text-decoration: none;
   }
 }
+
+/* The menu by selected note text: create a todo from it. */
+.selectionMenu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--raised-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--menu-shadow);
+  animation: selection-open var(--t-menu) var(--ease);
+}
+
+.selectionAction {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-small);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.selectionAction:hover,
+.selectionAction:focus-visible {
+  background: var(--amber-tint);
+  outline: none;
+}
+
+@keyframes selection-open {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}

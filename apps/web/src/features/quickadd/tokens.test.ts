@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseQuickTitle } from "./tokens.ts";
+import { TODO_TITLE_MAX } from "@organizer/shared";
+import { fitTitle, parseQuickTitle } from "./tokens.ts";
 
 const known = [{ name: "homelab" }, { name: "priority::high" }, { name: "priority::low" }];
 
@@ -30,5 +31,27 @@ describe("parseQuickTitle", () => {
       labels: [],
       unknown: [],
     });
+  });
+});
+
+describe("fitTitle", () => {
+  it("keeps a title that fits as it is", () => {
+    expect(fitTitle("Renew certs")).toEqual({ title: "Renew certs", cutFrom: null });
+    const full = "x".repeat(TODO_TITLE_MAX);
+    expect(fitTitle(full)).toEqual({ title: full, cutFrom: null });
+  });
+
+  it("cuts a longer title to the limit and says how long it was", () => {
+    const long = `${"word ".repeat(70)}end`;
+    const fitted = fitTitle(long);
+    expect(fitted.cutFrom).toBe(long.length);
+    expect(fitted.title.length).toBeLessThanOrEqual(TODO_TITLE_MAX);
+    expect(long.startsWith(fitted.title)).toBe(true);
+    expect(fitted.title.endsWith(" ")).toBe(false);
+  });
+
+  it("never splits a character made of two code units", () => {
+    const long = `${"a".repeat(TODO_TITLE_MAX - 1)}😀 more`;
+    expect(fitTitle(long)).toEqual({ title: "a".repeat(TODO_TITLE_MAX - 1), cutFrom: long.length });
   });
 });
