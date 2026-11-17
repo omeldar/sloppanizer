@@ -71,6 +71,8 @@ export function WeekPage() {
   useKeys([
     { keys: "[", run: () => goWeek(shiftWeek(start, -1)), label: "Previous week", group: "Week" },
     { keys: "]", run: () => goWeek(shiftWeek(start, 1)), label: "Next week", group: "Week" },
+    { keys: "PageUp", run: () => goWeek(shiftWeek(start, -1)), label: "Previous week", group: "Week" },
+    { keys: "PageDown", run: () => goWeek(shiftWeek(start, 1)), label: "Next week", group: "Week" },
     { keys: "t", run: () => goWeek(weekStart(undefined, now)), label: "This week", group: "Week" },
   ]);
 

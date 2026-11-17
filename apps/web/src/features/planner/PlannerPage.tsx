@@ -21,6 +21,7 @@ import { useTodoDrag } from "./useTodoDrag.ts";
 import { planDay, useAiSettings } from "../../lib/ai.ts";
 import type { CheckedBlock } from "@organizer/shared";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
+import { useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { BlockDialog, type BlockDraft, draftOf } from "./BlockDialog.tsx";
 import styles from "./Planner.module.css";
 import {
@@ -106,6 +107,10 @@ export function PlannerPage() {
   const [planning, setPlanning] = useState(false);
 
   const go = (day: string) => void navigate({ to: "/planner", search: day === now.day ? {} : { day } });
+  useKeys([
+    { keys: "PageUp", run: () => go(addDays(selected, -7)), label: "Previous week", group: "Planner" },
+    { keys: "PageDown", run: () => go(addDays(selected, 7)), label: "Next week", group: "Planner" },
+  ]);
 
   const placedByDay = useMemo(
     () => new Map(days.map((day) => [day, placeBlocks(blocks.data ?? [], day, timeZone)])),
