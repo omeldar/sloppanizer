@@ -4,7 +4,10 @@ import {
   type CSSProperties,
   type MouseEvent,
   type PointerEvent,
+  type RefObject,
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -13,6 +16,7 @@ import { Button, PageHeader } from "../../components/ui.tsx";
 import { timeZone, today } from "../../lib/format.ts";
 import { errorMessage } from "../../lib/api.ts";
 import { useBlocks, useCreateBlock, useNext, useTodos, useUpdateBlock } from "../../lib/queries.ts";
+import { useEdgeScroll } from "./useEdgeScroll.ts";
 import { useTodoDrag } from "./useTodoDrag.ts";
 import { planDay, useAiSettings } from "../../lib/ai.ts";
 import type { CheckedBlock } from "@organizer/shared";
@@ -27,10 +31,10 @@ import {
   nextQuarter,
   type PlacedBlock,
   placeBlocks,
+  scrollStartMinutes,
   snap,
   spanText,
   timeToMinutes,
-  visibleHours,
 } from "./planner.ts";
 
 const route = getRouteApi("/planner");
@@ -42,6 +46,8 @@ interface Proposal {
   blocks: CheckedBlock[];
   skipped: Set<number>;
 }
+/** The grid always shows the whole day; it scrolls inside itself. */
+const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const HOUR_PX = 52;
 const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: "short", timeZone: "UTC" });
 const DAY_NUMBER = new Intl.DateTimeFormat(undefined, { day: "numeric", timeZone: "UTC" });
@@ -65,6 +71,8 @@ function useNowMinutes(): { day: string; minutes: number } {
   }, []);
   return state;
 }
+
+const GRID_STYLE = { "--hour": `${HOUR_PX}px`, "--hours": HOURS.length } as CSSProperties;
 
 /**
  * The planner: a week of days with time blocks for todos (or with their own title). Click or tap a
@@ -103,14 +111,17 @@ export function PlannerPage() {
     () => new Map(days.map((day) => [day, placeBlocks(blocks.data ?? [], day, timeZone)])),
     [blocks.data, days],
   );
-  const hours = visibleHours([...placedByDay.values()].flat());
-  const hourList = Array.from({ length: hours.last - hours.first }, (_, i) => hours.first + i);
-  const gridStyle = { "--hour": `${HOUR_PX}px`, "--hours": hourList.length } as CSSProperties;
+  // The grid scrolls inside itself; it opens near now on this week, at the start of the day on others.
+  const body = useRef<HTMLDivElement>(null);
+  const [openAt] = useState(() => scrollStartMinutes(days.includes(now.day), now.minutes));
+  useLayoutEffect(() => {
+    if (body.current) body.current.scrollTop = (openAt / 60) * HOUR_PX;
+  }, [openAt]);
 
   const planAt = (day: string, event: MouseEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const minutes = snap(hours.first * 60 + ((event.clientY - rect.top) / HOUR_PX) * 60 - 15);
+    const minutes = snap(((event.clientY - rect.top) / HOUR_PX) * 60 - 15);
     const start = Math.max(0, Math.min(23 * 60, minutes));
     setDraft({ day, start: minutesToTime(start), end: minutesToTime(Math.min(24 * 60, start + 60)) });
   };
@@ -122,8 +133,7 @@ export function PlannerPage() {
   };
 
   const create = useCreateBlock();
-  const { drag, bind } = useTodoDrag({
-    firstHour: hours.first,
+  const { drag, bind, retarget } = useTodoDrag({
     hourPx: HOUR_PX,
     onClick: (todo) => planTodo(todo),
     // A dropped todo gets an hour from where it landed; move or resize the block after.
@@ -141,6 +151,7 @@ export function PlannerPage() {
         { onError: (failure) => toast.show({ tone: "error", message: errorMessage(failure) }) },
       ),
   });
+  useEdgeScroll(body, drag?.active ? drag : null);
 
   const askPlan = async () => {
     if (!ai.data) return;
@@ -180,7 +191,7 @@ export function PlannerPage() {
     );
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-fill>
       <PageHeader
         title="Planner"
         meta={`${MONTH.format(asDate(first))} – ${MONTH.format(asDate(last))}`}
@@ -262,7 +273,7 @@ export function PlannerPage() {
       )}
 
       <div className={styles.layout}>
-        <div className={styles.calendar} style={gridStyle}>
+        <div className={styles.calendar} style={GRID_STYLE}>
           <div className={styles.dayHeads} role="tablist" aria-label="Days">
             <span className={styles.corner} />
             {days.map((day) => (
@@ -306,7 +317,9 @@ export function PlannerPage() {
             </div>
           )}
           <div
+            ref={body}
             className={styles.body}
+            onScroll={retarget}
             onTouchStart={(event) => {
               const touch = event.touches[0];
               swipe.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
@@ -325,7 +338,7 @@ export function PlannerPage() {
             }}
           >
             <div className={styles.axis} aria-hidden="true">
-              {hourList.map((hour) => (
+              {HOURS.map((hour) => (
                 <span key={hour} className={styles.hourLabel}>
                   {minutesToTime(hour * 60)}
                 </span>
@@ -341,10 +354,10 @@ export function PlannerPage() {
                 onClick={(event) => planAt(day, event)}
                 role="presentation"
               >
-                {day === now.day && now.minutes >= hours.first * 60 && now.minutes <= hours.last * 60 && (
+                {day === now.day && (
                   <span
                     className={styles.nowLine}
-                    style={{ top: ((now.minutes - hours.first * 60) / 60) * HOUR_PX }}
+                    style={{ top: (now.minutes / 60) * HOUR_PX }}
                     aria-hidden="true"
                   />
                 )}
@@ -356,7 +369,7 @@ export function PlannerPage() {
                         key={`p-${b.todoId}`}
                         className={styles.proposed}
                         style={{
-                          top: ((timeToMinutes(b.start) - hours.first * 60) / 60) * HOUR_PX,
+                          top: (timeToMinutes(b.start) / 60) * HOUR_PX,
                           height: ((timeToMinutes(b.end) - timeToMinutes(b.start)) / 60) * HOUR_PX - 2,
                         }}
                         title={b.why}
@@ -371,7 +384,7 @@ export function PlannerPage() {
                   <span
                     className={styles.dropPreview}
                     style={{
-                      top: ((drag.target.startMin - hours.first * 60) / 60) * HOUR_PX,
+                      top: (drag.target.startMin / 60) * HOUR_PX,
                       height: HOUR_PX - 2,
                     }}
                     aria-hidden="true"
@@ -383,7 +396,7 @@ export function PlannerPage() {
                   <BlockCard
                     key={`${placed.block.id}-${day}`}
                     placed={placed}
-                    firstHour={hours.first}
+                    area={body}
                     dayIndex={dayIndex}
                     dayCount={days.length}
                     onOpen={() => setDraft(draftOf(placed.block))}
@@ -407,7 +420,7 @@ export function PlannerPage() {
 
         <aside className={styles.side} aria-label="To plan">
           <h2 className={styles.sideTitle}>To plan</h2>
-          <p className={styles.sideNote}>Next up without time this week.</p>
+          <p className={`${styles.sideNote} ${styles.sideHint}`}>Next up without time this week.</p>
           {toPlan.length === 0 && (
             <p className={styles.sideNote}>Everything near the top has time planned.</p>
           )}
@@ -442,38 +455,72 @@ export function PlannerPage() {
 
 interface Drag {
   mode: "move" | "resize";
+  /** Where the pointer went down, and the grid's scroll position then. */
   x: number;
   y: number;
-  /** Width of a day column, for moving across days. */
+  scrollTop: number;
+  /** Where the pointer is now. */
+  atX: number;
+  atY: number;
+  /** Width of a day column, for moving across days (0: it stays on its day). */
   colWidth: number;
+  /** The day offsets within the shown week. */
+  minOffset: number;
+  maxOffset: number;
   moved: boolean;
   deltaMin: number;
   dayOffset: number;
 }
 
 /**
+ * The drag with the pointer at (atX, atY) and the grid scrolled to scrollTop: scrolling the grid under
+ * a held block moves it as far as moving the pointer would.
+ */
+function dragTo(drag: Drag, atX: number, atY: number, scrollTop: number): Drag {
+  const dx = atX - drag.x;
+  const dy = atY - drag.y + scrollTop - drag.scrollTop;
+  const offset = drag.mode === "move" && drag.colWidth > 0 ? Math.round(dx / drag.colWidth) : 0;
+  return {
+    ...drag,
+    atX,
+    atY,
+    moved: drag.moved || Math.abs(dx) > 4 || Math.abs(dy) > 4,
+    deltaMin: snap((dy / HOUR_PX) * 60),
+    dayOffset: Math.max(drag.minOffset, Math.min(drag.maxOffset, offset)),
+  };
+}
+
+/**
  * One block. With a mouse it can be dragged: the body moves it (also to another day), the bottom edge
  * resizes it, both in 15 minute steps; a click without moving opens it. On touch screens a long press
- * picks it up (move, or resize near the bottom edge) and a tap opens it.
+ * picks it up (move, or resize near the bottom edge) and a tap opens it. Near the grid's top or bottom
+ * edge a held block scrolls the grid, so it reaches every hour of the day.
  */
 function BlockCard({
   placed,
-  firstHour,
+  area,
   dayIndex,
   dayCount,
   onOpen,
   onDrop,
 }: {
   placed: PlacedBlock;
-  firstHour: number;
+  /** The grid's scroll area. */
+  area: RefObject<HTMLDivElement | null>;
   dayIndex: number;
   dayCount: number;
   onOpen: () => void;
   onDrop: (deltaMin: number, dayOffset: number, mode: "move" | "resize") => void;
 }) {
   const { block } = placed;
-  const [drag, setDrag] = useState<Drag | null>(null);
-  const baseTop = ((placed.startMin - firstHour * 60) / 60) * HOUR_PX;
+  // The drag lives in a ref too, for the native touch and scroll listeners.
+  const current = useRef<Drag | null>(null);
+  const [drag, setDragState] = useState<Drag | null>(null);
+  const setDrag = useCallback((next: Drag | null) => {
+    current.current = next;
+    setDragState(next);
+  }, []);
+  const baseTop = (placed.startMin / 60) * HOUR_PX;
   const baseHeight = Math.max(22, ((placed.endMin - placed.startMin) / 60) * HOUR_PX - 2);
   const deltaPx = drag ? (drag.deltaMin / 60) * HOUR_PX : 0;
   const top = drag?.mode === "move" ? baseTop + deltaPx : baseTop;
@@ -488,35 +535,51 @@ function BlockCard({
       mode,
       x: event.clientX,
       y: event.clientY,
+      scrollTop: area.current?.scrollTop ?? 0,
+      atX: event.clientX,
+      atY: event.clientY,
       colWidth: column,
+      minOffset: -dayIndex,
+      maxOffset: dayCount - 1 - dayIndex,
       moved: false,
       deltaMin: 0,
       dayOffset: 0,
     });
   };
+  // Touch drags run on the native touch listeners below.
   const move = (event: PointerEvent<HTMLElement>) => {
-    if (!drag) return;
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-    const moved = drag.moved || Math.abs(dx) > 4 || Math.abs(dy) > 4;
-    const deltaMin = snap((dy / HOUR_PX) * 60);
-    const offset = drag.mode === "move" && drag.colWidth > 0 ? Math.round(dx / drag.colWidth) : 0;
-    const dayOffset = Math.max(-dayIndex, Math.min(dayCount - 1 - dayIndex, offset));
-    setDrag({ ...drag, moved, deltaMin, dayOffset });
+    const held = current.current;
+    if (!held || event.pointerType !== "mouse") return;
+    setDrag(dragTo(held, event.clientX, event.clientY, area.current?.scrollTop ?? held.scrollTop));
   };
-  const end = () => {
-    if (!drag) return;
+  const end = (event: PointerEvent<HTMLElement>) => {
+    const held = current.current;
+    if (!held || event.pointerType !== "mouse") return;
     setDrag(null);
-    if (!drag.moved) {
-      if (drag.mode === "move") onOpen();
+    if (!held.moved) {
+      if (held.mode === "move") onOpen();
       return;
     }
-    if (drag.deltaMin !== 0 || drag.dayOffset !== 0) onDrop(drag.deltaMin, drag.dayOffset, drag.mode);
+    if (held.deltaMin !== 0 || held.dayOffset !== 0) onDrop(held.deltaMin, held.dayOffset, held.mode);
   };
+
+  // A held block follows the grid when it scrolls (by the edge or the mouse wheel).
+  const holding = drag !== null;
+  useEffect(() => {
+    const el = area.current;
+    if (!holding || !el) return undefined;
+    const follow = () => {
+      const held = current.current;
+      if (held) setDrag(dragTo(held, held.atX, held.atY, el.scrollTop));
+    };
+    el.addEventListener("scroll", follow, { passive: true });
+    return () => el.removeEventListener("scroll", follow);
+  }, [holding, area, setDrag]);
+  useEdgeScroll(area, drag?.moved ? { x: drag.atX, y: drag.atY } : null);
 
   // Touch: a long press picks the block up (near its bottom edge: resizes it), then it follows the
   // finger in 15 minute steps; a quick swipe still scrolls and a tap opens it. Native listeners, because
-  // only a non-passive touchmove can stop the page from scrolling once the drag has started.
+  // only a non-passive touchmove can stop the grid from scrolling once the drag has started.
   const ref = useRef<HTMLButtonElement>(null);
   const dropRef = useRef(onDrop);
   useEffect(() => {
@@ -527,7 +590,6 @@ function BlockCard({
     if (!el) return undefined;
     let timer: number | undefined;
     let origin: { x: number; y: number } | null = null;
-    let active: Drag | null = null;
     const onStart = (event: TouchEvent) => {
       const touch = event.touches[0];
       if (event.touches.length !== 1 || !touch) return;
@@ -535,15 +597,28 @@ function BlockCard({
       const mode = touch.clientY > el.getBoundingClientRect().bottom - 16 ? "resize" : "move";
       timer = window.setTimeout(() => {
         if (!origin) return;
-        active = { mode, x: origin.x, y: origin.y, colWidth: 0, moved: true, deltaMin: 0, dayOffset: 0 };
         navigator.vibrate?.(10);
-        setDrag(active);
+        setDrag({
+          mode,
+          x: origin.x,
+          y: origin.y,
+          scrollTop: area.current?.scrollTop ?? 0,
+          atX: origin.x,
+          atY: origin.y,
+          colWidth: 0,
+          minOffset: 0,
+          maxOffset: 0,
+          moved: true,
+          deltaMin: 0,
+          dayOffset: 0,
+        });
       }, 350);
     };
     const onMove = (event: TouchEvent) => {
       const touch = event.touches[0];
       if (!touch || !origin) return;
-      if (!active) {
+      const held = current.current;
+      if (!held) {
         if (Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) > 8) {
           window.clearTimeout(timer);
           origin = null;
@@ -552,18 +627,16 @@ function BlockCard({
       }
       event.preventDefault();
       event.stopPropagation();
-      active = { ...active, deltaMin: snap(((touch.clientY - active.y) / HOUR_PX) * 60) };
-      setDrag(active);
+      setDrag(dragTo(held, touch.clientX, touch.clientY, area.current?.scrollTop ?? held.scrollTop));
     };
     const onEnd = (event: TouchEvent) => {
       window.clearTimeout(timer);
       origin = null;
-      if (!active) return;
+      const done = current.current;
+      if (!done) return;
       // Neither a click (opening the block) nor the day swipe of the calendar.
       event.preventDefault();
       event.stopPropagation();
-      const done = active;
-      active = null;
       setDrag(null);
       if (done.deltaMin !== 0) dropRef.current(done.deltaMin, 0, done.mode);
     };
@@ -578,7 +651,7 @@ function BlockCard({
       el.removeEventListener("touchend", onEnd);
       el.removeEventListener("touchcancel", onEnd);
     };
-  }, []);
+  }, [area, setDrag]);
 
   const style = {
     top,
@@ -603,7 +676,7 @@ function BlockCard({
       onPointerDown={(event) => start(event, "move")}
       onPointerMove={move}
       onPointerUp={end}
-      onPointerCancel={() => setDrag(null)}
+      onPointerCancel={(event) => event.pointerType === "mouse" && setDrag(null)}
       // Keyboard and touch: a click opens the block (a mouse click is handled on pointer up).
       onClick={(event) => {
         if (event.detail === 0 || !matchesMouse(event)) onOpen();
