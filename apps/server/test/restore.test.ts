@@ -45,6 +45,9 @@ function rework(zip: Uint8Array, change: (manifest: any, data: any, files: Files
 }
 
 // oxlint-disable-next-line typescript/no-explicit-any
+const todoSeries = (d: any) => d.series.find((s: { owner_kind: string }) => s.owner_kind === "todo");
+
+// oxlint-disable-next-line typescript/no-explicit-any
 const problems = (res: { json: () => any }): string[] => res.json().error.details.problems;
 
 /** Where the account's staged uploads, safety copies and restore folders live. */
@@ -67,7 +70,7 @@ describe("restore upload and preview", () => {
     expect(preview).toMatchObject({
       fileName: "sloppanizer-export-20261111.zip",
       source: "sloppanizer",
-      format: 7,
+      format: 8,
       exportedAt: "2026-11-11T10:00:00.000Z",
       appVersion: VERSION,
       schemaVersion: 17,
@@ -583,7 +586,22 @@ describe("restore apply", () => {
     await check((d) => (d.series[0].rule = '{"every":"fortnight"}'), /^series \d+: not a usable repeat/);
     await check((d) => (d.series[0].rule = '{"every":"day","basis":"done"}'), /not a usable repeat/);
     await check((d) => (d.series[0].ends_on = "9999-12-31"), /not a usable repeat/);
-    await check((d) => (d.series[0].owner_kind = "block"), /owner_kind must be "meeting"/);
+    await check((d) => (d.series[0].owner_kind = "block"), /owner_kind must be "meeting" or "todo"/);
+    await check((d) => (todoSeries(d).todo_id = null), /todo_id is missing/);
+    await check(
+      (d) => (todoSeries(d).meeting_id = d.meetings[0].id),
+      /a todo's planned time has no meeting_id/,
+    );
+    await check(
+      (d) =>
+        (d.series.find((s: { owner_kind: string }) => s.owner_kind === "meeting").todo_id =
+          todoSeries(d).todo_id),
+      /a meeting's repeat has no todo_id/,
+    );
+    await check((d) => {
+      const part = todoSeries(d);
+      d.series.push(...Array.from({ length: 50 }, (_, i) => ({ ...part, id: 1000 + i })));
+    }, /the planned time of todo \d+ has more than 50 parts/);
     await check((d) => (d.meetings[0].filter = '{"projectIds":"all"}'), /filter is not a standup filter/);
     await check((d) => (d.meetings[0].since = "last week"), /since is not a UTC time/);
     await check((d) => (d.series_exceptions[0].start_at = "soon"), /a moved date needs start_at and end_at/);

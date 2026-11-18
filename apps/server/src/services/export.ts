@@ -102,8 +102,8 @@ the server's settings are left out). Export format ${EXPORT_FORMAT}.
   Text is kept exactly as stored, links included.
 - attachments/: every uploaded file as <id>-<name>.
 - todos/: one Markdown file per todo (NNNN-title.md): YAML front matter with the main fields
-  (also parent, subtasks, links, repeat, previous and next occurrence), then the description and
-  the comments.
+  (also parent, subtasks, links, repeat, planned time that repeats with it, previous and next
+  occurrence), then the description and the comments.
 - notes/: one Markdown file per note (NNNN-title.md): front matter, then the note.
 - people/: one Markdown file per person (NNNN-first-last.md): team, email, languages, topics,
   tags, the todos they requested or are a contact for, then the notes about them.
@@ -208,7 +208,9 @@ interface MeetingRow {
 }
 interface SeriesRow {
   id: number;
+  owner_kind: string;
   meeting_id: number | null;
+  todo_id: number | null;
   rule: string;
   starts_on: string;
   ends_on: string | null;
@@ -499,6 +501,13 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
     rows<CommentRow>("comments").toSorted((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id),
     (c) => c.todo_id,
   );
+  // Planned time that repeats with a todo, on the todo that owns it (the open one of its repeat).
+  const plannedTimeOf = groupBy(
+    rows<SeriesRow>("series")
+      .filter((s) => s.owner_kind === "todo")
+      .toSorted((a, b) => a.starts_on.localeCompare(b.starts_on)),
+    (s) => s.todo_id,
+  );
   const childrenOf = groupBy(
     allTodos.filter((t) => t.parentId !== null),
     (t) => t.parentId as number,
@@ -536,6 +545,7 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
           blocked_by: todo.links.blockedBy.map((t) => t.id),
           relates_to: todo.links.relatesTo.map((t) => t.id),
           repeat: todo.recurrence === null ? null : describeRecurrence(todo.recurrence),
+          planned_time: plannedTimeOf.get(todo.id)?.map(segmentText) ?? null,
           previous: todo.previousOccurrenceId,
           next: todo.nextOccurrence?.id ?? null,
         },

@@ -35,6 +35,7 @@ async function twoAccounts() {
       topic: topic?.id ?? 0,
       label: label?.id ?? 0,
       meeting: filled.meeting.id,
+      weekly: filled.weekly.id,
     },
   };
 }
@@ -113,6 +114,15 @@ describe("accounts never see each other's data", () => {
       ["DELETE", `/api/v1/meetings/${ids.meeting}/todos/${ids.todo}`],
       ["POST", `/api/v1/meetings/${ids.meeting}/todos/${ids.todo}/due`],
       ["GET", `/api/v1/todos/${ids.todo}/meetings`],
+      ["GET", `/api/v1/todos/${ids.weekly}/plan`],
+      [
+        "POST",
+        `/api/v1/todos/${ids.weekly}/plan`,
+        { startAt: "2026-12-01T08:00:00Z", endAt: "2026-12-01T09:00:00Z" },
+      ],
+      ["PATCH", `/api/v1/todos/${ids.weekly}/plan/2026-11-25`, { scope: "this", cancelled: true }],
+      ["DELETE", `/api/v1/todos/${ids.weekly}/plan`],
+      ["GET", `/api/v1/blocks/series?from=2026-11-16&to=2026-11-29&todoId=${ids.weekly}`],
       ["DELETE", `/api/v1/meetings/${ids.meeting}`],
     ];
     const results: [string, number][] = [];
@@ -160,6 +170,10 @@ describe("accounts never see each other's data", () => {
     expect(json<unknown[]>(await bobby.call("GET", "/api/v1/topics"))).toEqual([]);
     expect(json<unknown[]>(await bobby.call("GET", "/api/v1/person-tags"))).toEqual([]);
     expect(json<unknown[]>(await bobby.call("GET", "/api/v1/meetings"))).toEqual([]);
+    expect(json<unknown[]>(await bobby.call("GET", "/api/v1/todos/recurring"))).toEqual([]);
+    expect(
+      json<unknown[]>(await bobby.call("GET", "/api/v1/blocks/series?from=2026-11-16&to=2026-11-29")),
+    ).toEqual([]);
     expect(
       json<unknown[]>(await bobby.call("GET", "/api/v1/meetings/occurrences?from=2026-11-09&to=2026-11-22")),
     ).toEqual([]);
