@@ -35,19 +35,14 @@ import { insertNote, noteSummaries } from "./notes.ts";
 import { owned } from "./owned.ts";
 import { projectRefs } from "./projects.ts";
 import { chunks } from "./sql.ts";
+import { classify, mayBeItem, type RuleActivity } from "./standup-rules.ts";
 import { plainText } from "./text.ts";
 
 /**
  * The standup list: what the user has not said yet, worked out from the todos' activity after the
  * meeting's window start (since). A said or dismissed mark covers a todo's activity up to the time the
- * list showed; newer qualifying activity brings it back. Marks are kept per standup.
- *
- * - done: done after the cutoff (later comments do not bring it back).
- * - blocked: an update or comment after the cutoff.
- * - in progress: "started" when it moved to in progress after the cutoff, else "updated" when it has an
- *   update or comment after it. A todo in progress that this standup never marked is always on the
- *   list (the first standup shows everything in progress), as "started" when nothing else is new.
- * - open todos never are.
+ * list showed; newer qualifying activity brings it back. Marks are kept per standup. The rules per
+ * status are in standup-rules.ts.
  */
 
 const MAX_CHANGES = 5;
@@ -80,8 +75,8 @@ interface Listed extends Candidate {
 }
 
 /**
- * Todos that can be on a list: in progress, or blocked or done with activity after `since` (the
- * earliest window of the lists asked for), with their label ids when a filter needs them.
+ * Todos that can be on a list: in progress, blocked with activity after `since` (the earliest window
+ * of the lists asked for) or done after it, with their label ids when a filter needs them.
  */
 function candidates(sc: Scoped, since: string, withLabels: boolean): Listed[] {
   const rows = sc.db
@@ -101,7 +96,8 @@ function candidates(sc: Scoped, since: string, withLabels: boolean): Listed[] {
         todos,
         or(
           eq(todos.status, "in_progress"),
-          and(inArray(todos.status, ["blocked", "done"]), gt(todos.lastActivityAt, since)),
+          and(eq(todos.status, "blocked"), gt(todos.lastActivityAt, since)),
+          and(eq(todos.status, "done"), gt(todos.doneAt, since)),
         ),
       ),
     )
@@ -171,12 +167,17 @@ const groupBy = <T extends { todoId: number | null }>(rows: readonly T[]): Map<n
   return out;
 };
 
-/** The newest move to in progress per todo, at any time. */
-function lastStarts(sc: Scoped, todoIds: readonly number[]): Map<number, string> {
+/** The newest move into its current status (in progress or blocked) per todo, at any time. */
+function statusSince(sc: Scoped, list: readonly Candidate[]): Map<number, string> {
+  const status = new Map(list.map((t) => [t.id, t.status]));
   const out = new Map<number, string>();
-  for (const part of chunks(todoIds)) {
+  for (const part of chunks([...status.keys()])) {
     for (const row of sc.db
-      .select({ todoId: events.todoId, at: sql<string>`max(${events.createdAt})` })
+      .select({
+        todoId: events.todoId,
+        to: sql<string>`json_extract(${events.data}, '$.to')`,
+        at: sql<string>`max(${events.createdAt})`,
+      })
       .from(events)
       .where(
         owned(
@@ -184,12 +185,12 @@ function lastStarts(sc: Scoped, todoIds: readonly number[]): Map<number, string>
           events,
           inArray(events.todoId, part),
           eq(events.kind, "status_changed"),
-          sql`json_extract(${events.data}, '$.to') = 'in_progress'`,
+          sql`json_extract(${events.data}, '$.to') IN ('in_progress', 'blocked')`,
         ),
       )
-      .groupBy(events.todoId)
+      .groupBy(events.todoId, sql`json_extract(${events.data}, '$.to')`)
       .all()) {
-      out.set(row.todoId as number, row.at);
+      if (status.get(row.todoId as number) === row.to) out.set(row.todoId as number, row.at);
     }
   }
   return out;
@@ -271,64 +272,48 @@ export function standupLists(sc: Scoped, meetings: readonly MeetingRow[]): Map<n
   );
   const cutoffOf = (meeting: MeetingRow, id: number) =>
     later(meeting.since, marks.get(markKey(meeting.id, id))?.coveredUntil);
-  // Per standup, the todos with something after their cutoff (or never marked and in progress).
+  const isMarked = (meeting: MeetingRow, id: number) => marks.has(markKey(meeting.id, id));
+  // Per standup, the todos that can be items (their row alone says so), so history is read only for these.
   const open = new Map(
     meetings.map((meeting) => {
       const filter = filters.get(meeting.id) as StandupFilter;
       return [
         meeting.id,
         all.filter(
-          (t) =>
-            inFilter(t, filter) &&
-            (t.lastActivityAt > cutoffOf(meeting, t.id) ||
-              (t.status === "in_progress" && !marks.has(markKey(meeting.id, t.id)))),
+          (t) => inFilter(t, filter) && mayBeItem(t, cutoffOf(meeting, t.id), isMarked(meeting, t.id)),
         ),
       ];
     }),
   );
   const openIds = [...new Set([...open.values()].flatMap((list) => list.map((t) => t.id)))];
   const activity = activityOf(sc, openIds, earliest);
-  const starts = lastStarts(sc, [
-    ...new Set(
-      meetings.flatMap((m) =>
-        (open.get(m.id) ?? [])
-          .filter((t) => t.status === "in_progress" && !marks.has(markKey(m.id, t.id)))
-          .map((t) => t.id),
-      ),
-    ),
-  ]);
+  // When an unmarked todo moved into its status: the time of an item without news.
+  const entered = statusSince(
+    sc,
+    meetings.flatMap((m) => (open.get(m.id) ?? []).filter((t) => t.status !== "done" && !isMarked(m, t.id))),
+  );
 
   const found = new Map<number, Found[]>();
   for (const meeting of meetings) {
     const list: Found[] = [];
     for (const todo of open.get(meeting.id) ?? []) {
       const from = cutoffOf(meeting, todo.id);
-      const marked = marks.has(markKey(meeting.id, todo.id));
+      const marked = isMarked(meeting, todo.id);
       const evs = (activity.events.get(todo.id) ?? []).filter((e) => e.createdAt > from);
       const cms = (activity.comments.get(todo.id) ?? []).filter((c) => c.createdAt > from);
-      const newest = later(evs[0]?.createdAt ?? "", cms[0]?.createdAt);
-      let kind: StandupKind | null = null;
-      let at = newest;
-      if (todo.status === "done") {
-        if (todo.doneAt !== null && todo.doneAt > from) {
-          kind = "done";
-          at = todo.doneAt;
-        }
-      } else if (todo.status === "blocked") {
-        if (newest !== "") kind = "blocked";
-      } else if (todo.status === "in_progress") {
-        if (evs.some((e) => e.kind === "status_changed" && isStart(e.data))) kind = "started";
-        else if (newest !== "") kind = "updated";
-        else if (!marked) {
-          kind = "started";
-          at = starts.get(todo.id) ?? todo.lastActivityAt;
-        }
-      }
-      if (kind === null) continue;
+      const updates: RuleActivity[] = [
+        ...evs.map((e) => ({
+          createdAt: e.createdAt,
+          start: e.kind === "status_changed" && isStart(e.data),
+        })),
+        ...cms.map((c) => ({ createdAt: c.createdAt })),
+      ];
+      const item = classify({ ...todo, statusSince: entered.get(todo.id) ?? null }, updates, from, marked);
+      if (item === null) continue;
       list.push({
         todo,
-        kind,
-        at,
+        kind: item.kind,
+        at: item.at,
         changes: evs.slice(0, MAX_CHANGES).map((e) => describeEvent(e)),
         comments: cms,
         again: marked,
