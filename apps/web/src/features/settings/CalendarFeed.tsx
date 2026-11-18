@@ -66,7 +66,7 @@ export function CalendarFeedSection() {
           </div>
           <p className={styles.note}>
             Google Calendar: Other calendars, From URL. iPhone: Settings, Calendar, Accounts, Add subscribed
-            calendar. Apps refresh every few hours.
+            calendar.
           </p>
         </div>
       )}
@@ -97,6 +97,10 @@ export function CalendarFeedSection() {
           </Button>
         )}
       </div>
+      <p className={styles.note} role="note">
+        Changes do not show up right away: depending on your calendar app it reads the link only every 8 to 12
+        hours, some (like Google Calendar) only once a day. The planner here is always up to date.
+      </p>
     </section>
   );
 }
