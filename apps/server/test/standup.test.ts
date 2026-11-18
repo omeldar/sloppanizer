@@ -93,7 +93,8 @@ describe("the standup list", () => {
       lastComment: { actor: "you", excerpt: "Halfway there" },
       again: false,
     });
-    expect(json<Meeting>(await t.call("GET", `/api/v1/meetings/${id}`)).openCount).toBe(4);
+    const [listed] = json<Meeting[]>(await t.call("GET", "/api/v1/meetings"));
+    expect(listed?.openCount).toBe(4);
   });
 
   it("shows every todo in progress on a new standup, also one untouched for a month", async () => {

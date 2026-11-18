@@ -44,10 +44,13 @@ describe("meetings", () => {
         status: "scheduled",
         noteId: null,
       },
-      openCount: 0,
+      // Only the meetings list works out what is still to say.
+      openCount: null,
     });
     expect(meeting.schedule.text).toBe("every week on Thu, 09:00–09:15");
-    expect(json<Meeting[]>(await t.call("GET", "/api/v1/meetings")).map((m) => m.id)).toEqual([meeting.id]);
+    expect(json<Meeting[]>(await t.call("GET", "/api/v1/meetings")).map((m) => [m.id, m.openCount])).toEqual([
+      [meeting.id, 0],
+    ]);
     expect(json<Meeting>(await t.call("GET", `/api/v1/meetings/${meeting.id}`)).name).toBe("Weekly Standup");
   });
 
@@ -638,7 +641,9 @@ describe("limits", () => {
       json<Meeting[]>(await t.call("GET", "/api/v1/meetings")).map((m) => [m.name, m.openCount]),
     );
     expect(counts).toEqual({ "Weekly Standup": 1, "Lab standup": 1, "Late standup": 0 });
-    expect(later.openCount).toBe(0);
+    // One meeting's answer leaves the count to its own list.
+    expect(later.openCount).toBeNull();
+    expect(json<Meeting>(await t.call("GET", `/api/v1/meetings/${all.id}`)).openCount).toBeNull();
   });
 });
 

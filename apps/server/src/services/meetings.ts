@@ -100,7 +100,11 @@ const toOccurrence = (
   noteId: notes.get(`${meeting.id}|${o.occursOn}`) ?? null,
 });
 
-function hydrate(ctx: Ctx, sc: Scoped, rows: readonly MeetingRow[]): Meeting[] {
+/**
+ * Meetings as the API answers them. `counts` works out each standup's list for openCount, which only
+ * the meetings list needs: one meeting and change answers leave it null (its list is GET .../standup).
+ */
+function hydrate(ctx: Ctx, sc: Scoped, rows: readonly MeetingRow[], counts = false): Meeting[] {
   const ids = rows.map((r) => r.id);
   const segments = segmentsOf(sc, ids);
   const exceptions = exceptionsOf(
@@ -108,7 +112,7 @@ function hydrate(ctx: Ctx, sc: Scoped, rows: readonly MeetingRow[]): Meeting[] {
     [...segments.values()].flatMap((list) => list.map((s) => s.id)),
   );
   const notes = noteLinks(sc, ids);
-  const open = openStandupCounts(sc, rows);
+  const open = counts ? openStandupCounts(sc, rows) : new Map<number, number>();
   const at = ctx.clock();
   const today = toLocalDate(at, ctx.timeZone);
   return rows.flatMap((row) => {
@@ -131,7 +135,7 @@ function hydrate(ctx: Ctx, sc: Scoped, rows: readonly MeetingRow[]): Meeting[] {
         schedule: toSeries(currentSegment(list, today)),
         segments: list.map(toSeries),
         next: next === null ? null : toOccurrence(row, next, notes),
-        openCount: row.type === "standup" ? (open.get(row.id) ?? 0) : null,
+        openCount: counts && row.type === "standup" ? (open.get(row.id) ?? 0) : null,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       },
@@ -145,11 +149,13 @@ const byNext = (a: Meeting, b: Meeting): number => {
   return a.name.localeCompare(b.name) || a.id - b.id;
 };
 
-/** Every meeting, the next one first (meetings without a next date last, by name). */
-/** Every meeting, the next one first. A meeting without a readable repeat (a hand-made restore) is left out. */
+/**
+ * Every meeting, the next one first (meetings without a next date last, by name). A meeting without a
+ * readable repeat (a hand-made restore) is left out.
+ */
 export function listMeetings(ctx: Ctx): Meeting[] {
   const rows = ctx.db.select().from(meetings).where(owned(ctx, meetings)).all();
-  return hydrate(ctx, ctx, rows).toSorted(byNext);
+  return hydrate(ctx, ctx, rows, true).toSorted(byNext);
 }
 
 export function getMeeting(ctx: Ctx, id: number, sc: Scoped = ctx): Meeting {

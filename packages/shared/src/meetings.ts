@@ -232,7 +232,10 @@ export const Meeting = z.strictObject({
   segments: z.array(Series),
   /** The next occurrence that has not ended (cancelled ones skipped), or null. */
   next: MeetingOccurrence.nullable(),
-  /** Items still to say (standups only), else null. */
+  /**
+   * Items still to say, for standups in the meetings list; null for other meetings and in the answers
+   * about one meeting (its list is GET /meetings/:id/standup).
+   */
   openCount: z.number().int().nonnegative().nullable(),
   createdAt: Timestamp,
   updatedAt: Timestamp,
