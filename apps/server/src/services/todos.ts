@@ -31,6 +31,7 @@ import { insertUrls, urlsByTodo } from "./urls.ts";
 import { comments, events, labels, people, todoLabels, todoLinks, todoPeople, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, inTx, now, type Scoped } from "./context.ts";
+import { endRepeatPlan, moveRepeatPlan } from "./repeat-plan-owner.ts";
 import { insertOwnedRow, owned } from "./owned.ts";
 import { type EventInput, recordEvents } from "./events.ts";
 import { assertCanBeParent, nextChildPosition } from "./hierarchy.ts";
@@ -378,7 +379,11 @@ function createNextOccurrence(sc: Scoped, at: string, actor: string, id: number,
   if (todo.recurrence === null || anchor === null || todo.nextOccurrence !== null) return;
   const today = toLocalDate(at, timeZone);
   const date = nextOccurrence(todo.recurrence, { anchor, doneOn: today, today });
-  if (date === null) return;
+  if (date === null) {
+    // Past the last date: no next todo, and the planned time ends too.
+    endRepeatPlan(sc, todo.id, today, at);
+    return;
+  }
   const dates = shiftTodoDates(todo, date);
   const next = insertTodo(
     sc,
@@ -397,6 +402,7 @@ function createNextOccurrence(sc: Scoped, at: string, actor: string, id: number,
     },
     { recurrence: JSON.stringify(todo.recurrence), recurrencePrevId: todo.id },
   );
+  moveRepeatPlan(sc, todo.id, next.id, at);
   recordEvents(sc, actor, at, [
     {
       todoId: todo.id,
@@ -410,7 +416,7 @@ function createNextOccurrence(sc: Scoped, at: string, actor: string, id: number,
  * Undo of "done" on a repeating todo: its next occurrence goes away when nobody touched it yet
  * (never changed, still open, no comments, subtasks or links); otherwise it stays.
  */
-function removeUntouchedNext(sc: Scoped, id: number): void {
+function removeUntouchedNext(sc: Scoped, at: string, id: number): void {
   const next = sc.db
     .select()
     .from(todos)
@@ -423,6 +429,7 @@ function removeUntouchedNext(sc: Scoped, id: number): void {
          + (SELECT count(*) FROM ${todoLinks}
             WHERE account_id = ${sc.accountId} AND (from_id = ${next.id} OR to_id = ${next.id})) AS n`);
   if (used.n > 0) return;
+  moveRepeatPlan(sc, next.id, id, at);
   deleteTodoRow(sc, next.id);
 }
 
@@ -621,6 +628,9 @@ function applyChange(
     if (JSON.stringify(stored) !== JSON.stringify(current.recurrence)) {
       set.recurrence = stored === null ? null : JSON.stringify(stored);
       event("recurrence_changed", { from: current.recurrence, to: stored });
+      // Stopping the repeat (or counting it from done dates) ends its planned time; past dates stay.
+      if (stored === null || stored.basis !== "schedule")
+        endRepeatPlan(sc, current.id, toLocalDate(at, timeZone), at);
     }
   }
 
@@ -678,7 +688,7 @@ function applyChange(
   );
   recordEvents(sc, actor, at, [...evts, ...others]);
   if (set.status === "done") createNextOccurrence(sc, at, actor, current.id, timeZone);
-  else if (set.status !== undefined && current.status === "done") removeUntouchedNext(sc, current.id);
+  else if (set.status !== undefined && current.status === "done") removeUntouchedNext(sc, at, current.id);
 }
 
 export function updateTodo(ctx: Ctx, actor: string, id: number, change: UpdateTodo): Todo {
