@@ -1,5 +1,6 @@
 import { isAppPath, webSecurityHeaders } from "@organizer/shared";
 import react from "@vitejs/plugin-react";
+import { execFileSync } from "node:child_process";
 import type { Connect, Plugin } from "vite";
 import { defineConfig } from "vitest/config";
 import { addFontPreloads } from "./build/font-preload.ts";
@@ -9,6 +10,20 @@ const serverPort = process.env.SLOPPANIZER_PORT ?? "4802";
 const serverUrl = `http://127.0.0.1:${serverPort}`;
 /** The API's base URL for the build; empty = same origin (the dev proxy, the server's local web mode). */
 const apiUrl = (process.env.VITE_API_URL ?? "").replace(/\/+$/, "");
+
+/** The commit this build is made from: Vercel names it, else git, else "unknown" (a copy without .git). */
+function buildCommit(): string {
+  const fromVercel = process.env.VERCEL_GIT_COMMIT_SHA;
+  if (fromVercel) return fromVercel;
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "unknown";
+  }
+}
 
 /** Dev and preview: the app's paths load app.html, like the Vercel rewrites and the server do. */
 const appRewrite: Connect.NextHandleFunction = (req, _res, next) => {
@@ -60,6 +75,8 @@ function landingFontPreload(): Plugin {
 
 export default defineConfig({
   plugins: [react(), appRoutes(), landingFontPreload(), htmlGuard()],
+  // The version comes from package.json (the same as the server's, `pnpm release` sets both).
+  define: { __APP_COMMIT__: JSON.stringify(buildCommit()) },
   // Several pages; unknown paths are a 404, not the app.
   appType: "mpa",
   build: {

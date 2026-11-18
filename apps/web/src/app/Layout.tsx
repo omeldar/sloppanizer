@@ -21,6 +21,7 @@ import { AccountSwitcher } from "./AccountSwitcher.tsx";
 import { useCommands } from "./commands.tsx";
 import styles from "./Layout.module.css";
 import { StatusBar } from "./StatusBar.tsx";
+import { UpdateBanner } from "./UpdateBanner.tsx";
 
 export function Layout() {
   const navigate = useNavigate();
@@ -101,6 +102,7 @@ export function Layout() {
         aria-hidden="true"
       />
       <TopBar onMenu={() => setDrawer(true)} />
+      <UpdateBanner />
       <main className={styles.main} id="main">
         <Outlet />
       </main>
