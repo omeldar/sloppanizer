@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   CreateMeeting,
   MarkInput,
+  MeetingTodoInput,
+  MeetingTodoParams,
   OccurrenceChange,
   OccurrenceQuery,
   ScheduleChange,
@@ -98,5 +100,17 @@ describe("meetings contract", () => {
     });
     expect(ok(OccurrenceQuery, { from: "2026-11-01", to: "2027-01-03" })).toBe(false);
     expect(ok(OccurrenceQuery, { from: "2026-11-02", to: "2026-11-01" })).toBe(false);
+  });
+});
+
+describe("todos on a meeting", () => {
+  it("takes one todo id and nothing else", () => {
+    expect(MeetingTodoInput.parse({ todoId: 4 })).toEqual({ todoId: 4 });
+    expect(ok(MeetingTodoInput, { todoId: 0 })).toBe(false);
+    expect(ok(MeetingTodoInput, { todoId: "4" })).toBe(false);
+    // No account or meeting in the body: those come from the session and the path.
+    expect(ok(MeetingTodoInput, { todoId: 4, accountId: 2 })).toBe(false);
+    expect(MeetingTodoParams.parse({ id: "3", todoId: "4" })).toEqual({ id: 3, todoId: 4 });
+    expect(ok(MeetingTodoParams, { id: "3", todoId: "x" })).toBe(false);
   });
 });

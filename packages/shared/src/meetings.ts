@@ -377,3 +377,46 @@ export type MeetingNoteInput = z.infer<typeof MeetingNoteInput>;
 
 export const MeetingNote = z.strictObject({ meetingId: Id, on: CalendarDate, note: NoteSummary });
 export type MeetingNote = z.infer<typeof MeetingNote>;
+
+// ---------- todos added by hand ----------
+
+/** Todos added by hand to one meeting. */
+export const MAX_MEETING_TODOS = 100;
+
+/** Adds a todo to a meeting; it stays on every date until it is removed. */
+export const MeetingTodoInput = z.strictObject({ todoId: Id });
+export type MeetingTodoInput = z.infer<typeof MeetingTodoInput>;
+
+export const MeetingTodoParams = z.strictObject({ id: IdParam, todoId: IdParam });
+export type MeetingTodoParams = z.infer<typeof MeetingTodoParams>;
+
+/** A todo added by hand to a meeting. Ticks and the standup rules never remove it. */
+export const MeetingTodo = z.strictObject({
+  todo: TodoRef,
+  project: ProjectRef.nullable(),
+  /** The parent, for a subtask. */
+  parent: TodoRef.nullable(),
+  dueOn: CalendarDate.nullable(),
+  addedAt: Timestamp,
+});
+export type MeetingTodo = z.infer<typeof MeetingTodo>;
+
+/** The date of the meeting's next date that has not ended (cancelled ones skipped, moved ones where they went). */
+const NextOn = CalendarDate.nullable();
+
+/** The todos added to a meeting, the first added first. */
+export const MeetingTodos = z.strictObject({
+  meetingId: Id,
+  /** What "Due at next meeting" sets; null when the meeting has no next date. */
+  nextOn: NextOn,
+  items: z.array(MeetingTodo),
+});
+export type MeetingTodos = z.infer<typeof MeetingTodos>;
+
+/** A meeting a todo was added to. */
+export const TodoMeeting = z.strictObject({
+  meeting: z.strictObject({ id: Id, name: z.string(), type: MeetingType }),
+  nextOn: NextOn,
+  addedAt: Timestamp,
+});
+export type TodoMeeting = z.infer<typeof TodoMeeting>;
