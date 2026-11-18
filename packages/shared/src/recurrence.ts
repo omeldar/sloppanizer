@@ -185,8 +185,11 @@ export function recurrenceProblem(rule: Pick<RecurrenceRule, "until">, anchor: s
   return null;
 }
 
-/** The first date after `after` that matches a schedule rule (counted from the anchor). */
-function nextMatch(rule: RecurrenceRule, anchor: string, after: string): string {
+/**
+ * The first date after `after` that matches a schedule rule (counted from the anchor). Meant for
+ * `after` on or after the anchor: before it, the anchor itself and earlier dates are not found.
+ */
+export function nextRuleDate(rule: RecurrenceRule, anchor: string, after: string): string {
   const interval = rule.interval;
   switch (rule.every) {
     case "day": {
@@ -211,9 +214,7 @@ function nextMatch(rule: RecurrenceRule, anchor: string, after: string): string 
       let k = Math.max(0, Math.floor(offset / interval));
       for (;;) {
         const { y, m } = fromMonthIndex(start + k * interval);
-        const date = rule.monthWeekday
-          ? nthWeekdayDate(y, m, rule.monthWeekday.nth, rule.monthWeekday.weekday)
-          : monthDate(y, m, rule.monthDay ?? parse(anchor).d);
+        const date = monthRuleDate(rule, anchor, y, m);
         if (date > after) return date;
         k += 1;
       }
@@ -226,6 +227,79 @@ function nextMatch(rule: RecurrenceRule, anchor: string, after: string): string 
         const date = yearDateIn(start + k * interval, yearDate);
         if (date > after) return date;
         k += 1;
+      }
+    }
+  }
+}
+
+const mod = (n: number, m: number): number => ((n % m) + m) % m;
+
+/** The date of a monthly rule in a month. */
+function monthRuleDate(rule: RecurrenceRule, anchor: string, y: number, m: number): string {
+  return rule.monthWeekday
+    ? nthWeekdayDate(y, m, rule.monthWeekday.nth, rule.monthWeekday.weekday)
+    : monthDate(y, m, rule.monthDay ?? parse(anchor).d);
+}
+
+/**
+ * Whether a date is in the pattern of a schedule rule counted from the anchor, also before the anchor
+ * (the anchor itself need not match, e.g. weekly on Thursday with a Tuesday anchor).
+ */
+export function matchesRule(rule: RecurrenceRule, anchor: string, date: string): boolean {
+  const interval = rule.interval;
+  const ymd = parse(date);
+  switch (rule.every) {
+    case "day":
+      return mod(daysBetween(anchor, date), interval) === 0;
+    case "week": {
+      const days = rule.weekdays ?? [weekdayOf(anchor)];
+      const anchorMonday = addDays(anchor, -weekdayIndex(anchor));
+      const week = Math.floor(daysBetween(anchorMonday, date) / 7);
+      return mod(week, interval) === 0 && days.includes(weekdayOf(date));
+    }
+    case "month": {
+      const offset = monthIndex(ymd) - monthIndex(parse(anchor));
+      return mod(offset, interval) === 0 && monthRuleDate(rule, anchor, ymd.y, ymd.m) === date;
+    }
+    case "year": {
+      const offset = ymd.y - parse(anchor).y;
+      return mod(offset, interval) === 0 && yearDateIn(ymd.y, rule.yearDate ?? anchor.slice(5)) === date;
+    }
+  }
+}
+
+/** The last date before `before` in the pattern of a schedule rule, also before the anchor. */
+export function previousRuleDate(rule: RecurrenceRule, anchor: string, before: string): string {
+  const interval = rule.interval;
+  switch (rule.every) {
+    case "day":
+      return addDays(anchor, Math.floor((daysBetween(anchor, before) - 1) / interval) * interval);
+    case "week": {
+      let date = addDays(before, -1);
+      for (let i = 0; i < 7 * (interval + 1); i += 1) {
+        if (matchesRule(rule, anchor, date)) return date;
+        date = addDays(date, -1);
+      }
+      throw new Error("unreachable: no weekly match");
+    }
+    case "month": {
+      const start = monthIndex(parse(anchor));
+      let k = Math.floor((monthIndex(parse(before)) - start) / interval);
+      for (;;) {
+        const { y, m } = fromMonthIndex(start + k * interval);
+        const date = monthRuleDate(rule, anchor, y, m);
+        if (date < before) return date;
+        k -= 1;
+      }
+    }
+    case "year": {
+      const start = parse(anchor).y;
+      const yearDate = rule.yearDate ?? anchor.slice(5);
+      let k = Math.floor((parse(before).y - start) / interval);
+      for (;;) {
+        const date = yearDateIn(start + k * interval, yearDate);
+        if (date < before) return date;
+        k -= 1;
       }
     }
   }
@@ -257,10 +331,10 @@ export function nextOccurrence(rule: RecurrenceRuleInput, input: OccurrenceInput
           ? addDays(input.doneOn, 7 * n)
           : addMonthsClamped(input.doneOn, full.every === "month" ? n : 12 * n);
   } else {
-    next = nextMatch(full, input.anchor, input.anchor);
+    next = nextRuleDate(full, input.anchor, input.anchor);
     if (next < input.today) {
       // Jump close to today in one step, then take the first match from there.
-      next = nextMatch(full, input.anchor, addDays(input.today, -1));
+      next = nextRuleDate(full, input.anchor, addDays(input.today, -1));
     }
   }
   if (full.until !== undefined && full.until !== null && next > full.until) return null;

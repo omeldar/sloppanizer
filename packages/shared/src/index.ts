@@ -15,3 +15,5 @@ export * from "./web-headers.ts";
 export * from "./auth.ts";
 export * from "./planner.ts";
 export * from "./ai.ts";
+export * from "./series.ts";
+export * from "./meetings.ts";

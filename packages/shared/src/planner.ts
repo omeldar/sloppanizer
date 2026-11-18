@@ -37,7 +37,7 @@ export const UpdateUrl = z
 export type UpdateUrl = z.infer<typeof UpdateUrl>;
 
 /** Any ISO instant with an offset; stored as UTC with milliseconds. */
-const Instant = z.iso.datetime({ offset: true }).transform((value) => new Date(value).toISOString());
+export const Instant = z.iso.datetime({ offset: true }).transform((value) => new Date(value).toISOString());
 
 export const MAX_BLOCK_MS = 24 * 60 * 60 * 1000;
 export const MIN_BLOCK_MS = 5 * 60 * 1000;
