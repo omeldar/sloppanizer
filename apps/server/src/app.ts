@@ -25,6 +25,7 @@ import { commentRoutes } from "./routes/comments.ts";
 import { exportRoutes } from "./routes/export.ts";
 import { labelRoutes } from "./routes/labels.ts";
 import { mcpRoutes } from "./routes/mcp.ts";
+import { blockSeriesRoutes } from "./routes/block-series.ts";
 import { meetingRoutes } from "./routes/meetings.ts";
 import { metaRoutes } from "./routes/meta.ts";
 import { noteRoutes } from "./routes/notes.ts";
@@ -143,6 +144,7 @@ export async function buildApp(options: BuildOptions) {
   todoRoutes(app, deps);
   todoRelationRoutes(app, deps);
   plannerRoutes(app, deps);
+  blockSeriesRoutes(app, deps);
   commentRoutes(app, deps);
   noteRoutes(app, deps);
   meetingRoutes(app, deps);

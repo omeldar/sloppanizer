@@ -97,6 +97,8 @@ const FORMAT_TABLES: Record<number, readonly string[]> = {
   6: EXPORT_TABLES.filter((t) => t !== "meeting_todos"),
   // Format 7 adds todos added to meetings by hand.
   7: EXPORT_TABLES,
+  // Format 8: series rows can belong to a todo too (planned time that repeats with it).
+  8: EXPORT_TABLES,
 };
 /** The app that writes each format. */
 const FORMAT_APP: Record<number, "organizer" | "sloppanizer"> = {
@@ -107,6 +109,7 @@ const FORMAT_APP: Record<number, "organizer" | "sloppanizer"> = {
   5: "sloppanizer",
   6: "sloppanizer",
   7: "sloppanizer",
+  8: "sloppanizer",
 };
 
 /** What a restore needs from the server, besides the account's context. */

@@ -276,6 +276,11 @@ export function invalidateTodoViews(client: QueryClient): Promise<void> {
         "standup",
         // Todos on a meeting show their title, status and due date.
         "meetingTodos",
+        // Planner blocks show a todo's title and whether it is done; a done repeating todo hands its
+        // planned time to the next one.
+        "blocks",
+        "plan",
+        "recurring",
       ].includes(String(query.queryKey[0])),
   });
 }

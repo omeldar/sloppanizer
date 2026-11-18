@@ -72,6 +72,10 @@ const meetingsPage = lazyRouteComponent(
   () => import("../features/meetings/MeetingsPage.tsx"),
   "MeetingsPage",
 );
+const recurringPage = lazyRouteComponent(
+  () => import("../features/recurring/RecurringPage.tsx"),
+  "RecurringPage",
+);
 const meetingPage = lazyRouteComponent(() => import("../features/meetings/MeetingPage.tsx"), "MeetingPage");
 
 const NotesSearch = z.object({
@@ -156,6 +160,7 @@ const routes = [
     validateSearch: PlannerSearch,
   }),
   createRoute({ getParentRoute: () => rootRoute, path: "/meetings", component: meetingsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/recurring", component: recurringPage }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: "/meetings/$id",

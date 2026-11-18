@@ -185,6 +185,7 @@ describe("MCP server against the real API", () => {
         "remove_web_link",
         "list_plan",
         "plan_time",
+        "list_recurring",
         "list_meetings",
         "standup_list",
         "mark_said",

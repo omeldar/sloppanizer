@@ -1,9 +1,16 @@
 import { createHash, randomBytes } from "node:crypto";
-import { addDays, isValidTimeZone, type TimeBlock, toLocalDate } from "@organizer/shared";
+import {
+  addDays,
+  type BlockOccurrence,
+  isValidTimeZone,
+  type TimeBlock,
+  toLocalDate,
+} from "@organizer/shared";
 import { eq } from "drizzle-orm";
 import type { Clock } from "../clock.ts";
 import { accounts, calendarFeeds } from "../db/auth-schema.ts";
 import type { Db } from "../db/index.ts";
+import { listRepeatOccurrences } from "./block-series.ts";
 import { listBlocks } from "./blocks.ts";
 
 /** The planner as an iCalendar feed behind a secret link, for calendar apps to subscribe to. */
@@ -65,12 +72,13 @@ export function renderFeed(
   }
   const timeZone = isValidTimeZone(account.timeZone) ? account.timeZone : options.fallbackTimeZone;
   const today = toLocalDate(now, timeZone);
-  const blocks = listBlocks(
-    { db, clock, timeZone, accountId: account.id },
-    { from: addDays(today, -PAST_DAYS), to: addDays(today, FUTURE_DAYS) },
-  );
+  const ctx = { db, clock, timeZone, accountId: account.id };
+  const range = { from: addDays(today, -PAST_DAYS), to: addDays(today, FUTURE_DAYS) };
+  const blocks = listBlocks(ctx, range);
+  // Planned time that repeats with a todo: one event per date (moved ones at their new time).
+  const planned = listRepeatOccurrences(ctx, range);
   const base = options.webOrigin ? `${options.webOrigin}/u/${account.username}` : null;
-  return toIcs(blocks, { now, todoUrl: base ? (id) => `${base}/todos/${id}` : null });
+  return toIcs(blocks, { now, todoUrl: base ? (id) => `${base}/todos/${id}` : null, planned });
 }
 
 // ---------- iCalendar (RFC 5545) ----------
@@ -104,9 +112,48 @@ export function foldLine(line: string): string {
   return parts.join("\r\n ");
 }
 
+/** One VEVENT: a time block, or a date of a todo's planned time. */
+interface FeedEvent {
+  uid: string;
+  modified: string;
+  startAt: string;
+  endAt: string;
+  title: string;
+  done: boolean;
+  project: string | null;
+  todoId: number | null;
+}
+
+const blockEvent = (block: TimeBlock): FeedEvent => ({
+  uid: `block-${block.id}-${block.createdAt.replace(/\D/g, "")}`,
+  modified: block.updatedAt,
+  startAt: block.startAt,
+  endAt: block.endAt,
+  title: block.todo?.title ?? block.title,
+  done: block.todo?.status === "done",
+  project: block.project?.name ?? null,
+  todoId: block.todo?.id ?? null,
+});
+
+/** The UID stays the same for a date as long as the planned time exists (its series and original date). */
+const plannedEvent = (o: BlockOccurrence, now: Date): FeedEvent => ({
+  uid: `plan-${o.seriesId}-${o.occursOn.replace(/-/g, "")}`,
+  modified: now.toISOString(),
+  startAt: o.startAt,
+  endAt: o.endAt,
+  title: o.todo.title,
+  done: o.todo.status === "done",
+  project: o.project?.name ?? null,
+  todoId: o.todo.id,
+});
+
 export function toIcs(
   blocks: readonly TimeBlock[],
-  options: { now: Date; todoUrl: ((todoId: number) => string) | null },
+  options: {
+    now: Date;
+    todoUrl: ((todoId: number) => string) | null;
+    planned?: readonly BlockOccurrence[];
+  },
 ): string {
   const stamp = icsTime(options.now.toISOString());
   const lines = [
@@ -119,22 +166,24 @@ export function toIcs(
     "REFRESH-INTERVAL;VALUE=DURATION:PT15M",
     "X-PUBLISHED-TTL:PT15M",
   ];
-  for (const block of blocks) {
-    const title = block.todo?.title ?? block.title;
-    const done = block.todo?.status === "done";
+  const events = [
+    ...blocks.map(blockEvent),
+    ...(options.planned ?? []).map((o) => plannedEvent(o, options.now)),
+  ].toSorted((a, b) => a.startAt.localeCompare(b.startAt) || a.uid.localeCompare(b.uid));
+  for (const event of events) {
     lines.push(
       "BEGIN:VEVENT",
-      `UID:block-${block.id}-${block.createdAt.replace(/\D/g, "")}@sloppanizer`,
+      `UID:${event.uid}@sloppanizer`,
       `DTSTAMP:${stamp}`,
-      `LAST-MODIFIED:${icsTime(block.updatedAt)}`,
-      `DTSTART:${icsTime(block.startAt)}`,
-      `DTEND:${icsTime(block.endAt)}`,
-      `SUMMARY:${icsText(done ? `✓ ${title}` : title)}`,
+      `LAST-MODIFIED:${icsTime(event.modified)}`,
+      `DTSTART:${icsTime(event.startAt)}`,
+      `DTEND:${icsTime(event.endAt)}`,
+      `SUMMARY:${icsText(event.done ? `✓ ${event.title}` : event.title)}`,
     );
-    if (block.project) lines.push(`CATEGORIES:${icsText(block.project.name)}`);
-    if (block.todo && options.todoUrl) {
-      const url = options.todoUrl(block.todo.id);
-      lines.push(`URL:${url}`, `DESCRIPTION:${icsText(`#${block.todo.id} in Sloppanizer: ${url}`)}`);
+    if (event.project) lines.push(`CATEGORIES:${icsText(event.project)}`);
+    if (event.todoId !== null && options.todoUrl) {
+      const url = options.todoUrl(event.todoId);
+      lines.push(`URL:${url}`, `DESCRIPTION:${icsText(`#${event.todoId} in Sloppanizer: ${url}`)}`);
     }
     lines.push("TRANSP:OPAQUE", "END:VEVENT");
   }

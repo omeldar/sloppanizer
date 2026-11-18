@@ -1,5 +1,6 @@
 import {
   addDays,
+  type BlockOccurrence,
   dayShift,
   localTimeToInstant,
   type MeetingOccurrence,
@@ -14,6 +15,8 @@ import type { ScopeOption } from "../../components/SeriesScopeDialog.tsx";
 import { formatDayMonth } from "../../lib/format.ts";
 
 export const SNAP_MINUTES = 15;
+/** Height of an hour in the planner's grid. */
+export const HOUR_PX = 52;
 /** The planner shows the whole day; it opens at this hour unless it shows today. */
 export const DAY_START_HOUR = 7;
 
@@ -24,9 +27,16 @@ export interface Span {
   endAt: string;
 }
 
-/** What the planner shows: time blocks, and the dates of meetings (repeating, changed per date). */
+/**
+ * What the planner shows: time blocks, the planned dates of repeating todos and the dates of meetings
+ * (both repeating, changed per date).
+ */
 export type PlannerItem = Span &
-  ({ kind: "block"; block: TimeBlock } | { kind: "meeting"; occurrence: MeetingOccurrence });
+  (
+    | { kind: "block"; block: TimeBlock }
+    | { kind: "meeting"; occurrence: MeetingOccurrence }
+    | { kind: "repeat"; occurrence: BlockOccurrence }
+  );
 
 export const blockItem = (block: TimeBlock): PlannerItem => ({
   kind: "block",
@@ -44,6 +54,18 @@ export const meetingItem = (
   kind: "meeting",
   occurrence,
   key: `meeting-${occurrence.meetingId}-${occurrence.occursOn}`,
+  startAt: span.startAt,
+  endAt: span.endAt,
+});
+
+/** A planned date of a repeating todo; `span` shows it somewhere else while a move waits for its answer. */
+export const repeatItem = (
+  occurrence: BlockOccurrence,
+  span: Pick<Span, "startAt" | "endAt"> = occurrence,
+): PlannerItem => ({
+  kind: "repeat",
+  occurrence,
+  key: `repeat-${occurrence.seriesId}-${occurrence.occursOn}`,
   startAt: span.startAt,
   endAt: span.endAt,
 });
@@ -177,11 +199,11 @@ export const blockTitle = (block: TimeBlock): string => block.todo?.title ?? blo
 export const ONLY_THIS_DAY = "Only this date can move to another day for this repeat.";
 
 /**
- * The choices for moving a meeting date to a new start: this one always; this and following and all
+ * The choices for moving a date of a repeat (a meeting, or a todo's planned time) to a new start: this one always; this and following and all
  * only when every date of the repeat can move by the same days. "All" changes only the part of a split
  * repeat that holds the date, so it says from when.
  */
-export function meetingMoveScopes(
+export function seriesMoveScopes(
   segments: readonly Series[],
   occurrence: Pick<MeetingOccurrence, "seriesId" | "occursOn">,
   startAt: string,
@@ -203,6 +225,13 @@ export function meetingMoveScopes(
     },
   ];
 }
+
+/** The choices for removing a planned date of a repeating todo: all of them removes the planned time. */
+export const REPEAT_CANCEL_SCOPES: readonly ScopeOption[] = [
+  { scope: "this" },
+  { scope: "following", hint: "The planned time ends the day before" },
+  { scope: "all", hint: "Removes the planned time on every date; the todo stays" },
+];
 
 /** The choices for cancelling a meeting date: all of them deletes the meeting. */
 export const MEETING_CANCEL_SCOPES: readonly ScopeOption[] = [

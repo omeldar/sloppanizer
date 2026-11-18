@@ -44,6 +44,34 @@ describe("calendar feed", () => {
     for (const line of ics.split("\r\n")) expect(Buffer.byteLength(line)).toBeLessThanOrEqual(75);
   });
 
+  it("has every date of a repeating todo's planned time: moved ones moved, cancelled ones gone", async () => {
+    const t = await makeApp();
+    const todo = await t.create<Todo>("/api/v1/todos", {
+      title: "Team report",
+      dueOn: "2026-11-16",
+      recurrence: { every: "week", weekdays: ["mon"], until: "2026-12-07" },
+    });
+    await t.create(`/api/v1/todos/${todo.id}/plan`, {
+      startAt: "2026-11-16T08:00:00.000Z",
+      endAt: "2026-11-16T09:00:00.000Z",
+    });
+    const plan = (on: string, body: unknown) => t.call("PATCH", `/api/v1/todos/${todo.id}/plan/${on}`, body);
+    await plan("2026-11-23", {
+      scope: "this",
+      startAt: "2026-11-23T13:00:00.000Z",
+      endAt: "2026-11-23T14:00:00.000Z",
+    });
+    await plan("2026-11-30", { scope: "this", cancelled: true });
+    const ics = (await t.app.inject({ method: "GET", url: await turnOn(t) })).body;
+    const events = [...ics.matchAll(/UID:(\S+)\r\n(?:.*\r\n)*?DTSTART:(\S+)/g)].map((m) => `${m[1]} ${m[2]}`);
+    expect(events).toEqual([
+      expect.stringMatching(/^plan-\d+-20261116@sloppanizer 20261116T080000Z$/),
+      expect.stringMatching(/^plan-\d+-20261123@sloppanizer 20261123T130000Z$/),
+      expect.stringMatching(/^plan-\d+-20261207@sloppanizer 20261207T080000Z$/),
+    ]);
+    expect(ics.match(/SUMMARY:Team report/g)).toHaveLength(3);
+  });
+
   it("stops the old link when the secret is replaced or the feed is turned off", async () => {
     const t = await makeApp();
     const first = await turnOn(t);

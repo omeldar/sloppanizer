@@ -18,3 +18,4 @@ export * from "./ai.ts";
 export * from "./series.ts";
 export * from "./meetings.ts";
 export * from "./version.ts";
+export * from "./block-series.ts";
