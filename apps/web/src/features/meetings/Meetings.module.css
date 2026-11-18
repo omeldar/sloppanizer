@@ -615,3 +615,91 @@
     transform: translateY(-6px);
   }
 }
+
+/* ---------- note per date ---------- */
+
+.noteSection {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.note {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.noteBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.noteTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.noteActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.noteActions > button {
+  min-height: 44px;
+}
+
+.otherNotes {
+  margin-top: 16px;
+}
+
+.otherTitle {
+  margin: 0 0 6px;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.otherList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.otherNote {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.otherNote:hover {
+  background: var(--raised);
+}
+
+.otherDate {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-3);
+}
+
+.otherNoteTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

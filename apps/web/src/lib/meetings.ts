@@ -114,11 +114,20 @@ export const useChangeOccurrence = () =>
     api(Meeting, `/meetings/${id}/occurrences/${on}`, { method: "PATCH", body: change }),
   );
 
-/** A new note for the date (no noteId) or an existing one linked to it. */
-export const useAddMeetingNote = () =>
-  useMeetingMutation(({ id, on, noteId }: { id: number; on: string; noteId?: number }) =>
-    api(MeetingNote, `/meetings/${id}/notes`, { method: "POST", body: { on, noteId } }),
-  );
+/** A new note for the date (no noteId) or an existing one linked to it; a new one shows in Notes too. */
+export function useAddMeetingNote() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, on, noteId }: { id: number; on: string; noteId?: number }) =>
+      api(MeetingNote, `/meetings/${id}/notes`, { method: "POST", body: { on, noteId } }),
+    onSuccess: async () => {
+      await invalidateMeetings(client);
+      await client.invalidateQueries({
+        predicate: (query) => ["notes", "search"].includes(String(query.queryKey[0])),
+      });
+    },
+  });
+}
 
 /** Unlinks the note of a date; the note itself stays. */
 export const useUnlinkMeetingNote = () =>

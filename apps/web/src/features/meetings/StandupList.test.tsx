@@ -237,7 +237,7 @@ describe("standup list on the meeting page", () => {
       const path = call.path.split("?")[0];
       if (path === "/api/v1/meetings/7") return { body: meeting };
       if (path === "/api/v1/meetings/7/standup") return { body: makeStandup(ITEMS) };
-      if (path === "/api/v1/meetings/occurrences") return { body: [] };
+      if (path === "/api/v1/meetings/occurrences" || path === "/api/v1/meetings/7/notes") return { body: [] };
       return { status: 404, body: { error: { code: "not_found", message: "Not here." } } };
     });
     const list = await screen.findByRole("region", { name: "To say" }, { timeout: 5000 });

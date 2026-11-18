@@ -18,6 +18,7 @@ import {
 } from "../../lib/meetings.ts";
 import { MeetingDialog, type MeetingDraft } from "./MeetingDialog.tsx";
 import { nextText } from "./MeetingsPage.tsx";
+import { MeetingNote } from "./MeetingNote.tsx";
 import { StandupList } from "./StandupList.tsx";
 import styles from "./Meetings.module.css";
 
@@ -132,6 +133,8 @@ function MeetingView({ meeting }: { meeting: Meeting }) {
           }
         />
       )}
+
+      <MeetingNote meetingId={meeting.id} on={on} />
 
       <section className={styles.schedule} aria-label="Repeat">
         <h2 className={styles.sectionTitle}>Repeat</h2>

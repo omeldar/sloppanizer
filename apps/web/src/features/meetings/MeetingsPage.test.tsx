@@ -32,6 +32,7 @@ function api(meetings: (call: RecordedCall) => { status?: number; body?: unknown
     const path = call.path.split("?")[0];
     if (path === "/api/v1/projects" || path === "/api/v1/labels") return { body: [] };
     if (path === "/api/v1/meetings/occurrences") return { body: [] };
+    if (path?.endsWith("/notes")) return { body: [] };
     return NOT_FOUND;
   };
 }
