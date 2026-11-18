@@ -1,5 +1,6 @@
 import type { TimeBlock } from "@organizer/shared";
 import { describe, expect, it } from "vitest";
+import { makeOccurrence, makeSeries } from "../../test/meetings.ts";
 import {
   blockSpan,
   edgeScrollStep,
@@ -7,7 +8,11 @@ import {
   minutesToTime,
   movedSpan,
   nextQuarter,
-  placeBlocks,
+  blockItem,
+  meetingItem,
+  meetingMoveScopes,
+  ONLY_THIS_DAY,
+  placeItems,
   scrollStartMinutes,
   snap,
 } from "./planner.ts";
@@ -29,51 +34,54 @@ function block(id: number, startAt: string, endAt: string): TimeBlock {
   };
 }
 
-describe("placeBlocks", () => {
+/** Blocks only, as the planner had them before meetings. */
+const place = (blocks: TimeBlock[], day: string, tz: string) => placeItems(blocks.map(blockItem), day, tz);
+
+describe("placeItems", () => {
   it("places blocks by local minutes and puts overlaps side by side", () => {
     const blocks = [
       block(1, "2026-11-12T08:00:00.000Z", "2026-11-12T09:00:00.000Z"),
       block(2, "2026-11-12T08:30:00.000Z", "2026-11-12T09:30:00.000Z"),
       block(3, "2026-11-12T12:00:00.000Z", "2026-11-12T13:00:00.000Z"),
     ];
-    const placed = placeBlocks(blocks, "2026-11-12", TZ);
-    expect(placed.map((p) => [p.block.id, p.startMin, p.endMin, p.lane, p.lanes])).toEqual([
-      [1, 540, 600, 0, 2],
-      [2, 570, 630, 1, 2],
-      [3, 780, 840, 0, 1],
+    const placed = place(blocks, "2026-11-12", TZ);
+    expect(placed.map((p) => [p.item.key, p.startMin, p.endMin, p.lane, p.lanes])).toEqual([
+      ["block-1", 540, 600, 0, 2],
+      ["block-2", 570, 630, 1, 2],
+      ["block-3", 780, 840, 0, 1],
     ]);
   });
 
   it("cuts a block that crosses midnight at the day's edges", () => {
     const night = block(4, "2026-11-12T22:30:00.000Z", "2026-11-13T00:30:00.000Z");
-    const [first] = placeBlocks([night], "2026-11-12", TZ);
+    const [first] = place([night], "2026-11-12", TZ);
     expect([first?.startMin, first?.endMin, first?.continuesAfter]).toEqual([1410, 1440, true]);
-    const [second] = placeBlocks([night], "2026-11-13", TZ);
+    const [second] = place([night], "2026-11-13", TZ);
     expect([second?.startMin, second?.endMin, second?.continuesBefore]).toEqual([0, 90, true]);
-    expect(placeBlocks([night], "2026-11-14", TZ)).toEqual([]);
+    expect(place([night], "2026-11-14", TZ)).toEqual([]);
   });
 });
 
-describe("placeBlocks on whole and odd length days", () => {
+describe("placeItems on whole and odd length days", () => {
   it("places a block from 00:00 to 24:00 as the whole day, continuing nowhere", () => {
     const whole = block(5, "2026-11-11T23:00:00.000Z", "2026-11-12T23:00:00.000Z");
-    const [p] = placeBlocks([whole], "2026-11-12", TZ);
+    const [p] = place([whole], "2026-11-12", TZ);
     expect([p?.startMin, p?.endMin, p?.continuesBefore, p?.continuesAfter]).toEqual([0, 1440, false, false]);
-    expect(placeBlocks([whole], "2026-11-13", TZ)).toEqual([]);
-    expect(placeBlocks([whole], "2026-11-11", TZ)).toEqual([]);
+    expect(place([whole], "2026-11-13", TZ)).toEqual([]);
+    expect(place([whole], "2026-11-11", TZ)).toEqual([]);
   });
 
   it("ends a block that stops exactly at midnight on its own day only", () => {
     const evening = block(6, "2026-11-12T21:00:00.000Z", "2026-11-12T23:00:00.000Z");
-    expect(placeBlocks([evening], "2026-11-13", TZ)).toEqual([]);
-    expect(placeBlocks([evening], "2026-11-12", TZ)[0]?.continuesAfter).toBe(false);
+    expect(place([evening], "2026-11-13", TZ)).toEqual([]);
+    expect(place([evening], "2026-11-12", TZ)[0]?.continuesAfter).toBe(false);
   });
 
   it("counts a 23 hour day (clocks go forward) and a 25 hour day (clocks go back)", () => {
     const spring = block(7, "2026-03-28T23:00:00.000Z", "2026-03-29T22:00:00.000Z");
-    expect(placeBlocks([spring], "2026-03-29", TZ)[0]).toMatchObject({ startMin: 0, endMin: 23 * 60 });
+    expect(place([spring], "2026-03-29", TZ)[0]).toMatchObject({ startMin: 0, endMin: 23 * 60 });
     const autumn = block(8, "2026-10-24T22:00:00.000Z", "2026-10-25T23:00:00.000Z");
-    expect(placeBlocks([autumn], "2026-10-25", TZ)[0]).toMatchObject({ startMin: 0, endMin: 25 * 60 });
+    expect(place([autumn], "2026-10-25", TZ)[0]).toMatchObject({ startMin: 0, endMin: 25 * 60 });
   });
 });
 
@@ -179,5 +187,78 @@ describe("movedSpan", () => {
   it("resizes the end, never below 15 minutes", () => {
     expect(movedSpan(b, 30, 0, "resize", TZ).endAt).toBe("2026-11-12T10:00:00.000Z");
     expect(movedSpan(b, -120, 0, "resize", TZ).endAt).toBe("2026-11-12T08:15:00.000Z");
+  });
+});
+
+describe("meetings in the planner", () => {
+  it("shares lanes between blocks and meeting dates, in start order", () => {
+    const standup = makeOccurrence({
+      occursOn: "2026-11-12",
+      startAt: "2026-11-12T08:00:00.000Z",
+      endAt: "2026-11-12T08:15:00.000Z",
+    });
+    const items = [
+      blockItem(block(1, "2026-11-12T08:00:00.000Z", "2026-11-12T09:00:00.000Z")),
+      meetingItem(standup),
+      blockItem(block(2, "2026-11-12T12:00:00.000Z", "2026-11-12T13:00:00.000Z")),
+    ];
+    const placed = placeItems(items, "2026-11-12", TZ);
+    // The longer block first at the same start, the meeting next to it; the later block alone.
+    expect(placed.map((p) => [p.item.key, p.startMin, p.endMin, p.lane, p.lanes])).toEqual([
+      ["block-1", 540, 600, 0, 2],
+      ["meeting-7-2026-11-12", 540, 555, 1, 2],
+      ["block-2", 780, 840, 0, 1],
+    ]);
+  });
+
+  it("places a meeting date at the span of a pending move, keyed by its original date", () => {
+    const standup = makeOccurrence({ occursOn: "2026-11-12", startAt: "2026-11-12T08:00:00.000Z" });
+    const moved = meetingItem(standup, {
+      startAt: "2026-11-13T09:00:00.000Z",
+      endAt: "2026-11-13T09:15:00.000Z",
+    });
+    expect(placeItems([moved], "2026-11-12", TZ)).toEqual([]);
+    const [p] = placeItems([moved], "2026-11-13", TZ);
+    expect([p?.item.key, p?.startMin]).toEqual(["meeting-7-2026-11-12", 600]);
+  });
+
+  it("offers every scope for a move on the same day or to a day the weekly repeat can follow", () => {
+    const thursdays = [makeSeries()];
+    const thu = { seriesId: 1, occursOn: "2026-11-19" };
+    // Same day, later: all three.
+    expect(
+      meetingMoveScopes(thursdays, thu, "2026-11-19T09:00:00.000Z", TZ).map((o) => o.off ?? null),
+    ).toEqual([null, null, null]);
+    // To Friday: the weekdays turn to Fri, so following and all work too.
+    const friday = meetingMoveScopes(thursdays, thu, "2026-11-20T08:00:00.000Z", TZ);
+    expect(friday.every((o) => !o.off)).toBe(true);
+    expect(friday[1]?.hint).toBe("From 19.11. on");
+  });
+
+  it("offers only this date when the repeat cannot move by those days", () => {
+    // Monthly on the 30th: no rule for every date one day later.
+    const monthly = [makeSeries({ rule: { every: "month", interval: 1, monthDay: 30, basis: "schedule" } })];
+    const choices = meetingMoveScopes(
+      monthly,
+      { seriesId: 1, occursOn: "2026-11-30" },
+      "2026-12-01T08:00:00.000Z",
+      TZ,
+    );
+    expect(choices.map((o) => [o.scope, o.off ?? null])).toEqual([
+      ["this", null],
+      ["following", ONLY_THIS_DAY],
+      ["all", ONLY_THIS_DAY],
+    ]);
+  });
+
+  it("says that All changes only this part of a split repeat", () => {
+    const split = [makeSeries({ endsOn: "2026-11-25" }), makeSeries({ id: 2, startsOn: "2026-11-27" })];
+    const choices = meetingMoveScopes(
+      split,
+      { seriesId: 2, occursOn: "2026-12-03" },
+      "2026-12-03T09:00:00.000Z",
+      TZ,
+    );
+    expect(choices[2]?.hint).toBe("Every date from 27.11. on, this part of the repeat");
   });
 });
