@@ -10,7 +10,6 @@ import {
   lastStartBefore,
   type Meeting,
   type MeetingOccurrence,
-  nextSeriesOccurrence,
   normalizeRecurrence,
   type OccurrenceChange,
   type OccurrenceQuery,
@@ -42,6 +41,7 @@ import {
   exceptionsOf,
   type MeetingRow,
   meetingRow,
+  nextOf,
   parseFilter,
   segmentOn,
   segmentsOf,
@@ -118,13 +118,7 @@ function hydrate(ctx: Ctx, sc: Scoped, rows: readonly MeetingRow[], counts = fal
   return rows.flatMap((row) => {
     const list = segments.get(row.id) ?? [];
     if (list.length === 0) return [];
-    const own = new Set(list.map((s) => s.id));
-    const next = nextSeriesOccurrence(
-      list,
-      exceptions.filter((e) => own.has(e.seriesId)),
-      at,
-      ctx.timeZone,
-    );
+    const next = nextOf(list, exceptions, at, ctx.timeZone);
     return [
       {
         id: row.id,

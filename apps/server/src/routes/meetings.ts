@@ -9,11 +9,17 @@ import {
   MeetingNote,
   MeetingNoteInput,
   MeetingOccurrence,
+  MeetingTodo,
+  MeetingTodoInput,
+  MeetingTodoParams,
+  MeetingTodos,
   OccurrenceChange,
   OccurrenceQuery,
   ScheduleChange,
   Standup,
   StandupQuery,
+  Todo,
+  TodoMeeting,
   UpdateMeeting,
 } from "@organizer/shared";
 import { z } from "zod";
@@ -27,6 +33,13 @@ import {
   listOccurrences,
   updateMeeting,
 } from "../services/meetings.ts";
+import {
+  addMeetingTodo,
+  dueAtNextMeeting,
+  listMeetingTodos,
+  listTodoMeetings,
+  removeMeetingTodo,
+} from "../services/meeting-todos.ts";
 import {
   addMeetingNote,
   getStandup,
@@ -199,5 +212,65 @@ export function meetingRoutes(app: App, deps: Deps): void {
       removeMeetingNote(ctxOf(request, deps), request.params.id, request.params.on);
       return reply.status(204).send();
     },
+  );
+
+  app.get(
+    `${API_PREFIX}/meetings/:id/todos`,
+    {
+      schema: {
+        tags,
+        summary: "The todos added to a meeting by hand, and the day 'Due at next meeting' sets",
+        params: IdParams,
+        response: { 200: MeetingTodos },
+      },
+    },
+    async (request) => listMeetingTodos(ctxOf(request, deps), request.params.id),
+  );
+  app.post(
+    `${API_PREFIX}/meetings/:id/todos`,
+    {
+      schema: {
+        tags,
+        summary: "Add a todo to a meeting; it stays on every date until removed (its due date stays)",
+        params: IdParams,
+        body: MeetingTodoInput,
+        response: { 201: MeetingTodo },
+      },
+    },
+    async (request, reply) =>
+      reply.status(201).send(addMeetingTodo(ctxOf(request, deps), request.params.id, request.body)),
+  );
+  app.delete(
+    `${API_PREFIX}/meetings/:id/todos/:todoId`,
+    { schema: { tags, summary: "Take a todo off a meeting (the todo stays)", params: MeetingTodoParams } },
+    async (request, reply) => {
+      removeMeetingTodo(ctxOf(request, deps), request.params.id, request.params.todoId);
+      return reply.status(204).send();
+    },
+  );
+  app.post(
+    `${API_PREFIX}/meetings/:id/todos/:todoId/due`,
+    {
+      schema: {
+        tags,
+        summary: "Set the todo's due date to the day of the meeting's next date",
+        params: MeetingTodoParams,
+        response: { 200: Todo },
+      },
+    },
+    async (request) =>
+      dueAtNextMeeting(ctxOf(request, deps), actorOf(request), request.params.id, request.params.todoId),
+  );
+  app.get(
+    `${API_PREFIX}/todos/:id/meetings`,
+    {
+      schema: {
+        tags,
+        summary: "The meetings a todo was added to, the next one first",
+        params: IdParams,
+        response: { 200: z.array(TodoMeeting) },
+      },
+    },
+    async (request) => listTodoMeetings(ctxOf(request, deps), request.params.id),
   );
 }
