@@ -56,7 +56,7 @@ export async function fillEveryTable(t: Pick<TestApp, "call" | "create" | "accou
     projectId: project.id,
     pinned: true,
   });
-  // A standup with a moved date, a said todo and a note on its first date.
+  // A standup with a moved date, a said todo, a note on its first date and a todo added by hand.
   const meeting = await t.create<Meeting>("/api/v1/meetings", {
     name: "Team standup",
     schedule: { rule: { every: "week" }, startsOn: "2026-11-12", startTime: "09:00", durationMinutes: 15 },
@@ -72,6 +72,7 @@ export async function fillEveryTable(t: Pick<TestApp, "call" | "create" | "accou
     marks: [{ todoId: todo.id, kind: "said", coveredUntil: "2026-11-11T10:00:00.000Z" }],
   });
   await t.create(`/api/v1/meetings/${meeting.id}/notes`, { on: "2026-11-12" });
+  await t.create(`/api/v1/meetings/${meeting.id}/todos`, { todoId: todo.id });
   const gone = await t.create<Todo>("/api/v1/todos", { title: "Deleted newest" });
   await t.call("DELETE", `/api/v1/todos/${gone.id}`);
   const goneFile = json(

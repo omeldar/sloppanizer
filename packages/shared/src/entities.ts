@@ -507,9 +507,9 @@ export type RestoreProblemDetails = z.infer<typeof RestoreProblemDetails>;
 
 /**
  * Export format written by this version (manifest.json `format`). Formats 1 to 3 come from the single-user
- * app; 5 added web links and time blocks, 6 meetings.
+ * app; 5 added web links and time blocks, 6 meetings, 7 todos added to meetings.
  */
-export const EXPORT_FORMAT = 6;
+export const EXPORT_FORMAT = 7;
 
 /** manifest.json of an export zip (format 4). data.json rows carry no account id: any export fits any account. */
 export const ExportManifest = z.strictObject({

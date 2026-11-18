@@ -56,6 +56,7 @@ export const EXPORT_TABLES = [
   "series_exceptions",
   "meeting_notes",
   "standup_marks",
+  "meeting_todos",
   "comments",
   "attachments",
   "events",
@@ -108,8 +109,8 @@ the server's settings are left out). Export format ${EXPORT_FORMAT}.
   tags, the todos they requested or are a contact for, then the notes about them.
 - meetings/: one Markdown file per meeting (NNNN-name.md): type, repeat (one line per part),
   cancelled and moved dates, the standup filter (project slugs and label names) and where the
-  standup list counts from, then the notes of its dates (linked into notes/) and the todos said at
-  each date.
+  standup list counts from, then the todos added to it by hand, the notes of its dates (linked
+  into notes/) and the todos said at each date.
 
 In the Markdown files, links to uploaded files point into attachments/, so images show up in any
 Markdown viewer. The Markdown files are for reading and searching; a restore does not need them.
@@ -225,6 +226,11 @@ interface MeetingNoteRow {
   occurs_on: string;
   note_id: number;
 }
+interface MeetingTodoRow {
+  meeting_id: number;
+  todo_id: number;
+  added_at: string;
+}
 interface MarkRow {
   meeting_id: number;
   todo_id: number;
@@ -324,6 +330,7 @@ function meetingFiles(
   const segmentsOf = groupBy(rows<SeriesRow>("series"), (s) => s.meeting_id);
   const exceptionsOf = groupBy(rows<ExceptionRow>("series_exceptions"), (e) => e.series_id);
   const notesOf = groupBy(rows<MeetingNoteRow>("meeting_notes"), (n) => n.meeting_id);
+  const todosOf = groupBy(rows<MeetingTodoRow>("meeting_todos"), (m) => m.meeting_id);
   const saidOf = groupBy(
     rows<MarkRow>("standup_marks").filter((m) => m.kind === "said"),
     (m) => m.meeting_id,
@@ -356,7 +363,11 @@ function meetingFiles(
           .map((m) => `- #${m.todo_id} ${names.todoTitles.get(m.todo_id) ?? ""}`.trimEnd())
           .join("\n")}`,
     );
+    const todoLines = (todosOf.get(meeting.id) ?? [])
+      .toSorted((a, b) => a.added_at.localeCompare(b.added_at) || a.todo_id - b.todo_id)
+      .map((m) => `- #${m.todo_id} ${names.todoTitles.get(m.todo_id) ?? ""}`.trimEnd());
     const body = [
+      todoLines.length > 0 ? `## Todos\n\n${todoLines.join("\n")}` : "",
       noteLines.length > 0 ? `## Notes\n\n${noteLines.join("\n")}` : "",
       saidBlocks.length > 0 ? `## Said\n\n${saidBlocks.join("\n\n")}` : "",
     ]

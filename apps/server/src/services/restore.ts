@@ -77,6 +77,7 @@ const MEETING_TABLES: ReadonlySet<string> = new Set([
   "series_exceptions",
   "meeting_notes",
   "standup_marks",
+  "meeting_todos",
 ]);
 
 /** The tables of formats 2 to 5, which came before meetings. */
@@ -93,7 +94,9 @@ const FORMAT_TABLES: Record<number, readonly string[]> = {
   // Format 5 adds web links of todos and the planner's time blocks.
   5: BEFORE_MEETINGS,
   // Format 6 adds meetings: their repeat, single date changes, note links and standup marks.
-  6: EXPORT_TABLES,
+  6: EXPORT_TABLES.filter((t) => t !== "meeting_todos"),
+  // Format 7 adds todos added to meetings by hand.
+  7: EXPORT_TABLES,
 };
 /** The app that writes each format. */
 const FORMAT_APP: Record<number, "organizer" | "sloppanizer"> = {
@@ -103,6 +106,7 @@ const FORMAT_APP: Record<number, "organizer" | "sloppanizer"> = {
   4: "sloppanizer",
   5: "sloppanizer",
   6: "sloppanizer",
+  7: "sloppanizer",
 };
 
 /** What a restore needs from the server, besides the account's context. */
