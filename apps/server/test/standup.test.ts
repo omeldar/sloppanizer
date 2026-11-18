@@ -365,3 +365,111 @@ describe("a note per meeting date", () => {
     expect((await t.call("GET", `/api/v1/notes/${own.id}`)).statusCode).toBe(200);
   });
 });
+
+describe("what does not count as an update", () => {
+  it("keeps said todos hidden after a label, project or due date change, in every status", async () => {
+    const t = await makeApp();
+    const { id } = await createStandup(t);
+    const project = await t.create<Project>("/api/v1/projects", { name: "Lab" });
+    await t.create("/api/v1/labels", { name: "ops" });
+    const titles = { done: "Done one", blocked: "Blocked one", in_progress: "Working one" };
+    for (const [status, title] of Object.entries(titles)) {
+      // oxlint-disable-next-line no-await-in-loop -- one todo after the other keeps the clock readable
+      await setStatus(t, (await todo(t, title)).id, status);
+    }
+    const shown = await list(t, id);
+    expect(lines(shown)).toHaveLength(3);
+    await say(t, id, shown, Object.values(titles));
+    t.advance(60_000);
+    for (const { todo: ref } of shown.items) {
+      // oxlint-disable-next-line no-await-in-loop -- see above
+      const res = await t.call("PATCH", `/api/v1/todos/${ref.id}`, {
+        labels: ["ops"],
+        projectId: project.id,
+        dueOn: "2026-12-24",
+      });
+      expect(res.statusCode).toBe(200);
+    }
+    expect(lines(await list(t, id))).toEqual([]);
+  });
+
+  it("does not show a todo again for a comment on another todo, and never shows open ones", async () => {
+    const t = await makeApp();
+    const { id } = await createStandup(t);
+    const quiet = await todo(t, "Quiet");
+    await setStatus(t, quiet.id, "blocked");
+    const other = await todo(t, "Other");
+    await say(t, id, await list(t, id), ["Quiet"]);
+    t.advance(60_000);
+    await comment(t, other.id, "Nothing to do with it");
+    expect(lines(await list(t, id))).toEqual([]);
+  });
+
+  it("brings a todo back for a status change after it was said", async () => {
+    const t = await makeApp();
+    const { id } = await createStandup(t);
+    const task = await todo(t, "Server move");
+    await setStatus(t, task.id, "in_progress");
+    await say(t, id, await list(t, id), ["Server move"]);
+    expect(lines(await list(t, id))).toEqual([]);
+    t.advance(60_000);
+    await setStatus(t, task.id, "blocked");
+    expect(lines(await list(t, id))).toEqual(["blocked Server move"]);
+  });
+});
+
+describe("two standups", () => {
+  it("keeps said and dismissed apart, and both bring the todo back on new updates", async () => {
+    const t = await makeApp();
+    const team = await createStandup(t);
+    const daily = await createStandup(t, { name: "Daily" });
+    const task = await todo(t, "Patch day");
+    await setStatus(t, task.id, "in_progress");
+    await say(t, team.id, await list(t, team.id), ["Patch day"]);
+    await say(t, daily.id, await list(t, daily.id), ["Patch day"], "dismissed");
+    expect(await list(t, team.id)).toMatchObject({ items: [], dismissedCount: 0 });
+    expect(await list(t, daily.id)).toMatchObject({ items: [], dismissedCount: 1, said: [] });
+    t.advance(60_000);
+    await comment(t, task.id, "Window moved to Friday");
+    expect(lines(await list(t, team.id))).toEqual(["updated Patch day"]);
+    expect(lines(await list(t, daily.id))).toEqual(["updated Patch day"]);
+    // Saying it again in one standup does not touch the other.
+    await say(t, team.id, await list(t, team.id), ["Patch day"]);
+    expect(lines(await list(t, team.id))).toEqual([]);
+    expect(lines(await list(t, daily.id))).toEqual(["updated Patch day"]);
+  });
+});
+
+describe("subtasks and filters together", () => {
+  it("lists an unfinished subtask in progress next to its parent, each as its own item", async () => {
+    const t = await makeApp();
+    const { id } = await createStandup(t);
+    const parent = await todo(t, "Move office");
+    await setStatus(t, parent.id, "in_progress");
+    const [child] = json<Todo[]>(
+      await t.call("POST", `/api/v1/todos/${parent.id}/subtasks`, { titles: ["Pack boxes"] }),
+    );
+    await setStatus(t, (child as Todo).id, "in_progress");
+    const standup = await list(t, id);
+    expect(lines(standup).toSorted()).toEqual(["started Move office", "started Pack boxes"]);
+    expect(item(standup, "Pack boxes").parent?.title).toBe("Move office");
+    expect(item(standup, "Move office").parent).toBeNull();
+    // Saying the subtask leaves the parent on the list.
+    await say(t, id, standup, ["Pack boxes"]);
+    expect(lines(await list(t, id))).toEqual(["started Move office"]);
+  });
+
+  it("lists a subtask of a todo in the filtered project", async () => {
+    const t = await makeApp();
+    const lab = await t.create<Project>("/api/v1/projects", { name: "Lab" });
+    const { id } = await createStandup(t, { filter: { projectIds: [lab.id], inbox: false } });
+    const inLab = await todo(t, "Lab parent", { projectId: lab.id });
+    const [child] = json<Todo[]>(
+      await t.call("POST", `/api/v1/todos/${inLab.id}/subtasks`, { titles: ["Lab child"] }),
+    );
+    await setStatus(t, (child as Todo).id, "done");
+    const standup = await list(t, id);
+    expect(lines(standup)).toEqual(["done Lab child"]);
+    expect(item(standup, "Lab child").todo.id).toBe((child as Todo).id);
+  });
+});

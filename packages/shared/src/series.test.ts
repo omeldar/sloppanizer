@@ -289,3 +289,98 @@ describe("describeSeries", () => {
     ).toBe("every week on Thu until 31.12.2026, 23:30–00:30");
   });
 });
+
+const starts = (s: SeriesSpan, from: string, to: string) =>
+  expandSeries([s], [], from, to, ZURICH).map((o) => `${o.occursOn} ${o.startAt.slice(11, 16)}`);
+
+describe("the days the clocks change in Zurich", () => {
+  it("keeps 09:00 local on the Sundays of 29.03. and 25.10.2026 and the days around them", () => {
+    const daily = series({ every: "day" }, "2026-03-01");
+    expect(starts(daily, "2026-03-28", "2026-03-30")).toEqual([
+      "2026-03-28 08:00",
+      "2026-03-29 07:00",
+      "2026-03-30 07:00",
+    ]);
+    const autumn = series({ every: "day" }, "2026-10-01");
+    expect(starts(autumn, "2026-10-24", "2026-10-26")).toEqual([
+      "2026-10-24 07:00",
+      "2026-10-25 08:00",
+      "2026-10-26 08:00",
+    ]);
+  });
+
+  it("still lasts its length on the day with 23 or 25 hours", () => {
+    const hour = series({ every: "day" }, "2026-03-01", { startTime: "01:30", durationMinutes: 120 });
+    const [spring] = expandSeries([hour], [], "2026-03-29", "2026-03-29", ZURICH);
+    expect((Date.parse(spring?.endAt ?? "") - Date.parse(spring?.startAt ?? "")) / 60_000).toBe(120);
+    const [autumn] = expandSeries(
+      [{ ...hour, startsOn: "2026-10-01" }],
+      [],
+      "2026-10-25",
+      "2026-10-25",
+      ZURICH,
+    );
+    expect((Date.parse(autumn?.endAt ?? "") - Date.parse(autumn?.startAt ?? "")) / 60_000).toBe(120);
+  });
+
+  it("gives a time that does not exist (02:30 on 29.03.) one start, on that day, and keeps the weekly rhythm", () => {
+    const sundays = series({ every: "week" }, "2026-03-22", { startTime: "02:30" });
+    const list = expandSeries([sundays], [], "2026-03-22", "2026-04-05", ZURICH);
+    expect(list.map((o) => o.occursOn)).toEqual(["2026-03-22", "2026-03-29", "2026-04-05"]);
+    const skipped = list[1];
+    expect(skipped?.startAt.slice(0, 10)).toBe("2026-03-29");
+    // An hour of the wrong day would put it at 01:30 or 03:30 local, never on another date.
+    expect(new Date(skipped?.startAt ?? "").getTime()).toBeGreaterThanOrEqual(
+      Date.parse("2026-03-29T00:30:00Z"),
+    );
+    expect(new Date(skipped?.startAt ?? "").getTime()).toBeLessThanOrEqual(
+      Date.parse("2026-03-29T02:30:00Z"),
+    );
+  });
+
+  it("gives a time that happens twice (02:30 on 25.10.) exactly one start", () => {
+    const sundays = series({ every: "week" }, "2026-10-18", { startTime: "02:30" });
+    const list = expandSeries([sundays], [], "2026-10-25", "2026-10-25", ZURICH);
+    expect(list).toHaveLength(1);
+    expect(list[0]?.startAt.slice(0, 10)).toBe("2026-10-25");
+  });
+
+  it("finds the last start before now across the change", () => {
+    const sundays = series({ every: "week" }, "2026-03-22");
+    expect(lastStartBefore(sundays, new Date("2026-03-30T10:00:00.000Z"), ZURICH)).toBe(
+      "2026-03-29T07:00:00.000Z",
+    );
+    // 08:30 UTC on 25.10. is 09:30 local: the 09:00 start of that day has passed.
+    const autumn = series({ every: "week" }, "2026-10-18");
+    expect(lastStartBefore(autumn, new Date("2026-10-25T08:30:00.000Z"), ZURICH)).toBe(
+      "2026-10-25T08:00:00.000Z",
+    );
+    expect(lastStartBefore(autumn, new Date("2026-10-25T07:30:00.000Z"), ZURICH)).toBe(
+      "2026-10-18T07:00:00.000Z",
+    );
+  });
+});
+
+describe("more repeat patterns", () => {
+  it("handles the last Friday in months with four and five Fridays, and a leap February", () => {
+    const s = series({ every: "month", monthWeekday: { nth: -1, weekday: "fri" } }, "2026-10-30");
+    expect(seriesDates(s, "2026-10-01", "2026-10-31")).toEqual(["2026-10-30"]);
+    const leap = series({ every: "month", monthWeekday: { nth: -1, weekday: "fri" } }, "2028-01-28");
+    expect(seriesDates(leap, "2028-02-01", "2028-03-31")).toEqual(["2028-02-25", "2028-03-31"]);
+  });
+
+  it("keeps every 2 weeks over the new year and lets ends_on fall between two dates", () => {
+    const s = series({ every: "week", interval: 2, weekdays: ["thu"] }, "2026-12-17", {
+      endsOn: "2027-01-06",
+    });
+    expect(seriesDates(s, "2026-12-01", "2027-02-01")).toEqual(["2026-12-17", "2026-12-31"]);
+  });
+
+  it("includes the ends_on day itself and nothing on the day after", () => {
+    const s = series({ every: "month", monthWeekday: { nth: -1, weekday: "fri" } }, "2026-11-27", {
+      endsOn: "2026-12-25",
+    });
+    expect(seriesDates(s, "2026-11-01", "2027-03-01")).toEqual(["2026-11-27", "2026-12-25"]);
+    expect(isSeriesDate({ ...s, endsOn: "2026-12-24" }, "2026-12-25")).toBe(false);
+  });
+});

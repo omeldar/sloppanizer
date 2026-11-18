@@ -398,3 +398,122 @@ describe("schedule changes", () => {
     expect(missing.statusCode).toBe(404);
   });
 });
+
+describe("changes on the first date and on a split series", () => {
+  it("moves and cancels the first date alone, and cancels it again after undoing", async () => {
+    const t = await makeApp();
+    const { id } = await standup(t);
+    await change(t, id, "2026-11-12", { scope: "this", cancelled: true });
+    expect(await occurrences(t, "from=2026-11-09&to=2026-11-22&cancelled=true")).toEqual([
+      "2026-11-12 11-12T08:00 cancelled",
+      "2026-11-19 11-19T08:00 scheduled",
+    ]);
+    await change(t, id, "2026-11-12", { scope: "this", cancelled: false });
+    expect(await occurrences(t, "from=2026-11-09&to=2026-11-15")).toEqual([
+      "2026-11-12 11-12T08:00 scheduled",
+    ]);
+  });
+
+  it("moves following from the first date to another day: one part, no empty earlier part", async () => {
+    const t = await makeApp();
+    const { id } = await standup(t);
+    const meeting = json<Meeting>(
+      await change(t, id, "2026-11-12", {
+        scope: "following",
+        startAt: "2026-11-13T09:00:00+01:00",
+        endAt: "2026-11-13T09:15:00+01:00",
+      }),
+    );
+    expect(segments(meeting)).toEqual(["2026-11-13.. every week on Fri, 09:00–09:15"]);
+    expect(await occurrences(t, "from=2026-11-09&to=2026-11-22")).toEqual([
+      "2026-11-13 11-13T08:00 scheduled",
+      "2026-11-20 11-20T08:00 scheduled",
+    ]);
+  });
+
+  it("changes the time of all dates when the part starts on the first date", async () => {
+    const t = await makeApp();
+    const { id } = await standup(t);
+    await change(t, id, "2026-11-12", {
+      scope: "all",
+      startAt: "2026-11-12T11:00:00+01:00",
+      endAt: "2026-11-12T11:30:00+01:00",
+    });
+    expect(await occurrences(t, "from=2026-11-09&to=2026-11-22")).toEqual([
+      "2026-11-12 11-12T10:00 scheduled",
+      "2026-11-19 11-19T10:00 scheduled",
+    ]);
+  });
+
+  it("works on the second part of a split series without touching the first", async () => {
+    const t = await makeApp();
+    const { id } = await standup(t);
+    await t.call("PATCH", `/api/v1/meetings/${id}/schedule`, {
+      scope: "following",
+      from: "2026-11-26",
+      startTime: "10:00",
+    });
+    // The second part is the one holding 03.12.: "all" there leaves the first part alone.
+    const all = json<Meeting>(
+      await t.call("PATCH", `/api/v1/meetings/${id}/schedule`, {
+        scope: "all",
+        from: "2026-12-03",
+        startTime: "11:00",
+      }),
+    );
+    expect(segments(all)).toEqual([
+      "2026-11-12..2026-11-25 every week on Thu until 25.11.2026, 09:00–09:15",
+      "2026-11-26.. every week on Thu, 11:00–11:15",
+    ]);
+    // This date of the second part: cancelled on its own, the first part's dates stay.
+    await change(t, id, "2026-11-26", { scope: "this", cancelled: true });
+    expect(await occurrences(t, "from=2026-11-16&to=2026-12-06&cancelled=true")).toEqual([
+      "2026-11-19 11-19T08:00 scheduled",
+      "2026-11-26 11-26T10:00 cancelled",
+      "2026-12-03 12-03T10:00 scheduled",
+    ]);
+    // Cancelling following on the first date of the second part ends the series with the first part.
+    const cut = json<Meeting>(await change(t, id, "2026-11-26", { scope: "following", cancelled: true }));
+    expect(segments(cut)).toEqual(["2026-11-12..2026-11-25 every week on Thu until 25.11.2026, 09:00–09:15"]);
+  });
+
+  it("refuses a following move of the second part back into the first part", async () => {
+    const t = await makeApp();
+    const { id } = await standup(t);
+    await t.call("PATCH", `/api/v1/meetings/${id}/schedule`, {
+      scope: "following",
+      from: "2026-11-26",
+      startTime: "10:00",
+    });
+    const res = await change(t, id, "2026-12-03", {
+      scope: "following",
+      startAt: "2026-11-19T09:00:00.000Z",
+      endAt: "2026-11-19T09:15:00.000Z",
+    });
+    expect(res.statusCode).toBe(422);
+    expect(await occurrences(t, "from=2026-11-16&to=2026-12-06")).toEqual([
+      "2026-11-19 11-19T08:00 scheduled",
+      "2026-11-26 11-26T09:00 scheduled",
+      "2026-12-03 12-03T09:00 scheduled",
+    ]);
+  });
+
+  it("stops the dates at ends_on and an every-2-weeks repeat skips the weeks between", async () => {
+    const t = await makeApp();
+    await standup(t, {
+      name: "Sync",
+      schedule: {
+        rule: { every: "week", interval: 2, weekdays: ["thu"] },
+        startsOn: "2026-11-12",
+        endsOn: "2026-12-10",
+        startTime: "09:00",
+        durationMinutes: 15,
+      },
+    });
+    expect(await occurrences(t, "from=2026-11-09&to=2027-01-09")).toEqual([
+      "2026-11-12 11-12T08:00 scheduled",
+      "2026-11-26 11-26T08:00 scheduled",
+      "2026-12-10 12-10T08:00 scheduled",
+    ]);
+  });
+});
