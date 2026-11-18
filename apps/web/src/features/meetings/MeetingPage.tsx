@@ -9,6 +9,7 @@ import { ApiError, errorMessage } from "../../lib/api.ts";
 import { dayLabel, formatDate, today } from "../../lib/format.ts";
 import {
   defaultMeetingDate,
+  segmentOf,
   stepMeetingDate,
   useChangeOccurrence,
   useDeleteMeeting,
@@ -17,6 +18,7 @@ import {
 } from "../../lib/meetings.ts";
 import { MeetingDialog, type MeetingDraft } from "./MeetingDialog.tsx";
 import { nextText } from "./MeetingsPage.tsx";
+import { StandupList } from "./StandupList.tsx";
 import styles from "./Meetings.module.css";
 
 const route = getRouteApi("/meetings/$id");
@@ -95,7 +97,14 @@ function MeetingView({ meeting }: { meeting: Meeting }) {
         </button>
         <span className={styles.dateNow} aria-live="polite">
           <span className={styles.dateLabel}>{dayLabel(on)}</span>
-          <OccurrenceState meetingId={meeting.id} on={on} occurrence={occurrence} />
+          {segmentOf(meeting.segments, on) ? (
+            <OccurrenceState meetingId={meeting.id} on={on} occurrence={occurrence} />
+          ) : (
+            // An old link after the repeat changed: the date's note still shows, ticks do not go here.
+            <span className={styles.dateState} data-status="cancelled">
+              Not a date of this meeting any more
+            </span>
+          )}
         </span>
         <button
           type="button"
@@ -107,6 +116,22 @@ function MeetingView({ meeting }: { meeting: Meeting }) {
           ›
         </button>
       </nav>
+
+      {meeting.type === "standup" && segmentOf(meeting.segments, on) && (
+        <StandupList
+          meetingId={meeting.id}
+          on={on}
+          kind={search.kind ?? null}
+          onKind={(kind) =>
+            void navigate({
+              to: "/meetings/$id",
+              params: { id: String(meeting.id) },
+              search: { ...search, kind: kind ?? undefined },
+              replace: true,
+            })
+          }
+        />
+      )}
 
       <section className={styles.schedule} aria-label="Repeat">
         <h2 className={styles.sectionTitle}>Repeat</h2>

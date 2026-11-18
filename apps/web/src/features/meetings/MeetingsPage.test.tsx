@@ -122,7 +122,7 @@ describe("new meeting", () => {
       target: { value: "Team standup" },
     });
     // The last Thursday before now is shown as where the list starts.
-    expect(within(dialog).getByText(/since the last meeting, 12\.11\./)).toBeTruthy();
+    expect(within(dialog).getByText(/since the last meeting on Thu 12\.11\./)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Create meeting" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/meetings/7"));
@@ -206,6 +206,18 @@ describe("one meeting", () => {
         body: { scope: "this", cancelled: false },
       }),
     );
+  });
+
+  it("says when the shown date is no longer a date of the meeting, and offers no ticks there", async () => {
+    const { calls } = renderAppAt(
+      "/meetings/7?on=2026-11-20",
+      api(({ path }) => (path === "/api/v1/meetings/7" ? { body: makeMeeting() } : undefined)),
+    );
+    expect(await screen.findByText("Not a date of this meeting any more", {}, LAZY_PAGE)).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "To say" })).toBeNull();
+    expect(calls.some((c) => c.path.includes("/standup"))).toBe(false);
+    // The steps still lead to real dates around it.
+    expect(screen.getByRole("button", { name: "Next date" })).toHaveProperty("disabled", false);
   });
 
   it("asks which dates a new time is for and sends it from the shown date", async () => {

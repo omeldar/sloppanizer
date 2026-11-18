@@ -23,7 +23,7 @@ import { LabelPill } from "../../components/LabelPill.tsx";
 import { SeriesScopeDialog } from "../../components/SeriesScopeDialog.tsx";
 import { Button, Field, FieldButton, TextInput } from "../../components/ui.tsx";
 import { errorMessage } from "../../lib/api.ts";
-import { formatDayMonth, timeZone, toDate, today as localToday } from "../../lib/format.ts";
+import { dayLabel, formatDayMonth, timeZone, toDate, today as localToday } from "../../lib/format.ts";
 import { useChangeSchedule, useCreateMeeting, useUpdateMeeting } from "../../lib/meetings.ts";
 import { useLabels, useProjects } from "../../lib/queries.ts";
 import { lengthMinutes } from "../planner/planner.ts";
@@ -274,7 +274,7 @@ function MeetingForm({ draft, onClose }: { draft: MeetingDraft; onClose: () => v
               label="Count from"
               hint={
                 countFrom === null
-                  ? `The list starts with what happened since the last meeting, ${formatDayMonth(suggestedCount)}.`
+                  ? `The list starts with what happened since the last meeting on ${dayLabel(suggestedCount)}`
                   : "The list counts what happened since the start of this day."
               }
             >
