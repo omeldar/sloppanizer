@@ -14,6 +14,8 @@ import type { ScopeOption } from "../../components/SeriesScopeDialog.tsx";
 import { formatDayMonth } from "../../lib/format.ts";
 
 export const SNAP_MINUTES = 15;
+/** Height of an hour in the planner's grid. */
+export const HOUR_PX = 52;
 /** The planner shows the whole day; it opens at this hour unless it shows today. */
 export const DAY_START_HOUR = 7;
 
