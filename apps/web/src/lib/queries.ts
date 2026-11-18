@@ -624,7 +624,8 @@ export const useBlocks = (from: string, to: string, todoId?: number) =>
     placeholderData: (previous) => previous,
   });
 
-const invalidateBlocks = (client: QueryClient) => client.invalidateQueries({ queryKey: ["blocks"] });
+/** Planning time for a todo plans it for that day too (the Week view), so todo views refresh with blocks. */
+const invalidateBlocks = (client: QueryClient) => invalidateTodoViews(client);
 
 export function useCreateBlock() {
   const client = useQueryClient();

@@ -54,7 +54,7 @@ export function plannerRoutes(app: App, deps: Deps): void {
         response: { 200: TimeBlock },
       },
     },
-    async (request) => updateBlock(ctxOf(request, deps), request.params.id, request.body),
+    async (request) => updateBlock(ctxOf(request, deps), actorOf(request), request.params.id, request.body),
   );
   app.delete(
     `${API_PREFIX}/blocks/:id`,

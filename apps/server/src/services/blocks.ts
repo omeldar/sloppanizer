@@ -6,6 +6,7 @@ import {
   type TimeBlock,
   type TimeBlockQuery,
   type TodoStatus,
+  toLocalDate,
   type UpdateTimeBlock,
 } from "@organizer/shared";
 import { and, asc, eq, gt, inArray, lt } from "drizzle-orm";
@@ -15,6 +16,7 @@ import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, inTx, now, type Scoped } from "./context.ts";
 import { insertOwnedRow, owned } from "./owned.ts";
 import { projectRefs } from "./projects.ts";
+import { planTodoOn } from "./todos.ts";
 import { chunks } from "./sql.ts";
 
 /** Planner: time reserved for a todo or with its own title. */
@@ -118,6 +120,8 @@ export function createBlock(ctx: Ctx, actor: string, input: CreateTimeBlock): Ti
       createdAt: at,
       updatedAt: at,
     });
+    if (input.todoId)
+      planTodoOn(sc, at, actor, input.todoId, toLocalDate(input.startAt, ctx.timeZone), ctx.timeZone);
     return hydrateBlocks(sc, [blockRow(sc, id)])[0] as TimeBlock;
   });
 }
@@ -132,7 +136,7 @@ const MergedBlock = z
     checkSpan(ctx, value.startAt, value.endAt);
   });
 
-export function updateBlock(ctx: Ctx, id: number, input: UpdateTimeBlock): TimeBlock {
+export function updateBlock(ctx: Ctx, actor: string, id: number, input: UpdateTimeBlock): TimeBlock {
   return ctx.db.transaction((tx) => {
     const sc = inTx(ctx, tx);
     const row = blockRow(sc, id);
@@ -147,10 +151,18 @@ export function updateBlock(ctx: Ctx, id: number, input: UpdateTimeBlock): TimeB
     if (!result.success) {
       throw new ApiError("validation_failed", result.error.issues.map((i) => i.message).join(" "));
     }
+    const at = now(ctx);
     tx.update(timeBlocks)
-      .set({ ...next, updatedAt: now(ctx) })
+      .set({ ...next, updatedAt: at })
       .where(owned(sc, timeBlocks, eq(timeBlocks.id, id)))
       .run();
+    // Moved to another day or given to another todo: that todo is planned for the block's day.
+    const day = toLocalDate(next.startAt, ctx.timeZone);
+    if (
+      next.todoId !== null &&
+      (next.todoId !== row.todoId || day !== toLocalDate(row.startAt, ctx.timeZone))
+    )
+      planTodoOn(sc, at, actor, next.todoId, day, ctx.timeZone);
     return hydrateBlocks(sc, [blockRow(sc, id)])[0] as TimeBlock;
   });
 }
