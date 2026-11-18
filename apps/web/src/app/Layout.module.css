@@ -478,7 +478,7 @@ a.seg:hover {
     align-items: center;
     justify-content: center;
     gap: 2px;
-    height: var(--tabbar-h);
+    height: 100%; /* the tab bar row is --tabbar-h including its 1px top border */
     border: 0;
     background: transparent;
     color: var(--text-2);

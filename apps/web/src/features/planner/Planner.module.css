@@ -253,8 +253,12 @@
   white-space: nowrap;
 }
 
-/* Todos planned for a day without a time yet. */
+/* Todos planned for a day without a time yet. Capped, so many items scroll here and the hours stay usable. */
 .allDay {
+  flex: none;
+  max-height: clamp(56px, 22vh, 104px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
   grid-template-columns: var(--axis) repeat(7, minmax(0, 1fr));
   border-bottom: 1px solid var(--line);
