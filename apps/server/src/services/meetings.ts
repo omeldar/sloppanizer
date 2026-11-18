@@ -21,7 +21,7 @@ import {
   type SeriesException,
   type SeriesSpan,
   scheduledSpan,
-  seriesDates,
+  seriesProblem,
   shiftRule,
   StandupFilter,
   startOfLocalDay,
@@ -154,14 +154,10 @@ function scheduleRule(rule: RecurrenceRule, anchor: string): RecurrenceRule {
   return normalizeRecurrence(rest, anchor);
 }
 
-/** A segment must have at least one date. */
+/** A segment must have a date, stay within 10 years and inside the years 1900 to 2999. */
 function checkHasDates(span: Omit<SeriesSpan, "id">): void {
-  if (span.endsOn !== null && span.endsOn < span.startsOn)
-    throw invalid("The repeat must not end before its first date.");
-  if (span.endsOn !== null && seriesDates(span, span.startsOn, span.endsOn).length === 0)
-    throw invalid(
-      `The repeat has no date from ${formatDate(span.startsOn)} to ${formatDate(span.endsOn)}. Change the days or the dates.`,
-    );
+  const problem = seriesProblem(span);
+  if (problem !== null) throw invalid(problem);
 }
 
 /** Segments, by first date, must not overlap. */

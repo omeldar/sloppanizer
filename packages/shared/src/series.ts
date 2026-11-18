@@ -1,4 +1,11 @@
-import { addDays, daysBetween, localTimeToInstant, startOfLocalDay, toLocalDate } from "./dates.ts";
+import {
+  addDays,
+  daysBetween,
+  formatDate,
+  localTimeToInstant,
+  startOfLocalDay,
+  toLocalDate,
+} from "./dates.ts";
 import {
   describeRecurrence,
   matchesRule,
@@ -48,6 +55,46 @@ export interface ExpandedOccurrence {
   startAt: string;
   endAt: string;
   status: OccurrenceStatus;
+}
+
+/** Days a repeat may span from its first to its last date (ten years and a bit). */
+export const MAX_SERIES_DAYS = 3660;
+/** Repeats stay inside these years, so date math never leaves four-digit years. */
+export const SERIES_FIRST_DAY = "1900-01-01";
+export const SERIES_LAST_DAY = "2999-12-31";
+
+/**
+ * Why a segment's dates do not work, or null: it ends before it starts, spans more than
+ * MAX_SERIES_DAYS, leaves the years 1900 to 2999 or has no date at all. Constant time: it looks for the
+ * first date only.
+ */
+export function seriesProblem(series: Omit<SeriesSpan, "id">): string | null {
+  const { startsOn, endsOn } = series;
+  if (
+    startsOn < SERIES_FIRST_DAY ||
+    startsOn > SERIES_LAST_DAY ||
+    (endsOn !== null && endsOn > SERIES_LAST_DAY)
+  )
+    return "Pick dates between 1900 and 2999.";
+  if (endsOn === null) return null;
+  if (endsOn < startsOn) return "The repeat must not end before its first date.";
+  if (daysBetween(startsOn, endsOn) > MAX_SERIES_DAYS)
+    return "A repeat can run for at most 10 years. Pick an earlier last date or leave it open.";
+  if (firstSeriesDate(series) === null)
+    return `The repeat has no date from ${formatDate(startsOn)} to ${formatDate(endsOn)}. Change the days or the dates.`;
+  return null;
+}
+
+/** The first original date on or after `from` (default: the first date), or null when there is none. */
+export function firstSeriesDate(
+  series: Omit<SeriesSpan, "id">,
+  from: string = series.startsOn,
+): string | null {
+  const start = from > series.startsOn ? from : series.startsOn;
+  if (series.endsOn !== null && start > series.endsOn) return null;
+  const { rule, startsOn } = series;
+  const date = matchesRule(rule, startsOn, start) ? start : nextRuleDate(rule, startsOn, start);
+  return series.endsOn === null || date <= series.endsOn ? date : null;
 }
 
 /** Whether the date is one of the series' original dates. */

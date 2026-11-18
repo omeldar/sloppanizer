@@ -3,6 +3,7 @@ import { normalizeRecurrence, type RecurrenceRuleInput } from "./recurrence.ts";
 import {
   describeSeries,
   expandSeries,
+  firstSeriesDate,
   isSeriesDate,
   lastStartBefore,
   nextSeriesOccurrence,
@@ -10,6 +11,7 @@ import {
   type SeriesException,
   type SeriesSpan,
   seriesDates,
+  seriesProblem,
   shiftRule,
   splitSeries,
 } from "./series.ts";
@@ -382,5 +384,39 @@ describe("more repeat patterns", () => {
     });
     expect(seriesDates(s, "2026-11-01", "2027-03-01")).toEqual(["2026-11-27", "2026-12-25"]);
     expect(isSeriesDate({ ...s, endsOn: "2026-12-24" }, "2026-12-25")).toBe(false);
+  });
+});
+
+const daily = (startsOn: string, endsOn: string | null) => ({
+  ...series({ every: "day" }, startsOn),
+  endsOn,
+});
+
+describe("seriesProblem", () => {
+  it("accepts a repeat with a date inside ten years", () => {
+    expect(seriesProblem(daily("2026-11-12", null))).toBeNull();
+    expect(seriesProblem(daily("2026-11-12", "2036-11-12"))).toBeNull();
+  });
+
+  it("refuses long, far and empty repeats right away, without walking their dates", () => {
+    const started = performance.now();
+    expect(seriesProblem(daily("2000-01-01", "9999-12-31"))).toBe("Pick dates between 1900 and 2999.");
+    expect(seriesProblem(daily("2000-01-01", "2999-12-31"))).toMatch(/at most 10 years/);
+    expect(seriesProblem(daily("1899-12-31", null))).toBe("Pick dates between 1900 and 2999.");
+    expect(seriesProblem(daily("2026-11-12", "2026-11-11"))).toMatch(/must not end before/);
+    const noThursday = {
+      ...series({ every: "week", weekdays: ["thu"] }, "2026-11-16"),
+      endsOn: "2026-11-18",
+    };
+    expect(seriesProblem(noThursday)).toBe(
+      "The repeat has no date from 16.11.2026 to 18.11.2026. Change the days or the dates.",
+    );
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
+  it("finds the first date from a day on", () => {
+    expect(firstSeriesDate(thursdays)).toBe("2026-11-05");
+    expect(firstSeriesDate(thursdays, "2026-11-06")).toBe("2026-11-12");
+    expect(firstSeriesDate({ ...thursdays, endsOn: "2026-11-11" }, "2026-11-06")).toBeNull();
   });
 });

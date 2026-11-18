@@ -113,6 +113,39 @@ describe("meetings", () => {
     expect(json<Meeting>(until).schedule.rule).not.toHaveProperty("until");
   });
 
+  it("answers a huge repeat at once with a 422, also when it comes from a later change", async () => {
+    const t = await makeApp();
+    const started = performance.now();
+    const huge = await t.call("POST", "/api/v1/meetings", {
+      name: "Daily",
+      schedule: {
+        rule: { every: "day" },
+        startsOn: "2000-01-01",
+        endsOn: "9999-12-31",
+        startTime: "09:00",
+        durationMinutes: 15,
+      },
+    });
+    expect(huge.statusCode).toBe(422);
+    const { id } = await standup(t);
+    const far = await t.call("PATCH", `/api/v1/meetings/${id}/schedule`, {
+      scope: "all",
+      from: "2026-11-12",
+      endsOn: "2999-12-31",
+    });
+    expect(far.statusCode).toBe(422);
+    expect(far.json().error.message).toMatch(/at most 10 years/);
+    // Moving every date into the year 3000 is refused too.
+    const moved = await change(t, id, "2026-11-12", {
+      scope: "all",
+      startAt: "3000-01-02T08:00:00.000Z",
+      endAt: "3000-01-02T08:15:00.000Z",
+    });
+    expect(moved.statusCode).toBe(422);
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(json<Meeting>(await t.call("GET", `/api/v1/meetings/${id}`)).segments).toHaveLength(1);
+  });
+
   it("checks every project and label of the filter", async () => {
     const t = await makeApp();
     const project = await t.create<Project>("/api/v1/projects", { name: "Lab" });

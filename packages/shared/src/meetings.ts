@@ -11,7 +11,8 @@ import {
   Timestamp,
 } from "./primitives.ts";
 import { RecurrenceRule } from "./recurrence.ts";
-import { OCCURRENCE_STATUSES } from "./series.ts";
+import { MAX_SERIES_DAYS, OCCURRENCE_STATUSES, SERIES_FIRST_DAY, SERIES_LAST_DAY } from "./series.ts";
+import { daysBetween } from "./dates.ts";
 
 /**
  * Meetings: a name, a repeating schedule (series segments) and a type. Standups have a list of what the
@@ -59,7 +60,25 @@ export const SeriesInput = z
   .refine((v) => v.endsOn === undefined || v.endsOn === null || v.endsOn >= v.startsOn, {
     message: "The repeat must not end before its first date.",
     path: ["endsOn"],
-  });
+  })
+  .refine(
+    (v) =>
+      v.endsOn === undefined ||
+      v.endsOn === null ||
+      v.endsOn < v.startsOn ||
+      daysBetween(v.startsOn, v.endsOn) <= MAX_SERIES_DAYS,
+    {
+      message: "A repeat can run for at most 10 years. Pick an earlier last date or leave it open.",
+      path: ["endsOn"],
+    },
+  )
+  .refine(
+    (v) =>
+      v.startsOn >= SERIES_FIRST_DAY &&
+      v.startsOn <= SERIES_LAST_DAY &&
+      (v.endsOn === undefined || v.endsOn === null || v.endsOn <= SERIES_LAST_DAY),
+    { message: "Pick dates between 1900 and 2999.", path: ["startsOn"] },
+  );
 export type SeriesInput = z.infer<typeof SeriesInput>;
 
 const IdList = (what: string) =>

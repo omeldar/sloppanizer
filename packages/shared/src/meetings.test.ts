@@ -46,6 +46,10 @@ describe("meetings contract", () => {
     expect(ok(SeriesInput, { ...schedule, durationMinutes: 1441 })).toBe(false);
     expect(ok(SeriesInput, { ...schedule, endsOn: "2026-11-18" })).toBe(false);
     expect(ok(SeriesInput, { ...schedule, endsOn: "2026-11-19" })).toBe(true);
+    expect(ok(SeriesInput, { ...schedule, endsOn: "2036-11-19" })).toBe(true);
+    expect(ok(SeriesInput, { ...schedule, endsOn: "2037-11-19" })).toBe(false);
+    expect(ok(SeriesInput, { ...schedule, startsOn: "2000-01-01", endsOn: "9999-12-31" })).toBe(false);
+    expect(ok(SeriesInput, { ...schedule, startsOn: "3000-01-01" })).toBe(false);
     expect(ok(CreateMeeting, { name: "", schedule })).toBe(false);
   });
 
