@@ -46,6 +46,8 @@ untouched for weeks, so the first list shows everything in progress.
   checklist, subtasks, links, title, status and people do.
 - Meetings are not in the calendar feed (they are usually in the work calendar already). Plan my day
   treats them as busy.
+- The calendar feed (services/calendar.ts) leaves meetings out on purpose, as decided above; it is not
+  a gap to fill.
 - Subtasks are their own items, with the parent's title shown.
 
 **The rest.** A meeting has a type, Standup or Other, preselected from the name. There is no "held"
