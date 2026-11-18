@@ -53,3 +53,19 @@ untouched for weeks, so the first list shows everything in progress.
 **The rest.** A meeting has a type, Standup or Other, preselected from the name. There is no "held"
 button: a meeting happens on its dates. Each date can have one note (a normal note, linked). The summary
 by the assistant runs only on its button and saves nothing.
+
+## 2026-11-18 Todos on meetings, due at the next meeting, blocked on standups (#14)
+
+**Todos added by hand.** Any meeting, Standup or Other, can have todos added by hand (fixed topics). The
+link is its own table (meeting_todos), scoped per account like every other one. A todo stays on the
+meeting on every date until the user removes it: ticks, done and the standup rules never touch it. On a
+standup it is its own group under the worked-out list; the same todo can also be on that list when it
+has news, because the list is about updates and the group is about topics. At most 100 per meeting.
+
+**Due at next meeting.** A button sets the due date to the day of the meeting's next date that has not
+ended: cancelled dates are skipped, a moved one counts on the day it moved to. Adding a todo to a meeting
+never changes its due date.
+
+**Blocked todos on standups.** Like a todo in progress, a blocked todo that a standup never marked is
+always on its list, also without changes, until it is said or dismissed there. After that only new
+updates bring it back. The rules per status are one pure function (services/standup-rules.ts).
