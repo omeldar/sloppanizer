@@ -59,10 +59,10 @@ describe("restore upload and preview", () => {
     expect(preview).toMatchObject({
       fileName: "sloppanizer-export-20261111.zip",
       source: "sloppanizer",
-      format: 5,
+      format: 6,
       exportedAt: "2026-11-11T10:00:00.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 14,
+      schemaVersion: 15,
       attachments: { count: 1, bytes: 11, missing: [] },
       warnings: [],
       expiresAt: "2026-11-11T11:00:00.000Z",
@@ -446,6 +446,93 @@ describe("restore apply", () => {
     const kept = json<BackupFile[]>(await t.call("GET", "/api/v1/restore/backups")).map((b) => b.fileName);
     expect(kept).toEqual(names.slice(1).toReversed());
     expect(readdirSync(backupsOf(t)).toSorted()).toEqual(names.slice(1).toSorted());
+  });
+
+  it("restores a format 5 export, which has no meetings, and refuses meeting tables in it", async () => {
+    const t = await makeApp();
+    await fillEveryTable(t);
+    const zip = await exportZip(t);
+    const meetingTables = ["meetings", "series", "series_exceptions", "meeting_notes", "standup_marks"];
+    const format5 = rework(zip, (m, d) => {
+      m.format = 5;
+      m.schemaVersion = 14;
+      for (const table of meetingTables) {
+        delete d[table];
+        delete m.counts[table];
+      }
+      delete m.sequences.meetings;
+      delete m.sequences.series;
+    });
+    const preview = json<RestorePreview>(await upload(t, format5));
+    expect(preview).toMatchObject({ format: 5, source: "sloppanizer", warnings: [] });
+    expect(Object.keys(preview.inFile)).not.toContain("meetings");
+    const applied = await t.call("POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" });
+    expect(applied.statusCode).toBe(200);
+    expect(json<unknown[]>(await t.call("GET", "/api/v1/meetings"))).toEqual([]);
+    expect(json<{ total: number }>(await t.call("GET", "/api/v1/todos?status=all")).total).toBe(4);
+
+    const withMeetings = rework(zip, (m) => {
+      m.format = 5;
+    });
+    const refused = await upload(t, withMeetings);
+    expect(refused.statusCode).toBe(422);
+    expect(problems(refused)).toContain('data.json has a table "meetings" that format 5 does not have.');
+    const missing = await upload(
+      t,
+      rework(zip, (_m, d) => {
+        delete d.standup_marks;
+      }),
+    );
+    expect(problems(missing)).toContain('data.json misses the table "standup_marks".');
+  });
+
+  it("refuses meeting rows the services could not read, and more meetings than an account may have", async () => {
+    const t = await makeApp();
+    await fillEveryTable(t);
+    const zip = await exportZip(t);
+    // oxlint-disable-next-line typescript/no-explicit-any
+    const check = async (change: (data: any) => void, pattern: RegExp) => {
+      const res = await upload(
+        t,
+        rework(zip, (_m, d) => change(d)),
+      );
+      expect(res.statusCode).toBe(422);
+      expect(problems(res).join("\n")).toMatch(pattern);
+    };
+    await check((d) => (d.series[0].rule = '{"every":"fortnight"}'), /^series \d+: not a usable repeat/);
+    await check((d) => (d.series[0].rule = '{"every":"day","basis":"done"}'), /not a usable repeat/);
+    await check((d) => (d.series[0].ends_on = "9999-12-31"), /not a usable repeat/);
+    await check((d) => (d.series[0].owner_kind = "block"), /owner_kind must be "meeting"/);
+    await check((d) => (d.meetings[0].filter = '{"projectIds":"all"}'), /filter is not a standup filter/);
+    await check((d) => (d.meetings[0].since = "last week"), /since is not a UTC time/);
+    await check((d) => (d.series_exceptions[0].start_at = "soon"), /a moved date needs start_at and end_at/);
+    await check((d) => (d.standup_marks[0].covered_until = "now"), /covered_until and marked_at/);
+    await check((d) => (d.meeting_notes[0].occurs_on = "12.11.2026"), /occurs_on is not a date/);
+    await check((d) => {
+      const [meeting] = d.meetings;
+      d.meetings = Array.from({ length: 101 }, (_, i) => ({ ...meeting, id: 1000 + i }));
+    }, /meetings: more than 100 meetings in one account/);
+    // The account still has its meetings.
+    expect(json<unknown[]>(await t.call("GET", "/api/v1/meetings"))).toHaveLength(1);
+  });
+
+  it("restores meetings with their dates, marks and note links", async () => {
+    const t = await makeApp();
+    const { meeting } = await fillEveryTable(t);
+    const before = {
+      meeting: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}`)),
+      standup: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}/standup?on=2026-11-12`)),
+      notes: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}/notes`)),
+    };
+    const zip = await exportZip(t);
+    await t.call("DELETE", `/api/v1/meetings/${meeting.id}`);
+    const preview = json<RestorePreview>(await upload(t, zip));
+    await t.call("POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" });
+    expect({
+      meeting: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}`)),
+      standup: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}/standup?on=2026-11-12`)),
+      notes: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}/notes`)),
+    }).toEqual(before);
   });
 
   it("restores format 1 and 2 archives with defaults for newer columns and repairs scope labels", async () => {

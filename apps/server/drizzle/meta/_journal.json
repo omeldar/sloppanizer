@@ -43,6 +43,13 @@
       "when": 1794921904808,
       "tag": "0005_person_languages",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795001099544,
+      "tag": "0006_meetings",
+      "breakpoints": true
     }
   ]
 }

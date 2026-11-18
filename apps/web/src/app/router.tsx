@@ -1,4 +1,4 @@
-import { CalendarDate, NextMode, PEOPLE_STATS_SORTS, SearchKind } from "@organizer/shared";
+import { CalendarDate, NextMode, PEOPLE_STATS_SORTS, SearchKind, StandupKind } from "@organizer/shared";
 import { createRootRoute, createRoute, createRouter, Link, lazyRouteComponent } from "@tanstack/react-router";
 import { z } from "zod";
 import { EmptyState, PageHeader } from "../components/ui.tsx";
@@ -60,6 +60,19 @@ const PlannerSearch = z.object({
     .catch(undefined),
 });
 const plannerPage = lazyRouteComponent(() => import("../features/planner/PlannerPage.tsx"), "PlannerPage");
+
+const MeetingSearch = z.object({
+  /** The meeting date shown (its original date). */
+  on: CalendarDate.optional().catch(undefined),
+  /** The standup list shows only this kind. */
+  kind: StandupKind.optional().catch(undefined),
+});
+// Meetings hold the standup list and the note editor: loaded on first use.
+const meetingsPage = lazyRouteComponent(
+  () => import("../features/meetings/MeetingsPage.tsx"),
+  "MeetingsPage",
+);
+const meetingPage = lazyRouteComponent(() => import("../features/meetings/MeetingPage.tsx"), "MeetingPage");
 
 const NotesSearch = z.object({
   /** Project slug or "none". */
@@ -141,6 +154,13 @@ const routes = [
     path: "/planner",
     component: plannerPage,
     validateSearch: PlannerSearch,
+  }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/meetings", component: meetingsPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/meetings/$id",
+    component: meetingPage,
+    validateSearch: MeetingSearch,
   }),
   createRoute({
     getParentRoute: () => rootRoute,

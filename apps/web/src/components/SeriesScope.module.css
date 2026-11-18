@@ -1,0 +1,58 @@
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Big rows: the dialog is a bottom sheet on phones and is answered with the thumb. */
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+  cursor: pointer;
+}
+
+.choice:has(input:checked) {
+  border-color: var(--amber-line);
+  background: var(--amber-tint);
+}
+
+.choice[data-off] {
+  cursor: not-allowed;
+  color: var(--text-3);
+}
+
+.choice input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--amber-fill);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.label {
+  font-weight: 600;
+}
+
+.hint {
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.error {
+  color: var(--red);
+  font-size: var(--fs-small);
+}

@@ -71,3 +71,18 @@
     transform: translateY(6px);
   }
 }
+
+/* Phones: above the tab bar, across the width, so Undo is under the thumb and nothing is covered. */
+@media (max-width: 640px) {
+  .region {
+    left: 12px;
+    right: 12px;
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 8px);
+    align-items: stretch;
+  }
+
+  .toast {
+    min-width: 0;
+    max-width: none;
+  }
+}

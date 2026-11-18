@@ -6,6 +6,8 @@ import type {
   Person,
   PersonBrief,
   SearchResult,
+  Standup,
+  StandupItem,
   Todo,
 } from "@organizer/shared";
 import { describe, expect, it } from "vitest";
@@ -15,10 +17,12 @@ import {
   nextUpText,
   noteDetail,
   noteLine,
+  occurrenceLine,
   personDetail,
   personLine,
   personTagLine,
   searchText,
+  standupText,
   statsLine,
   todoDetail,
   todoLine,
@@ -494,5 +498,90 @@ describe("search", () => {
     expect(searchText({ q: "zz", items: [], counts: { todo: 0, note: 0, comment: 0, person: 0 } })).toBe(
       'Nothing found for "zz".',
     );
+  });
+});
+
+describe("meetings", () => {
+  const occurrence = {
+    meetingId: 2,
+    seriesId: 1,
+    name: "Weekly Standup",
+    type: "standup" as const,
+    occursOn: "2026-11-19",
+    startAt: "2026-11-19T08:00:00.000Z",
+    endAt: "2026-11-19T08:15:00.000Z",
+    status: "scheduled" as const,
+    noteId: null,
+  };
+
+  it("writes a meeting date in local time, moved, cancelled or past midnight", () => {
+    expect(occurrenceLine(occurrence, ctx.timeZone)).toBe(
+      "meeting 2 | 19.11.2026 09:00-09:15 | Weekly Standup",
+    );
+    expect(
+      occurrenceLine(
+        {
+          ...occurrence,
+          status: "moved",
+          startAt: "2026-11-18T22:30:00.000Z",
+          endAt: "2026-11-18T23:30:00.000Z",
+          noteId: 7,
+        },
+        ctx.timeZone,
+      ),
+    ).toBe("meeting 2 | 18.11.2026 23:30-19.11.2026 00:30 | Weekly Standup | moved from 19.11.2026 | note 7");
+    expect(occurrenceLine({ ...occurrence, status: "cancelled" }, ctx.timeZone)).toMatch(/\| cancelled$/);
+  });
+
+  it("groups the standup list by kind with changes, comments and what was said", () => {
+    const item = (id: number, kind: StandupItem["kind"], more: Partial<StandupItem> = {}): StandupItem => ({
+      todo: { id, title: `Todo ${id}`, status: "in_progress" },
+      project: null,
+      parent: null,
+      kind,
+      at,
+      changes: [],
+      newCommentCount: 0,
+      lastComment: null,
+      again: false,
+      ...more,
+    });
+    const standup: Standup = {
+      meetingId: 2,
+      on: "2026-11-19",
+      since: "2026-11-12T08:00:00.000Z",
+      items: [
+        item(1, "done", { project: { id: 3, slug: "lab", name: "Lab", color: "#8B95A5" } }),
+        item(2, "updated", {
+          parent: { id: 9, title: "Rack", status: "open" },
+          changes: ["added subtask #4", 'checked "cables"'],
+          newCommentCount: 2,
+          lastComment: { actor: "you", excerpt: "Waiting\nfor parts", createdAt: at },
+          again: true,
+        }),
+      ],
+      counts: { done: 1, started: 0, updated: 1, blocked: 0 },
+      said: [{ todo: { id: 5, title: "Certs", status: "done" }, project: null, markedAt: at }],
+      dismissedCount: 1,
+    };
+    expect(standupText(standup, "Weekly Standup", ctx.timeZone).split("\n")).toEqual([
+      "Weekly Standup on 19.11.2026: 2 to say (done 1, started 0, updates 1, blocked 0), counting from 12.11.2026 09:00.",
+      "Done:",
+      "- #1 Todo 1 [Lab]",
+      "Updates:",
+      '- #2 Todo 2 (part of #9 Rack) | added subtask #4; checked "cables" | 2 new comments, last by you: "Waiting for parts" | again',
+      "Said on 19.11.2026: #5 Certs",
+      "Dismissed on 19.11.2026: 1",
+    ]);
+    const empty = {
+      ...standup,
+      items: [],
+      counts: { done: 0, started: 0, updated: 0, blocked: 0 },
+      said: [],
+      dismissedCount: 0,
+    };
+    expect(standupText(empty, "Weekly Standup", ctx.timeZone).split("\n")[1]).toBe("Nothing to say.");
+    // Asked only for some kinds while others are open.
+    expect(standupText({ ...standup, items: [] }, "S", ctx.timeZone)).toContain("Nothing of these kinds.");
   });
 });

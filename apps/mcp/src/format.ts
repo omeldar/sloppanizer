@@ -8,6 +8,8 @@ import {
   formatDuration,
   type Label,
   languageNames,
+  type Meeting,
+  type MeetingOccurrence,
   type NextUp,
   type Note,
   type NoteSummary,
@@ -20,11 +22,15 @@ import {
   type Project,
   type SearchHit,
   type SearchResult,
+  type Standup,
+  type StandupItem,
+  type StandupKind,
   type Stats,
   type Todo,
   type TodoRef,
   type Topic,
   toLocalDate,
+  toLocalTime,
   waitingReason,
 } from "@organizer/shared";
 
@@ -387,4 +393,82 @@ export function statsLine(stats: Stats, ctx: DateContext): string {
 export function urlLines(todo: Todo): string {
   if (todo.urls.length === 0) return "No web links.";
   return todo.urls.map((u) => `- link ${u.id}: ${u.label ? `${u.label} ` : ""}<${u.url}>`).join("\n");
+}
+
+// ---------- meetings ----------
+
+/** `meeting 2 | Weekly Standup | standup | every week on Thu, 09:00–09:15 | next 19.11.2026 09:00 | 4 to say` */
+export function meetingLine(meeting: Meeting, timeZone: string): string {
+  const next = meeting.next
+    ? `next ${formatDateTime(meeting.next.startAt, timeZone)}${meeting.next.status === "moved" ? " (moved)" : ""}`
+    : "no next date";
+  const parts = [`meeting ${meeting.id}`, meeting.name, meeting.type, meeting.schedule.text, next];
+  if (meeting.openCount !== null) parts.push(`${meeting.openCount} to say`);
+  return parts.join(" | ");
+}
+
+/** `meeting 2 | 19.11.2026 09:00-09:15 | Weekly Standup`, plus `| moved from 19.11.2026` or `| cancelled`. */
+export function occurrenceLine(o: MeetingOccurrence, timeZone: string): string {
+  const day = toLocalDate(o.startAt, timeZone);
+  const endDay = toLocalDate(o.endAt, timeZone);
+  const end = `${endDay === day ? "" : `${formatDate(endDay)} `}${toLocalTime(o.endAt, timeZone)}`;
+  const parts = [
+    `meeting ${o.meetingId}`,
+    `${formatDate(day)} ${toLocalTime(o.startAt, timeZone)}-${end}`,
+    o.name,
+  ];
+  if (o.status === "moved") parts.push(`moved from ${formatDate(o.occursOn)}`);
+  if (o.status === "cancelled") parts.push("cancelled");
+  if (o.noteId !== null) parts.push(`note ${o.noteId}`);
+  return parts.join(" | ");
+}
+
+const KIND_TITLES: Record<StandupKind, string> = {
+  done: "Done",
+  started: "Started",
+  updated: "Updates",
+  blocked: "Blocked",
+};
+
+/** `- #12 Title [Project] (part of #3 Rack) | changed status ...; ... | 2 new comments, last by you: "..." | again` */
+export function standupItemLine(item: StandupItem): string {
+  const head = [
+    `- #${item.todo.id} ${item.todo.title}`,
+    item.project ? `[${item.project.name}]` : "",
+    item.parent ? `(part of #${item.parent.id} ${item.parent.title})` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const parts = [head];
+  if (item.changes.length > 0) parts.push(item.changes.join("; "));
+  if (item.lastComment) {
+    const count = item.newCommentCount === 1 ? "1 new comment" : `${item.newCommentCount} new comments`;
+    parts.push(`${count}, last by ${item.lastComment.actor}: "${oneLine(item.lastComment.excerpt)}"`);
+  }
+  if (item.again) parts.push("again");
+  return parts.join(" | ");
+}
+
+/** The standup list grouped by kind, then what was said and how many were dismissed on the date. */
+export function standupText(standup: Standup, name: string, timeZone: string): string {
+  const { counts } = standup;
+  const total = counts.done + counts.started + counts.updated + counts.blocked;
+  const lines = [
+    `${name} on ${formatDate(standup.on)}: ${total} to say (done ${counts.done}, started ${counts.started}, ` +
+      `updates ${counts.updated}, blocked ${counts.blocked}), counting from ${formatDateTime(standup.since, timeZone)}.`,
+  ];
+  const kinds = Object.keys(KIND_TITLES) as StandupKind[];
+  for (const kind of kinds) {
+    const items = standup.items.filter((i) => i.kind === kind);
+    if (items.length > 0) lines.push(`${KIND_TITLES[kind]}:`, ...items.map(standupItemLine));
+  }
+  if (standup.items.length === 0) lines.push(total === 0 ? "Nothing to say." : "Nothing of these kinds.");
+  if (standup.said.length > 0) {
+    lines.push(
+      `Said on ${formatDate(standup.on)}: ${standup.said.map((s) => `#${s.todo.id} ${s.todo.title}`).join(", ")}`,
+    );
+  }
+  if (standup.dismissedCount > 0)
+    lines.push(`Dismissed on ${formatDate(standup.on)}: ${standup.dismissedCount}`);
+  return lines.join("\n");
 }

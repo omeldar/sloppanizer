@@ -18,7 +18,14 @@ import { type Db, openDb, schemaVersion } from "../db/index.ts";
 import { ApiError } from "../http/errors.ts";
 import { detectType, OCTET_STREAM, sanitizeName } from "./attachments.ts";
 import { type Ctx, now, type Scoped } from "./context.ts";
-import { attachmentFileName, buildExport, dbTable, EXPORT_TABLES, fileStamp } from "./export.ts";
+import {
+  attachmentFileName,
+  buildExport,
+  dbTable,
+  EXPORT_FORMAT,
+  EXPORT_TABLES,
+  fileStamp,
+} from "./export.ts";
 import { freeName, privateDir, writeFileAtomically } from "./files.ts";
 import { linkCommentAuthors } from "./comments.ts";
 import { repairScopeConflicts } from "./labels.ts";
@@ -64,7 +71,15 @@ const BUSY = "The server is busy with another restore. Try again in a few minute
 /** The account of the scratch database a trial import runs in. */
 const SCRATCH_ACCOUNT = 1;
 
-/** Tables of each export format. Formats 1 to 3 come from the single-user organizer, 4 from Sloppanizer. */
+const MEETING_TABLES: ReadonlySet<string> = new Set([
+  "meetings",
+  "series",
+  "series_exceptions",
+  "meeting_notes",
+  "standup_marks",
+]);
+
+/** Tables of each export format. Formats 1 to 3 come from the single-user organizer, 4 on from Sloppanizer. */
 const FORMAT_TABLES: Record<number, readonly string[]> = {
   1: ["projects", "labels", "people", "todos", "todo_labels", "todo_people", "events", "settings"],
   2: EXPORT_TABLES.filter((t) => !["todo_links", "todo_urls", "time_blocks"].includes(t)),
@@ -73,7 +88,9 @@ const FORMAT_TABLES: Record<number, readonly string[]> = {
   // Format 4: one account, sequences of every id table, the account in the manifest.
   4: EXPORT_TABLES.filter((t) => t !== "todo_urls" && t !== "time_blocks"),
   // Format 5 adds web links of todos and the planner's time blocks.
-  5: EXPORT_TABLES,
+  5: EXPORT_TABLES.filter((t) => !MEETING_TABLES.has(t)),
+  // Format 6 adds meetings: their repeat, single date changes, note links and standup marks.
+  6: EXPORT_TABLES,
 };
 /** The app that writes each format. */
 const FORMAT_APP: Record<number, "organizer" | "sloppanizer"> = {
@@ -82,6 +99,7 @@ const FORMAT_APP: Record<number, "organizer" | "sloppanizer"> = {
   3: "organizer",
   4: "sloppanizer",
   5: "sloppanizer",
+  6: "sloppanizer",
 };
 
 /** What a restore needs from the server, besides the account's context. */
@@ -210,7 +228,7 @@ function readArchive(
   }
   if (FORMAT_APP[manifest.format] !== manifest.app) {
     problems.add(
-      `Export format ${String(manifest.format)} of app "${manifest.app}" is not known. Formats 1 to 3 (organizer) and 4 (Sloppanizer) can be restored.`,
+      `Export format ${String(manifest.format)} of app "${manifest.app}" is not known. Formats 1 to 3 (organizer) and 4 to ${EXPORT_FORMAT} (Sloppanizer) can be restored.`,
     );
     return null;
   }

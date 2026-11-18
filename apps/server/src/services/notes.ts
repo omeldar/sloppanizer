@@ -8,7 +8,7 @@ import {
   type NoteSummary,
   type UpdateNote,
 } from "@organizer/shared";
-import { desc, eq, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
+import { desc, eq, inArray, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
 import { notes } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { plainText } from "./text.ts";
@@ -16,7 +16,7 @@ import { type Ctx, inTx, now, type Scoped } from "./context.ts";
 import { insertOwnedRow, owned } from "./owned.ts";
 import { assertProjectExists, projectRefs } from "./projects.ts";
 import { indexNote, removeFromIndex } from "./search-index.ts";
-import { containsFolded } from "./sql.ts";
+import { chunks, containsFolded } from "./sql.ts";
 
 export type NoteRow = typeof notes.$inferSelect;
 
@@ -75,26 +75,44 @@ function noteRow(sc: Scoped, id: number): NoteRow {
   return row;
 }
 
+/** Summaries of the account's notes with these ids, by id (unknown ids are left out). */
+export function noteSummaries(sc: Scoped, ids: readonly number[]): Map<number, NoteSummary> {
+  const out = new Map<number, NoteSummary>();
+  for (const part of chunks(ids)) {
+    const rows = sc.db
+      .select()
+      .from(notes)
+      .where(owned(sc, notes, inArray(notes.id, part)))
+      .all();
+    for (const note of toNotes(sc, rows)) out.set(note.id, toSummary(note));
+  }
+  return out;
+}
+
 export function getNote(sc: Scoped, id: number): Note {
   return toNotes(sc, [noteRow(sc, id)])[0] as Note;
+}
+
+/** Writes a note inside the caller's transaction (and indexes it for search); returns its id. */
+export function insertNote(sc: Scoped, actor: string, at: string, input: CreateNote): number {
+  assertProjectExists(sc, input.projectId);
+  const id = insertOwnedRow(sc, notes, {
+    title: input.title,
+    bodyMd: input.bodyMd ?? "",
+    projectId: input.projectId ?? null,
+    pinnedAt: input.pinned ? at : null,
+    createdBy: actor,
+    createdAt: at,
+    updatedAt: at,
+  });
+  indexNote(sc, id);
+  return id;
 }
 
 export function createNote(ctx: Ctx, actor: string, input: CreateNote): Note {
   return ctx.db.transaction((tx) => {
     const sc = inTx(ctx, tx);
-    assertProjectExists(sc, input.projectId);
-    const at = now(ctx);
-    const id = insertOwnedRow(sc, notes, {
-      title: input.title,
-      bodyMd: input.bodyMd ?? "",
-      projectId: input.projectId ?? null,
-      pinnedAt: input.pinned ? at : null,
-      createdBy: actor,
-      createdAt: at,
-      updatedAt: at,
-    });
-    indexNote(sc, id);
-    return getNote(sc, id);
+    return getNote(sc, insertNote(sc, actor, now(ctx), input));
   });
 }
 

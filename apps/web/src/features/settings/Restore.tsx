@@ -18,6 +18,7 @@ export const MAX_RESTORE_BYTES = 1024 ** 3;
 export const RESTORE_TABLES = [
   ["todos", "Todos"],
   ["notes", "Notes"],
+  ["meetings", "Meetings"],
   ["comments", "Comments"],
   ["people", "People"],
   ["projects", "Projects"],

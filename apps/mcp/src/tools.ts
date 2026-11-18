@@ -51,6 +51,7 @@ import {
   CalendarDate as PlanDate,
   formatDate,
   localTimeToInstant,
+  type MeetingOccurrence,
   type TimeBlock,
   toLocalDate as planLocalDate,
   toLocalTime,
@@ -58,6 +59,7 @@ import {
 } from "@organizer/shared";
 import { z } from "zod";
 import { type Api, ApiError, ToolError } from "./api.ts";
+import { registerMeetingTools } from "./meeting-tools.ts";
 import {
   activityLine,
   type DateContext,
@@ -65,6 +67,7 @@ import {
   labelLine,
   nextUpText,
   noteDetail,
+  occurrenceLine,
   noteLine,
   peopleStatsText,
   personDetail,
@@ -1398,14 +1401,24 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   };
   const blockLines = (blocks: readonly TimeBlock[]): string =>
     blocks.length === 0 ? "Nothing planned." : blocks.map(blockLine).join("\n");
+  /** Blocks and meeting dates in one list, by start. */
+  const planLines = (blocks: readonly TimeBlock[], meetings: readonly MeetingOccurrence[]): string =>
+    [
+      ...blocks.map((b) => ({ startAt: b.startAt, line: blockLine(b) })),
+      ...meetings.map((o) => ({ startAt: o.startAt, line: occurrenceLine(o, deps.timeZone) })),
+    ]
+      .toSorted((a, b) => a.startAt.localeCompare(b.startAt))
+      .map((x) => x.line)
+      .join("\n") || "Nothing planned.";
 
   tool(
     "list_plan",
     {
       title: "List planned time",
       description:
-        "The user's planner: time blocks reserved for todos (or with their own title) between two days, " +
-        "in local time. Default: today and the next 6 days. Use it before plan_time to find free time.",
+        "The user's planner: time blocks reserved for todos (or with their own title) and meeting dates " +
+        "between two days, in local time. Default: today and the next 6 days. Use it before plan_time to " +
+        "find free time.",
       inputSchema: {
         from: PlanDate.optional().describe("First day YYYY-MM-DD (default today)."),
         to: PlanDate.optional().describe("Last day YYYY-MM-DD (default from + 6)."),
@@ -1417,11 +1430,17 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async (args) => {
       const from = args.from ?? ctx().today;
       const to = args.to ?? addLocalDays(from, 6);
-      const blocks = await api.get<TimeBlock[]>("/blocks", { from, to, todoId: args.todo });
+      const [blocks, meetings] = await Promise.all([
+        api.get<TimeBlock[]>("/blocks", { from, to, todoId: args.todo }),
+        // Meetings are busy too, but not when asking for one todo's blocks; an older server has none.
+        args.todo === undefined
+          ? api.get<MeetingOccurrence[]>("/meetings/occurrences", { from, to }).catch(() => [])
+          : Promise.resolve([]),
+      ]);
       return out(
         args.format,
-        blocks,
-        (data) => `Plan ${formatDate(from)} to ${formatDate(to)}:\n${blockLines(data)}`,
+        { blocks, meetings },
+        (data) => `Plan ${formatDate(from)} to ${formatDate(to)}:\n${planLines(data.blocks, data.meetings)}`,
       );
     },
   );
@@ -1526,4 +1545,6 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       return `Deleted block ${args.block}.`;
     },
   );
+
+  registerMeetingTools(tool, deps);
 }

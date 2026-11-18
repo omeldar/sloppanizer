@@ -23,10 +23,12 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   /** Saves the rule (null stops repeating). */
   onChange: (rule: RecurrenceRule | null) => void;
+  /** Meetings: always on a schedule, so no "Does not repeat" and no counting from done. */
+  scheduleOnly?: boolean;
 }
 
 /** The Repeat field: plain words for the rule, a popover with presets and a custom form. */
-export function RepeatField({ value, anchor, open, onOpenChange, onChange }: Props) {
+export function RepeatField({ value, anchor, open, onOpenChange, onChange, scheduleOnly }: Props) {
   const hintId = useId();
   if (!anchor) {
     return (
@@ -54,6 +56,7 @@ export function RepeatField({ value, anchor, open, onOpenChange, onChange }: Pro
         <RepeatPanel
           value={value}
           anchor={anchor}
+          scheduleOnly={scheduleOnly}
           onPick={(rule) => {
             onOpenChange(false);
             onChange(rule);
@@ -68,10 +71,12 @@ export function RepeatPanel({
   value,
   anchor,
   onPick,
+  scheduleOnly = false,
 }: {
   value: RecurrenceRule | null;
   anchor: string;
   onPick: (rule: RecurrenceRule | null) => void;
+  scheduleOnly?: boolean | undefined;
 }) {
   const today = localToday();
   const choices = presets(anchor);
@@ -86,24 +91,27 @@ export function RepeatPanel({
         today={today}
         onSave={onPick}
         onBack={() => setCustom(false)}
+        scheduleOnly={scheduleOnly}
       />
     );
   }
   return (
     <div className={styles.panel} role="group" aria-label="Repeat">
       <ul className={styles.choices}>
-        <li>
-          <button
-            type="button"
-            className={styles.choice}
-            aria-pressed={value === null}
-            onClick={() => onPick(null)}
-            // oxlint-disable-next-line jsx-a11y/no-autofocus -- the panel opens to pick
-            autoFocus={value === null}
-          >
-            Does not repeat
-          </button>
-        </li>
+        {!scheduleOnly && (
+          <li>
+            <button
+              type="button"
+              className={styles.choice}
+              aria-pressed={value === null}
+              onClick={() => onPick(null)}
+              // oxlint-disable-next-line jsx-a11y/no-autofocus -- the panel opens to pick
+              autoFocus={value === null}
+            >
+              Does not repeat
+            </button>
+          </li>
+        )}
         {choices.map((preset) => {
           const on = value !== null && sameRule(preset.rule, value, anchor);
           const check = checkRule(preset.rule, anchor, today);
@@ -144,14 +152,19 @@ function CustomForm({
   today,
   onSave,
   onBack,
+  scheduleOnly,
 }: {
   value: RecurrenceRule | null;
   anchor: string;
   today: string;
   onSave: (rule: RecurrenceRule) => void;
   onBack: () => void;
+  scheduleOnly: boolean;
 }) {
-  const [draft, setDraft] = useState<Draft>(() => draftFrom(value, anchor));
+  const [draft, setDraft] = useState<Draft>(() => ({
+    ...draftFrom(value, anchor),
+    ...(scheduleOnly && { basis: "schedule" as const }),
+  }));
   const set = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }));
   const check = checkRule(ruleFrom(draft), anchor, today);
   const pattern = draft.basis === "schedule";
@@ -288,27 +301,29 @@ function CustomForm({
         </label>
       )}
 
-      <fieldset className={styles.fieldset}>
-        <legend className={styles.legend}>Count the next one</legend>
-        <label className={styles.row}>
-          <input
-            type="radio"
-            name="basis"
-            checked={draft.basis === "schedule"}
-            onChange={() => set({ basis: "schedule" })}
-          />
-          <span>from the schedule</span>
-        </label>
-        <label className={styles.row}>
-          <input
-            type="radio"
-            name="basis"
-            checked={draft.basis === "done"}
-            onChange={() => set({ basis: "done" })}
-          />
-          <span>from when it is done</span>
-        </label>
-      </fieldset>
+      {!scheduleOnly && (
+        <fieldset className={styles.fieldset}>
+          <legend className={styles.legend}>Count the next one</legend>
+          <label className={styles.row}>
+            <input
+              type="radio"
+              name="basis"
+              checked={draft.basis === "schedule"}
+              onChange={() => set({ basis: "schedule" })}
+            />
+            <span>from the schedule</span>
+          </label>
+          <label className={styles.row}>
+            <input
+              type="radio"
+              name="basis"
+              checked={draft.basis === "done"}
+              onChange={() => set({ basis: "done" })}
+            />
+            <span>from when it is done</span>
+          </label>
+        </fieldset>
+      )}
 
       <label className={styles.row}>
         <span>Ends</span>

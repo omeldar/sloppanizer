@@ -235,7 +235,16 @@
 }
 
 .block[data-short] .blockTitle {
+  min-width: 0;
   white-space: nowrap;
+}
+
+/* In a short card the title wins: the time gives way first. */
+.block[data-short] .blockTime {
+  flex-shrink: 100;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .blockTime {
@@ -740,4 +749,75 @@
   border: 2px dashed var(--amber-line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--amber-tint) 70%, var(--raised));
+}
+
+/* Meeting dates: outlined and striped, so they read apart from planned todo time. */
+.page {
+  --meeting: #8b7cf6;
+}
+
+.block[data-meeting] {
+  border: 1px dashed color-mix(in srgb, var(--block) 70%, transparent);
+  border-left: 3px solid var(--block);
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--block) 16%, transparent) 0 6px,
+      color-mix(in srgb, var(--block) 6%, transparent) 6px 12px
+    ),
+    var(--raised-2);
+}
+
+.block[data-meeting]:hover {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--block) 22%, transparent) 0 6px,
+      transparent 6px 12px
+    ),
+    var(--raised-2);
+}
+
+.meetingMark {
+  margin-right: 4px;
+  vertical-align: -1px;
+  color: var(--block);
+}
+
+.occurrenceWhen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.occurrenceTime {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.occurrenceMoved {
+  color: var(--text-3);
+  font-size: var(--fs-small);
+  font-weight: 400;
+}
+
+.occurrenceLinks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.occurrenceLink {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+}
+
+.moveForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }

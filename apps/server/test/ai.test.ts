@@ -1,4 +1,10 @@
-import type { AiBreakdownResponse, AiPlanResponse, AiSettings, Todo } from "@organizer/shared";
+import type {
+  AiBreakdownResponse,
+  AiPlanResponse,
+  AiSettings,
+  AiStandupResponse,
+  Todo,
+} from "@organizer/shared";
 import { describe, expect, it } from "vitest";
 import { aiSettings } from "../src/db/auth-schema.ts";
 import type { ClaudeRunner } from "../src/services/ai.ts";
@@ -112,6 +118,31 @@ describe("Plan my day", () => {
     expect((await t.call("POST", "/api/v1/ai/plan", { day: "2026-11-01" })).statusCode).toBe(422);
   });
 
+  it("counts the day's meetings as busy, but not a cancelled date", async () => {
+    const claude = fakeClaude({ blocks: [], note: "" });
+    const t = await makeApp({ claude: claude.runner });
+    const schedule = {
+      rule: { every: "week" },
+      startsOn: "2026-11-12",
+      startTime: "09:00",
+      durationMinutes: 15,
+    };
+    await t.create("/api/v1/meetings", { name: "Weekly Standup", schedule });
+    const retro = await t.create<{ id: number }>("/api/v1/meetings", {
+      name: "Retro",
+      schedule: { ...schedule, startTime: "15:00", durationMinutes: 60 },
+    });
+    await t.call("PATCH", `/api/v1/meetings/${retro.id}/occurrences/2026-11-12`, {
+      scope: "this",
+      cancelled: true,
+    });
+    await t.call("PATCH", "/api/v1/ai/settings", { provider: "claude", claudeApiKey: KEY });
+    const plan = json<AiPlanResponse>(await t.call("POST", "/api/v1/ai/plan", { day: "2026-11-12" }));
+    expect(plan.context.busy).toEqual([[540, 555]]);
+    expect(claude.calls[0]?.user).toContain("- 09:00-09:15 Weekly Standup");
+    expect(claude.calls[0]?.user).not.toContain("Retro");
+  });
+
   it("needs a key for Claude", async () => {
     const t = await makeApp();
     await t.call("PATCH", "/api/v1/ai/settings", { provider: "claude" });
@@ -133,5 +164,71 @@ describe("Break it down", () => {
     expect(res).toEqual({ mode: "result", answer: { steps: ["Buy cables", "Mount rack"], note: "" } });
     expect(claude.calls[0]?.user).toContain("Todo: Set up the rack");
     expect(claude.calls[0]?.user).toContain("- Measure the room");
+  });
+});
+
+/** A standup with one done and one blocked todo. */
+async function standupWithItems(t: Awaited<ReturnType<typeof makeApp>>) {
+  const meeting = await t.create<{ id: number }>("/api/v1/meetings", {
+    name: "Weekly Standup",
+    schedule: { rule: { every: "week" }, startsOn: "2026-11-12", startTime: "09:00", durationMinutes: 15 },
+  });
+  const done = await t.create<Todo>("/api/v1/todos", { title: "Renew certs" });
+  await t.call("PATCH", `/api/v1/todos/${done.id}`, { status: "done" });
+  const blocked = await t.create<Todo>("/api/v1/todos", { title: "Order disks" });
+  await t.call("PATCH", `/api/v1/todos/${blocked.id}`, { status: "blocked" });
+  await t.call("POST", `/api/v1/todos/${blocked.id}/comments`, { bodyMd: "Vendor is **late**" });
+  return meeting;
+}
+
+describe("Sum up the standup", () => {
+  it("asks Claude with the open items and returns clean lines", async () => {
+    const claude = fakeClaude({
+      lines: ["- Renewed the certs.", "", "2) Disks are blocked by the vendor."],
+      note: "ok",
+    });
+    const t = await makeApp({ claude: claude.runner });
+    const meeting = await standupWithItems(t);
+    await t.call("PATCH", "/api/v1/ai/settings", { provider: "claude", claudeApiKey: KEY });
+    const res = await t.call("POST", "/api/v1/ai/standup", { meetingId: meeting.id });
+    expect(json<AiStandupResponse>(res)).toEqual({
+      mode: "result",
+      answer: { lines: ["Renewed the certs.", "Disks are blocked by the vendor."], note: "ok" },
+    });
+    const user = claude.calls[0]?.user ?? "";
+    expect(user).toContain("Meeting: Weekly Standup. Things since 05.11.2026 09:00:");
+    expect(user).toContain("- done: Renew certs changes: changed status from Open to Done");
+    expect(user).toContain("- blocked: Order disks");
+    expect(user).toContain("last comment: Vendor is late");
+    expect(user).not.toMatch(/#\d/);
+    // Only the kinds asked for.
+    await t.call("POST", "/api/v1/ai/standup", { meetingId: meeting.id, kinds: ["blocked"] });
+    expect(claude.calls[1]?.user).not.toContain("Renew certs");
+  });
+
+  it("hands the prompt to a local Ollama and refuses meetings without a list", async () => {
+    const t = await makeApp();
+    const meeting = await standupWithItems(t);
+    const res = await t.call("POST", "/api/v1/ai/standup", { meetingId: meeting.id });
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toContain("Settings, AI assistant");
+    await t.call("PATCH", "/api/v1/ai/settings", { provider: "ollama" });
+    const prompt = json<AiStandupResponse>(
+      await t.call("POST", "/api/v1/ai/standup", { meetingId: meeting.id }),
+    );
+    expect(prompt.mode).toBe("prompt");
+    if (prompt.mode !== "prompt") return;
+    expect(prompt.prompt.user).toContain("Order disks");
+    expect(prompt.prompt.schema).toMatchObject({ type: "object" });
+    const retro = await t.create<{ id: number }>("/api/v1/meetings", {
+      name: "Retro",
+      schedule: { rule: { every: "week" }, startsOn: "2026-11-12", startTime: "15:00", durationMinutes: 60 },
+    });
+    expect((await t.call("POST", "/api/v1/ai/standup", { meetingId: retro.id })).statusCode).toBe(409);
+    const bobby = await t.asAccount({ username: "bobby" });
+    await bobby.call("PATCH", "/api/v1/ai/settings", { provider: "ollama" });
+    const foreign = await bobby.call("POST", "/api/v1/ai/standup", { meetingId: meeting.id });
+    expect(foreign.statusCode).toBe(404);
+    expect(foreign.body).not.toContain("Order disks");
   });
 });

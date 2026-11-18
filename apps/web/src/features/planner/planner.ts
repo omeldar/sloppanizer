@@ -1,24 +1,61 @@
 import {
   addDays,
+  dayShift,
   localTimeToInstant,
+  type MeetingOccurrence,
+  type Series,
+  shiftRule,
   startOfLocalDay,
   type TimeBlock,
   toLocalDate,
   toLocalTime,
 } from "@organizer/shared";
+import type { ScopeOption } from "../../components/SeriesScopeDialog.tsx";
+import { formatDayMonth } from "../../lib/format.ts";
 
 export const SNAP_MINUTES = 15;
 /** The planner shows the whole day; it opens at this hour unless it shows today. */
 export const DAY_START_HOUR = 7;
 
-export interface PlacedBlock {
-  block: TimeBlock;
+/** Something with a time in the planner: a key that stays the same across renders, a start and an end. */
+export interface Span {
+  key: string;
+  startAt: string;
+  endAt: string;
+}
+
+/** What the planner shows: time blocks, and the dates of meetings (repeating, changed per date). */
+export type PlannerItem = Span &
+  ({ kind: "block"; block: TimeBlock } | { kind: "meeting"; occurrence: MeetingOccurrence });
+
+export const blockItem = (block: TimeBlock): PlannerItem => ({
+  kind: "block",
+  block,
+  key: `block-${block.id}`,
+  startAt: block.startAt,
+  endAt: block.endAt,
+});
+
+/** A meeting date; `span` shows it somewhere else while a move waits for its answer. */
+export const meetingItem = (
+  occurrence: MeetingOccurrence,
+  span: Pick<Span, "startAt" | "endAt"> = occurrence,
+): PlannerItem => ({
+  kind: "meeting",
+  occurrence,
+  key: `meeting-${occurrence.meetingId}-${occurrence.occursOn}`,
+  startAt: span.startAt,
+  endAt: span.endAt,
+});
+
+export interface Placed<T extends Span = PlannerItem> {
+  item: T;
   /** Minutes from the day's local midnight, clamped to the day. */
   startMin: number;
   endMin: number;
   lane: number;
   lanes: number;
-  /** The block goes on before this day / after it. */
+  /** The item goes on before this day / after it. */
   continuesBefore: boolean;
   continuesAfter: boolean;
 }
@@ -27,20 +64,22 @@ export interface PlacedBlock {
 export const dayList = (first: string, count: number): string[] =>
   Array.from({ length: count }, (_, i) => addDays(first, i));
 
+const byKey = (a: Span, b: Span): number => a.key.localeCompare(b.key, "en", { numeric: true });
+
 /**
- * The blocks of one local day, with their minutes in that day and side by side lanes for overlaps
- * (each cluster of overlapping blocks shares its lane count).
+ * The items of one local day, with their minutes in that day and side by side lanes for overlaps
+ * (each cluster of overlapping items shares its lane count). Blocks and meetings share the lanes.
  */
-export function placeBlocks(blocks: readonly TimeBlock[], day: string, timeZone: string): PlacedBlock[] {
+export function placeItems<T extends Span>(items: readonly T[], day: string, timeZone: string): Placed<T>[] {
   const dayStart = startOfLocalDay(day, timeZone).getTime();
   const dayEnd = startOfLocalDay(addDays(day, 1), timeZone).getTime();
-  const inDay = blocks
-    .map((block) => ({ block, start: Date.parse(block.startAt), end: Date.parse(block.endAt) }))
+  const inDay = items
+    .map((item) => ({ item, start: Date.parse(item.startAt), end: Date.parse(item.endAt) }))
     .filter((b) => b.start < dayEnd && b.end > dayStart)
-    .toSorted((a, b) => a.start - b.start || b.end - a.end || a.block.id - b.block.id);
+    .toSorted((a, b) => a.start - b.start || b.end - a.end || byKey(a.item, b.item));
 
-  const placed: PlacedBlock[] = [];
-  let cluster: PlacedBlock[] = [];
+  const placed: Placed<T>[] = [];
+  let cluster: Placed<T>[] = [];
   let clusterEnd = -Infinity;
   const laneEnds: number[] = [];
   const closeCluster = () => {
@@ -54,8 +93,8 @@ export function placeBlocks(blocks: readonly TimeBlock[], day: string, timeZone:
     let lane = laneEnds.findIndex((end) => end <= b.start);
     if (lane === -1) lane = laneEnds.length;
     laneEnds[lane] = b.end;
-    const entry: PlacedBlock = {
-      block: b.block,
+    const entry: Placed<T> = {
+      item: b.item,
       startMin: Math.max(0, (b.start - dayStart) / 60_000),
       endMin: Math.min((dayEnd - dayStart) / 60_000, (b.end - dayStart) / 60_000),
       lane,
@@ -133,6 +172,44 @@ export const spanText = (block: Pick<TimeBlock, "startAt" | "endAt">, timeZone: 
 
 /** What a block is for: its todo's title, else its own title. */
 export const blockTitle = (block: TimeBlock): string => block.todo?.title ?? block.title;
+
+/** Why only this date can move: the repeat has no rule for its dates moved by that many days. */
+export const ONLY_THIS_DAY = "Only this date can move to another day for this repeat.";
+
+/**
+ * The choices for moving a meeting date to a new start: this one always; this and following and all
+ * only when every date of the repeat can move by the same days. "All" changes only the part of a split
+ * repeat that holds the date, so it says from when.
+ */
+export function meetingMoveScopes(
+  segments: readonly Series[],
+  occurrence: Pick<MeetingOccurrence, "seriesId" | "occursOn">,
+  startAt: string,
+  timeZone: string,
+): ScopeOption[] {
+  const segment = segments.find((s) => s.id === occurrence.seriesId);
+  const delta = dayShift(occurrence.occursOn, startAt, timeZone);
+  const off = !segment || (delta !== 0 && shiftRule(segment.rule, delta) === null) ? ONLY_THIS_DAY : null;
+  const split = segments.length > 1 && segment !== undefined;
+  return [
+    { scope: "this" },
+    { scope: "following", off, hint: `From ${formatDayMonth(occurrence.occursOn)} on` },
+    {
+      scope: "all",
+      off,
+      hint: split
+        ? `Every date from ${formatDayMonth(segment.startsOn)} on, this part of the repeat`
+        : "Every date",
+    },
+  ];
+}
+
+/** The choices for cancelling a meeting date: all of them deletes the meeting. */
+export const MEETING_CANCEL_SCOPES: readonly ScopeOption[] = [
+  { scope: "this" },
+  { scope: "following", hint: "The repeat ends the day before" },
+  { scope: "all", hint: "Deletes the meeting, with what you marked as said" },
+];
 
 /** The next full quarter hour after now, as "HH:mm" (for a new block's start). */
 export function nextQuarter(now: Date, timeZone: string): string {

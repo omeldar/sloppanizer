@@ -7,7 +7,11 @@ import {
   type CheckedBlock,
   checkPlan,
   checkSteps,
+  checkSummary,
   PlanAnswer,
+  AiStandupResponse,
+  StandupSummaryAnswer,
+  type StandupKind,
   type UpdateAiSettings,
 } from "@organizer/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -96,6 +100,26 @@ export async function breakDown(
       ? response.answer
       : await runOllama(settings, response.prompt, BreakdownAnswer);
   return { steps: checkSteps(answer, existing), note: answer.note };
+}
+
+/**
+ * Sum up: a few lines to read out at a standup, from its open list (only the given kinds). Runs only
+ * when the user asks; nothing is saved.
+ */
+export async function summarizeStandup(
+  meetingId: number,
+  kinds: readonly StandupKind[] | undefined,
+  settings: AiSettings,
+): Promise<StandupSummaryAnswer> {
+  const response = await api(AiStandupResponse, "/ai/standup", {
+    method: "POST",
+    body: { meetingId, ...(kinds && kinds.length > 0 && { kinds }) },
+  });
+  const answer =
+    response.mode === "result"
+      ? response.answer
+      : await runOllama(settings, response.prompt, StandupSummaryAnswer);
+  return checkSummary(answer);
 }
 
 /** Whether this machine's Ollama answers and has the model (for the settings page). */
