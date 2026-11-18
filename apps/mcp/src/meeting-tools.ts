@@ -4,13 +4,16 @@ import {
   formatDate,
   type Meeting,
   type MeetingNote,
+  type MeetingTodo,
+  type MeetingTodos,
   type Note,
   type Standup,
   StandupKind,
+  type Todo,
 } from "@organizer/shared";
 import { z } from "zod";
 import { type Api, ToolError } from "./api.ts";
-import { meetingLine, standupText } from "./format.ts";
+import { meetingLine, meetingTodosText, standupText } from "./format.ts";
 
 /** Registers a tool whose handler returns text (the helper of tools.ts). */
 export type ToolRegistrar = <S extends z.ZodRawShape>(
@@ -56,7 +59,16 @@ function standupOnly(meeting: Meeting): void {
     throw new ToolError(`${meeting.name} is not a standup, so it has no list. The user can change its type.`);
 }
 
-/** Meetings (list_meetings, standup_list, mark_said, meeting_note). Creating meetings stays in the web app. */
+const TodoIds = z
+  .array(z.number().int().positive())
+  .min(1)
+  .max(100)
+  .describe("Todo ids, the numbers after #.");
+
+/**
+ * Meetings (list_meetings, standup_list, mark_said, meeting_note, meeting_todos, add_to_meeting,
+ * remove_from_meeting). Creating meetings stays in the web app.
+ */
 export function registerMeetingTools(tool: ToolRegistrar, deps: { api: Api; timeZone: string }): void {
   const { api, timeZone } = deps;
 
@@ -178,6 +190,75 @@ export function registerMeetingTools(tool: ToolRegistrar, deps: { api: Api; time
         (await api.post<MeetingNote>(`/meetings/${meeting.id}/notes`, { on })).note.id;
       const note = await api.patch<Note>(`/notes/${noteId}`, { appendMd: args.text });
       return `Added to note ${note.id} "${note.title}" of ${meeting.name} on ${formatDate(on)}.`;
+    },
+  );
+
+  tool(
+    "meeting_todos",
+    {
+      title: "Todos on a meeting",
+      description:
+        "The todos the user added to a meeting by hand (topics to bring up), on every date until removed, " +
+        "with their status and due date. Works for standups and other meetings; a standup's worked-out list is standup_list.",
+      inputSchema: { meeting: MeetingInput, format },
+      annotations: READ,
+    },
+    async (args) => {
+      const meeting = await resolveMeeting(api, args.meeting);
+      const list = await api.get<MeetingTodos>(`/meetings/${meeting.id}/todos`);
+      return args.format === "json" ? JSON.stringify(list) : meetingTodosText(list, meeting.name);
+    },
+  );
+
+  tool(
+    "add_to_meeting",
+    {
+      title: "Add todos to a meeting",
+      description:
+        "Put todos on a meeting by hand; they stay on every date until removed and their due date does not change. " +
+        "dueAtNext: true also sets each todo's due date to the meeting's next date.",
+      inputSchema: {
+        meeting: MeetingInput,
+        todos: TodoIds,
+        dueAtNext: z.boolean().default(false).describe("true: due date = the meeting's next date."),
+      },
+      annotations: WRITE,
+    },
+    async (args) => {
+      const meeting = await resolveMeeting(api, args.meeting);
+      if (args.dueAtNext && meeting.next === null)
+        throw new ToolError(`${meeting.name} has no next date to use as due date. Nothing was added.`);
+      const ids = [...new Set(args.todos)];
+      let dueOn: string | null = null;
+      for (const todoId of ids) {
+        // One after the other, so the meeting lists them in the order given.
+        // oxlint-disable-next-line no-await-in-loop
+        await api.post<MeetingTodo>(`/meetings/${meeting.id}/todos`, { todoId });
+        if (args.dueAtNext)
+          // oxlint-disable-next-line no-await-in-loop
+          dueOn = (await api.post<Todo>(`/meetings/${meeting.id}/todos/${todoId}/due`, {})).dueOn;
+      }
+      const due = dueOn === null ? "" : `, due ${formatDate(dueOn)}`;
+      return `Added ${ids.map((id) => `#${id}`).join(", ")} to ${meeting.name}${due}.`;
+    },
+  );
+
+  tool(
+    "remove_from_meeting",
+    {
+      title: "Remove todos from a meeting",
+      description: "Take todos the user added by hand off a meeting. The todos themselves stay.",
+      inputSchema: { meeting: MeetingInput, todos: TodoIds },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    },
+    async (args) => {
+      const meeting = await resolveMeeting(api, args.meeting);
+      const ids = [...new Set(args.todos)];
+      for (const todoId of ids) {
+        // oxlint-disable-next-line no-await-in-loop
+        await api.delete(`/meetings/${meeting.id}/todos/${todoId}`);
+      }
+      return `Removed ${ids.map((id) => `#${id}`).join(", ")} from ${meeting.name}.`;
     },
   );
 }

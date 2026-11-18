@@ -10,6 +10,7 @@ import {
   languageNames,
   type Meeting,
   type MeetingOccurrence,
+  type MeetingTodos,
   type NextUp,
   type Note,
   type NoteSummary,
@@ -447,6 +448,31 @@ export function standupItemLine(item: StandupItem): string {
   }
   if (item.again) parts.push("again");
   return parts.join(" | ");
+}
+
+/** `Weekly Standup: 2 todos added by hand (next date 12.11.2026):` then `- #5 Budget [Lab] | in_progress | due 12.11.2026`. */
+export function meetingTodosText(list: MeetingTodos, name: string): string {
+  const next = list.nextOn === null ? "no next date" : `next date ${formatDate(list.nextOn)}`;
+  if (list.items.length === 0) return `${name} has no todos added by hand (${next}).`;
+  const count = list.items.length === 1 ? "1 todo" : `${list.items.length} todos`;
+  return [
+    `${name}: ${count} added by hand (${next}):`,
+    ...list.items.map((item) =>
+      [
+        [
+          `- #${item.todo.id} ${item.todo.title}`,
+          item.project ? `[${item.project.name}]` : "",
+          item.parent ? `(part of #${item.parent.id} ${item.parent.title})` : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+        item.todo.status,
+        item.dueOn === null ? "" : `due ${formatDate(item.dueOn)}`,
+      ]
+        .filter(Boolean)
+        .join(" | "),
+    ),
+  ].join("\n");
 }
 
 /** The standup list grouped by kind, then what was said and how many were dismissed on the date. */

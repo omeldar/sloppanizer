@@ -17,7 +17,8 @@ export function createServer(config: McpConfig, fetchImpl?: typeof fetch): McpSe
         "people_stats shows who asks for how much and how fast it gets done. Todos keep web links (add_web_link). " +
         "The planner holds time blocks in the user's local time: list_plan shows them and the meeting dates, plan_time reserves time for a todo. " +
         "Meetings repeat; a standup has a list of what the user has not said yet (standup_list), ticked with mark_said; " +
-        "meeting_note writes into the note of a meeting date. " +
+        "meeting_note writes into the note of a meeting date. Todos can be added to any meeting by hand (add_to_meeting, " +
+        "meeting_todos, remove_from_meeting); they stay on every date until removed. " +
         "Replies write dates as dd.MM.yyyy (03.10.2026); tool inputs take dates as YYYY-MM-DD (2026-10-03).",
     },
   );
