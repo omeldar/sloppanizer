@@ -1,4 +1,5 @@
 import {
+  type StatsGroup,
   type BlockOccurrence,
   type RecurringTodo,
   type ActivityItem,
@@ -528,3 +529,14 @@ export function recurringLine(r: RecurringTodo, timeZone: string): string {
   if (r.plan) parts.push(`planned ${r.plan.schedule.text}`);
   return parts.join(" | ");
 }
+
+/** Minutes as hours with one decimal: "4.5 h". */
+export const hoursText = (minutes: number): string => `${Math.round(minutes / 6) / 10} h`;
+
+/** The name of a group of worked time: a project, the Inbox, or blocks with only a title. */
+export const statsGroupText = (g: StatsGroup): string =>
+  g.kind === "inbox"
+    ? "Inbox"
+    : g.kind === "untitled"
+      ? "Blocks with their own title"
+      : (g.project?.name ?? "Project");

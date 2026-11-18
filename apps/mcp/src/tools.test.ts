@@ -1081,4 +1081,48 @@ describe("meeting tools", () => {
       "#4 Course | every week until 01.11.2026 | ended | done 1 time, last 29.10.2026",
     ]);
   });
+
+  it("work_stats sums up worked time per project, requester and week, the last 4 weeks by default", async () => {
+    const hours = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
+    const { call, calls } = await connect(() => ({
+      from: "2026-10-15",
+      to: "2026-11-11",
+      totals: { workedMinutes: 270, meetingMinutes: 30, created: 3, done: 2, medianDoneMs: 2 * 86_400_000 },
+      projects: [
+        {
+          kind: "project",
+          project: { id: 1, slug: "lab", name: "Lab", color: "#4c9aff" },
+          minutes: 180,
+          done: 1,
+        },
+        { kind: "inbox", project: null, minutes: 90, done: 1 },
+      ],
+      requesters: [{ person: { id: 9, name: "Anna Meier" }, minutes: 120, done: 1 }],
+      otherRequesters: null,
+      weeks: [
+        { start: "2026-11-09", workedMinutes: 270, meetingMinutes: 30, created: 3, done: 2, projects: [] },
+      ],
+      days: [],
+      hours,
+      doneDurations: [],
+    }));
+    const text = (await call("work_stats")).text;
+    expect(calls[0]).toMatchObject({
+      path: "/stats/overview",
+      query: { from: "2026-10-15", to: "2026-11-11" },
+    });
+    expect(text.split("\n")).toEqual([
+      "15.10.2026 to 11.11.2026: worked 4.5 h, meetings 0.5 h, 2 done, median 2d to done, 3 created.",
+      "",
+      "Projects:",
+      "- Lab: 3 h, 1 done",
+      "- Inbox: 1.5 h, 1 done",
+      "",
+      "Requesters (a todo counts for each of its requesters):",
+      "- Anna Meier: 2 h, 1 done",
+      "",
+      "Weeks:",
+      "- 09.11.2026: worked 4.5 h, meetings 0.5 h, 3 created, 2 done",
+    ]);
+  });
 });
