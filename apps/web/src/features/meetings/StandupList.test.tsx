@@ -248,3 +248,79 @@ describe("standup list on the meeting page", () => {
     );
   });
 });
+
+/** AI settings of the account with the given assistant. */
+const settings = (provider: "none" | "claude" | "ollama") => ({
+  provider,
+  claudeModel: "claude-haiku-5-5",
+  claudeKeySet: provider === "claude",
+  ollamaUrl: "http://localhost:11434",
+  ollamaModel: "qwen",
+  dayStart: "08:00",
+  dayEnd: "17:00",
+});
+
+/** The list plus the assistant; `ai` answers POST /ai/standup and the local model. */
+function renderWithAi(provider: "none" | "claude" | "ollama", kind: StandupKind | null = null) {
+  const calls = mockApi((call) => {
+    const path = call.path.split("?")[0];
+    if (path === "/api/v1/meetings/7/standup") return { body: makeStandup(ITEMS) };
+    if (path === "/api/v1/ai/settings") return { body: settings(provider) };
+    if (path === "/api/v1/ai/standup")
+      return provider === "claude"
+        ? {
+            body: {
+              mode: "result",
+              answer: { lines: ["- Shipped the release.", "Docs are started."], note: "" },
+            },
+          }
+        : { body: { mode: "prompt", prompt: { system: "s", user: "u", schema: {} } } };
+    if (call.path === "http://localhost:11434/api/chat")
+      return {
+        body: {
+          message: { content: JSON.stringify({ lines: ["1. VPN is blocked."], note: "Short week." }) },
+        },
+      };
+    return { status: 404, body: { error: { code: "not_found", message: "Not here." } } };
+  });
+  renderWithApp(<StandupList meetingId={7} on="2026-11-19" kind={kind} onKind={() => {}} />);
+  return calls;
+}
+
+describe("sum up with the assistant", () => {
+  it("is not there without an assistant", async () => {
+    const calls = renderWithAi("none");
+    await screen.findByRole("region", { name: "To say" });
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/v1/ai/settings")).toBe(true));
+    expect(screen.queryByRole("button", { name: /Sum up/ })).toBeNull();
+  });
+
+  it("runs only on the button and shows the lines, without list marks", async () => {
+    const calls = renderWithAi("claude", "done");
+    const button = await screen.findByRole("button", { name: /Sum up/ });
+    expect(calls.some((c) => c.path === "/api/v1/ai/standup")).toBe(false);
+    fireEvent.click(button);
+    const summary = await screen.findByRole("region", { name: "Summary" });
+    expect(
+      within(summary)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["Shipped the release.", "Docs are started."]);
+    // Only the shown kind goes to the assistant.
+    expect(calls.find((c) => c.path === "/api/v1/ai/standup")?.body).toEqual({
+      meetingId: 7,
+      kinds: ["done"],
+    });
+    fireEvent.click(within(summary).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("region", { name: "Summary" })).toBeNull();
+  });
+
+  it("runs the prompt on the local Ollama when that is the assistant", async () => {
+    const calls = renderWithAi("ollama");
+    fireEvent.click(await screen.findByRole("button", { name: /Sum up/ }));
+    const summary = await screen.findByRole("region", { name: "Summary" });
+    expect(within(summary).getByRole("listitem").textContent).toBe("VPN is blocked.");
+    expect(within(summary).getByText("Short week.")).toBeTruthy();
+    expect(calls.find((c) => c.path === "/api/v1/ai/standup")?.body).toEqual({ meetingId: 7 });
+  });
+});

@@ -1,9 +1,16 @@
-import { STANDUP_KINDS, type Standup, type StandupItem, type StandupKind } from "@organizer/shared";
+import {
+  STANDUP_KINDS,
+  type Standup,
+  type StandupItem,
+  type StandupKind,
+  type StandupSummaryAnswer,
+} from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
 import { type CSSProperties, useState } from "react";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { Button, EmptyState, ErrorState, Loading } from "../../components/ui.tsx";
 import { useKeys } from "../../keyboard/KeyboardProvider.tsx";
+import { summarizeStandup, useAiSettings } from "../../lib/ai.ts";
 import { errorMessage } from "../../lib/api.ts";
 import { formatDayMonth, relativeTime, toDate } from "../../lib/format.ts";
 import { stepCursor, useScrollIntoView } from "../../lib/listCursor.ts";
@@ -167,10 +174,13 @@ function ListBody({
           </button>
         ))}
       </div>
-      <p className={styles.since}>
-        Since {since}
-        {list.dismissedCount > 0 && `, ${list.dismissedCount} dismissed`}
-      </p>
+      <div className={styles.listBar}>
+        <p className={styles.since}>
+          Since {since}
+          {list.dismissedCount > 0 && `, ${list.dismissedCount} dismissed`}
+        </p>
+        <SumUp meetingId={meetingId} kind={kind} empty={groups.length === 0} />
+      </div>
 
       {groups.length === 0 && (
         <EmptyState>
@@ -340,5 +350,67 @@ function Row({
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * "Sum up": the assistant writes a few lines to read out from the open list (the shown kind only).
+ * Only there when an assistant is set up, and it runs only on the button; nothing is saved.
+ */
+function SumUp({ meetingId, kind, empty }: { meetingId: number; kind: StandupKind | null; empty: boolean }) {
+  const ai = useAiSettings();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [summary, setSummary] = useState<StandupSummaryAnswer | null>(null);
+  if (!ai.data || ai.data.provider === "none") return null;
+  const settings = ai.data;
+
+  const run = async () => {
+    setBusy(true);
+    try {
+      const answer = await summarizeStandup(meetingId, kind ? [kind] : undefined, settings);
+      if (answer.lines.length === 0) toast.show({ message: answer.note || "Nothing to sum up." });
+      else setSummary(answer);
+    } catch (failure) {
+      toast.show({ tone: "error", message: errorMessage(failure) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(summary?.lines.join("\n") ?? "");
+      toast.show({ message: "Copied the summary" });
+    } catch {
+      toast.show({ tone: "error", message: "Could not copy. Select the lines and copy them by hand." });
+    }
+  };
+
+  return (
+    <>
+      <Button size="sm" onClick={() => void run()} disabled={busy || empty}>
+        {busy ? "Summing up…" : "✦ Sum up"}
+      </Button>
+      {summary && (
+        <section className={styles.summary} aria-label="Summary">
+          <ul className={styles.summaryLines}>
+            {summary.lines.map((line, i) => (
+              // The assistant's lines in its order; two may say the same.
+              // oxlint-disable-next-line react/no-array-index-key
+              <li key={`${i}-${line}`}>{line}</li>
+            ))}
+          </ul>
+          {summary.note && <p className={styles.quiet}>{summary.note}</p>}
+          <div className={styles.summaryActions}>
+            <Button size="sm" onClick={() => void copy()}>
+              Copy
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSummary(null)}>
+              Close
+            </Button>
+          </div>
+        </section>
+      )}
+    </>
   );
 }
