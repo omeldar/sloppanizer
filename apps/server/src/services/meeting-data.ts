@@ -1,10 +1,14 @@
 import {
   formatDate,
+  isCalendarDate,
   isSeriesDate,
-  RecurrenceRule,
   type SeriesException,
+  SeriesRule,
   type SeriesSpan,
+  seriesProblem,
   StandupFilter,
+  TimeOfDay,
+  Timestamp,
 } from "@organizer/shared";
 import { asc, eq, inArray } from "drizzle-orm";
 import { labels, meetings, projects, series, seriesExceptions } from "../db/schema.ts";
@@ -16,7 +20,6 @@ import { chunks } from "./sql.ts";
 /** Reading meetings, their series segments and single date changes (shared by meetings and standups). */
 
 export type MeetingRow = typeof meetings.$inferSelect;
-type SeriesRow = typeof series.$inferSelect;
 
 export function meetingRow(sc: Scoped, id: number): MeetingRow {
   const row = sc.db
@@ -39,16 +42,42 @@ export function parseFilter(json: string): StandupFilter {
   return StandupFilter.parse({});
 }
 
-export function toSpan(row: SeriesRow): SeriesSpan {
-  return {
+/**
+ * A stored segment, or null when it cannot be used (only a hand-made restore can store one): a schedule
+ * rule without until, calendar dates within the series limits, an HH:MM time and 5 to 1440 minutes.
+ */
+export function readSpan(row: {
+  id: number;
+  rule: string;
+  startsOn: string;
+  endsOn: string | null;
+  startTime: string;
+  durationMin: number;
+}): SeriesSpan | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(row.rule);
+  } catch {
+    return null;
+  }
+  const rule = SeriesRule.safeParse(json);
+  if (!rule.success || rule.data.until !== undefined) return null;
+  if (!isCalendarDate(row.startsOn) || (row.endsOn !== null && !isCalendarDate(row.endsOn))) return null;
+  if (!TimeOfDay.safeParse(row.startTime).success) return null;
+  if (!Number.isInteger(row.durationMin) || row.durationMin < 5 || row.durationMin > 1440) return null;
+  const span: SeriesSpan = {
     id: row.id,
-    rule: RecurrenceRule.parse(JSON.parse(row.rule)),
+    rule: rule.data,
     startsOn: row.startsOn,
     endsOn: row.endsOn,
     startTime: row.startTime,
     durationMinutes: row.durationMin,
   };
+  return seriesProblem(span) === null ? span : null;
 }
+
+const isInstant = (value: string | null): value is string =>
+  value !== null && Timestamp.safeParse(value).success;
 
 /** The segments of each meeting, by first date. */
 export function segmentsOf(sc: Scoped, meetingIds: readonly number[]): Map<number, SeriesSpan[]> {
@@ -60,7 +89,10 @@ export function segmentsOf(sc: Scoped, meetingIds: readonly number[]): Map<numbe
       .where(owned(sc, series, eq(series.ownerKind, "meeting"), inArray(series.meetingId, part)))
       .orderBy(asc(series.startsOn), asc(series.id))
       .all();
-    for (const row of rows) out.get(row.meetingId as number)?.push(toSpan(row));
+    for (const row of rows) {
+      const span = readSpan(row);
+      if (span) out.get(row.meetingId as number)?.push(span);
+    }
   }
   return out;
 }
@@ -74,6 +106,9 @@ export function exceptionsOf(sc: Scoped, seriesIds: readonly number[]): SeriesEx
       .from(seriesExceptions)
       .where(owned(sc, seriesExceptions, inArray(seriesExceptions.seriesId, part)))
       .all()) {
+      // Unreadable rows (a hand-made restore) are left out instead of failing every list.
+      if (!isCalendarDate(row.occursOn)) continue;
+      if (row.kind === "moved" && (!isInstant(row.startAt) || !isInstant(row.endAt))) continue;
       out.push({
         seriesId: row.seriesId,
         occursOn: row.occursOn,

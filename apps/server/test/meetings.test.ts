@@ -641,3 +641,35 @@ describe("limits", () => {
     expect(later.openCount).toBe(0);
   });
 });
+
+describe("unreadable stored rows", () => {
+  it("leaves a meeting with an unreadable repeat out instead of failing every list", async () => {
+    const t = await makeApp();
+    const good = await standup(t);
+    const bad = await standup(t, { name: "Broken" });
+    const sqlite = t.deps.db.$client;
+    sqlite
+      .prepare(`UPDATE series SET rule = '{"every":"fortnight"}' WHERE account_id = ? AND meeting_id = ?`)
+      .run(t.account.id, bad.id);
+    sqlite
+      .prepare(
+        "INSERT INTO series_exceptions (account_id, series_id, occurs_on, kind, start_at, end_at, created_at, updated_at) VALUES (?, ?, 'someday', 'moved', 'x', 'y', ?, ?)",
+      )
+      .run(t.account.id, good.schedule.id, "2026-11-11T10:00:00.000Z", "2026-11-11T10:00:00.000Z");
+    const list = await t.call("GET", "/api/v1/meetings");
+    expect(list.statusCode).toBe(200);
+    expect(json<Meeting[]>(list).map((m) => m.name)).toEqual(["Weekly Standup"]);
+    expect(await occurrences(t, "from=2026-11-09&to=2026-11-15")).toEqual([
+      "2026-11-12 11-12T08:00 scheduled",
+    ]);
+    const one = await t.call("GET", `/api/v1/meetings/${bad.id}`);
+    expect(one.statusCode).toBe(409);
+    expect(one.json().error.message).toBe(
+      `Meeting ${bad.id} has no readable repeat. Delete it and create it again.`,
+    );
+    await t.call("PATCH", "/api/v1/ai/settings", { provider: "ollama" });
+    expect((await t.call("POST", "/api/v1/ai/plan", { day: "2026-11-12" })).statusCode).toBe(200);
+    expect((await t.call("GET", `/api/v1/meetings/${good.id}/standup`)).statusCode).toBe(200);
+    expect((await t.call("DELETE", `/api/v1/meetings/${bad.id}`)).statusCode).toBe(204);
+  });
+});

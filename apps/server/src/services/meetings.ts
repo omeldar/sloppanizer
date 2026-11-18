@@ -111,8 +111,9 @@ function hydrate(ctx: Ctx, sc: Scoped, rows: readonly MeetingRow[]): Meeting[] {
   const open = openStandupCounts(sc, rows);
   const at = ctx.clock();
   const today = toLocalDate(at, ctx.timeZone);
-  return rows.map((row) => {
+  return rows.flatMap((row) => {
     const list = segments.get(row.id) ?? [];
+    if (list.length === 0) return [];
     const own = new Set(list.map((s) => s.id));
     const next = nextSeriesOccurrence(
       list,
@@ -120,19 +121,21 @@ function hydrate(ctx: Ctx, sc: Scoped, rows: readonly MeetingRow[]): Meeting[] {
       at,
       ctx.timeZone,
     );
-    return {
-      id: row.id,
-      name: row.name,
-      type: row.type,
-      filter: parseFilter(row.filter),
-      since: row.since,
-      schedule: toSeries(currentSegment(list, today)),
-      segments: list.map(toSeries),
-      next: next === null ? null : toOccurrence(row, next, notes),
-      openCount: row.type === "standup" ? (open.get(row.id) ?? 0) : null,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    };
+    return [
+      {
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        filter: parseFilter(row.filter),
+        since: row.since,
+        schedule: toSeries(currentSegment(list, today)),
+        segments: list.map(toSeries),
+        next: next === null ? null : toOccurrence(row, next, notes),
+        openCount: row.type === "standup" ? (open.get(row.id) ?? 0) : null,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      },
+    ];
   });
 }
 
@@ -143,13 +146,17 @@ const byNext = (a: Meeting, b: Meeting): number => {
 };
 
 /** Every meeting, the next one first (meetings without a next date last, by name). */
+/** Every meeting, the next one first. A meeting without a readable repeat (a hand-made restore) is left out. */
 export function listMeetings(ctx: Ctx): Meeting[] {
   const rows = ctx.db.select().from(meetings).where(owned(ctx, meetings)).all();
   return hydrate(ctx, ctx, rows).toSorted(byNext);
 }
 
 export function getMeeting(ctx: Ctx, id: number, sc: Scoped = ctx): Meeting {
-  return hydrate(ctx, sc, [meetingRow(sc, id)])[0] as Meeting;
+  const meeting = hydrate(ctx, sc, [meetingRow(sc, id)])[0];
+  if (!meeting)
+    throw new ApiError("conflict", `Meeting ${id} has no readable repeat. Delete it and create it again.`);
+  return meeting;
 }
 
 /** A schedule rule normalized from its anchor, without until (endsOn is the only end). */

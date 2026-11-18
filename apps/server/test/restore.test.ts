@@ -486,6 +486,36 @@ describe("restore apply", () => {
     expect(problems(missing)).toContain('data.json misses the table "standup_marks".');
   });
 
+  it("refuses meeting rows the services could not read, and more meetings than an account may have", async () => {
+    const t = await makeApp();
+    await fillEveryTable(t);
+    const zip = await exportZip(t);
+    // oxlint-disable-next-line typescript/no-explicit-any
+    const check = async (change: (data: any) => void, pattern: RegExp) => {
+      const res = await upload(
+        t,
+        rework(zip, (_m, d) => change(d)),
+      );
+      expect(res.statusCode).toBe(422);
+      expect(problems(res).join("\n")).toMatch(pattern);
+    };
+    await check((d) => (d.series[0].rule = '{"every":"fortnight"}'), /^series \d+: not a usable repeat/);
+    await check((d) => (d.series[0].rule = '{"every":"day","basis":"done"}'), /not a usable repeat/);
+    await check((d) => (d.series[0].ends_on = "9999-12-31"), /not a usable repeat/);
+    await check((d) => (d.series[0].owner_kind = "block"), /owner_kind must be "meeting"/);
+    await check((d) => (d.meetings[0].filter = '{"projectIds":"all"}'), /filter is not a standup filter/);
+    await check((d) => (d.meetings[0].since = "last week"), /since is not a UTC time/);
+    await check((d) => (d.series_exceptions[0].start_at = "soon"), /a moved date needs start_at and end_at/);
+    await check((d) => (d.standup_marks[0].covered_until = "now"), /covered_until and marked_at/);
+    await check((d) => (d.meeting_notes[0].occurs_on = "12.11.2026"), /occurs_on is not a date/);
+    await check((d) => {
+      const [meeting] = d.meetings;
+      d.meetings = Array.from({ length: 101 }, (_, i) => ({ ...meeting, id: 1000 + i }));
+    }, /meetings: more than 100 meetings in one account/);
+    // The account still has its meetings.
+    expect(json<unknown[]>(await t.call("GET", "/api/v1/meetings"))).toHaveLength(1);
+  });
+
   it("restores meetings with their dates, marks and note links", async () => {
     const t = await makeApp();
     const { meeting } = await fillEveryTable(t);

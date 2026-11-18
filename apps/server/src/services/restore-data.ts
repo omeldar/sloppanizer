@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { ID_TABLES } from "../db/schema.ts";
 import { authorKindOf } from "./comments.ts";
 import { dbTable, EXPORT_TABLES, withoutLocalColumns } from "./export.ts";
+import { limitProblem, rowProblem } from "./restore-checks.ts";
 import { LOCAL_SETTING_KEYS, OBSOLETE_SETTING_KEYS } from "./settings.ts";
 
 export type ExportData = Record<string, Record<string, unknown>[]>;
@@ -60,7 +61,8 @@ export class RowError extends Error {
  * again. Foreign keys are checked at commit (defer_foreign_keys), because a todo may point at a parent
  * with a higher id. Columns missing in old formats get their defaults (or DERIVED_COLUMNS); local
  * columns (LOCAL_COLUMNS) in the file are skipped, the caller refills them (repairNameKeys,
- * linkCommentAuthors).
+ * linkCommentAuthors). Meeting rows are checked first (restore-checks.ts): limits and the shape of their JSON,
+ * dates and times.
  */
 export function replaceAccountData(
   sqlite: Database.Database,
@@ -69,6 +71,8 @@ export function replaceAccountData(
   sequences: Sequences = {},
 ): void {
   if (!sqlite.inTransaction) throw new Error("replaceAccountData needs a transaction");
+  const overLimit = limitProblem(data);
+  if (overLimit !== null) throw new RowError(overLimit.table, undefined, overLimit.message);
   sqlite.pragma("defer_foreign_keys = ON");
   const local = LOCAL_SETTING_KEYS.map(() => "?").join(", ");
   for (const table of EXPORT_TABLES.toReversed()) {
@@ -85,6 +89,8 @@ export function replaceAccountData(
       if (table === "settings" && SKIPPED_SETTING_KEYS.has(row.key)) continue;
       const unknown = Object.keys(row).filter((name) => !columns.has(name));
       if (unknown.length > 0) throw new RowError(table, row.id, `unknown column ${unknown.join(", ")}`);
+      const problem = rowProblem(table, row);
+      if (problem !== null) throw new RowError(table, row.id ?? row.occurs_on, problem);
       const values: Record<string, unknown> = { ...insertValues(table, row), account_id: accountId };
       const names = Object.keys(values);
       const key = names.join("\u0000");
