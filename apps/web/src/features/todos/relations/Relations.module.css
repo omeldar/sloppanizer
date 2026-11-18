@@ -364,3 +364,27 @@
   display: flex;
   gap: 6px;
 }
+
+/* Meetings the todo is on */
+.meetingRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--strip);
+}
+
+.meetingRow .webLinkMain {
+  flex: 1 1 200px;
+}
+
+.meetingActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}

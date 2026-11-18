@@ -1,6 +1,7 @@
 import type {
   Meeting,
   MeetingOccurrence,
+  MeetingTodo,
   Series,
   Standup,
   StandupItem,
@@ -89,6 +90,22 @@ export function makeStandup(items: StandupItem[], overrides: Partial<Standup> = 
     counts,
     said: [],
     dismissedCount: 0,
+    ...overrides,
+  };
+}
+
+/** A todo added by hand to meeting 7. */
+export function makeMeetingTodo(
+  id: number,
+  title: string,
+  overrides: Partial<MeetingTodo> = {},
+): MeetingTodo {
+  return {
+    todo: { id, title, status: "open" },
+    project: null,
+    parent: null,
+    dueOn: null,
+    addedAt: T,
     ...overrides,
   };
 }
