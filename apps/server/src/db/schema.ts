@@ -691,6 +691,34 @@ export const standupMarks = sqliteTable(
   ],
 );
 
+/**
+ * A todo added by hand to a meeting: it is on every date of the meeting until removed. Deleting the
+ * meeting or the todo removes the link.
+ */
+export const meetingTodos = sqliteTable(
+  "meeting_todos",
+  {
+    accountId: accountId(),
+    meetingId: integer("meeting_id").notNull(),
+    todoId: integer("todo_id").notNull(),
+    addedAt: text("added_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.meetingId, t.todoId] }),
+    foreignKey({
+      name: "meeting_todos_meeting_fk",
+      columns: [t.accountId, t.meetingId],
+      foreignColumns: [meetings.accountId, meetings.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "meeting_todos_todo_fk",
+      columns: [t.accountId, t.todoId],
+      foreignColumns: [todos.accountId, todos.id],
+    }).onDelete("cascade"),
+    index("meeting_todos_todo_idx").on(t.accountId, t.todoId),
+  ],
+);
+
 /** Every table with a per-account id (counted in account_sequences). */
 export const ID_TABLES = [
   "projects",
