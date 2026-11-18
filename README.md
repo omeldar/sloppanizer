@@ -15,6 +15,8 @@ they sat untouched, and tells you why each one is where it is.
 - Notes: Markdown pages, alone or in a project, pinned ones first.
 - Paste or drop images and files into any Markdown field; images show inline, other files are downloads.
 - Board (Open, In progress, Blocked, Done) and a week planner, both with drag and drop and keys.
+- Recurring: a view of every repeating todo with its next date and history. Time planned for a todo that
+  repeats on a schedule repeats with it on every date; change one date, this and following, or all.
 - Planner: reserve time in a week calendar for a todo or with a title (click a free slot, drag a todo from To
   plan or the Day row onto a day, drag a block to move or resize it); todos planned for a day without a time wait in a row above it. Phones show one day at a time.
   Settings, Calendar feed gives a secret link to subscribe to in Google Calendar, Apple Calendar or Outlook.
@@ -101,6 +103,9 @@ Settings (environment of the service, all optional): `ORGANIZER_PORT` (4711), `O
 - Search: `GET /api/v1/search?q=...` over todos, notes, comments and people.
 - Web links: `POST /api/v1/todos/{id}/urls` (`{ urls: [{ url, label? }] }`), `PATCH`/`DELETE`
   `/api/v1/todos/{id}/urls/{urlId}`; `urls` on `POST /api/v1/todos` too.
+- Repeating todos: `GET /api/v1/todos/recurring`; planned time that repeats with one:
+  `POST`/`GET`/`DELETE /api/v1/todos/{id}/plan`, `PATCH /api/v1/todos/{id}/plan/{date}` (this, following or
+  all), `GET /api/v1/blocks/series?from=&to=` for its dates.
 - Planner: `GET /api/v1/blocks?from=YYYY-MM-DD&to=YYYY-MM-DD[&todoId=]` (days in the account's time zone, at
   most 62), `POST /api/v1/blocks` (`{ todoId? , title?, startAt, endAt }`, ISO instants), `PATCH`/`DELETE`
   `/api/v1/blocks/{id}`.
@@ -151,8 +156,9 @@ Tools:
   contact count), `export_to_folder` (writes an export zip to the export folder).
 - Setup: `list_projects`, `create_project`, `list_labels`, `create_label`.
 - Web links: `create_todo` takes `links`; `add_web_link`, `remove_web_link`.
-- Planner (local time): `list_plan`, `plan_time` (a todo or a title, a day, start and end or minutes),
-  `move_block`, `delete_block`.
+- Planner (local time): `list_plan` (blocks, planned dates of repeating todos, meetings), `plan_time` (a
+  todo or a title, a day, start and end or minutes; `repeat` for a repeating todo), `move_block`,
+  `delete_block`, `list_recurring`.
 
 Restore, settings and tokens are not offered as tools.
 
@@ -230,6 +236,7 @@ Off while typing in a field; the status bar then shows `insert`. Press `?` in th
 | `1` to `4` | Priority critical, high, medium, low |
 | `g n` / `g i` / `g l` / `g p` / `g s` | Go to Next up, Inbox, Labels, People, Settings |
 | `g b` / `g w` / `g o` | Go to Board, Week, Notes |
+| `g t` / `g m` / `g r` | Go to Planner, Meetings, Recurring |
 | `n` | New note |
 | `/` | Search page |
 | `o` / `m` | On a todo: contacts / write a comment (`ctrl+Enter` sends) |

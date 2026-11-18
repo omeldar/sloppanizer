@@ -88,3 +88,40 @@ banner is a grid row under the top bar, so it never covers the tab bar or the pa
 **Not done here.** Bumping to the first real version (proposed 1.0.0) is part of the next release, by
 `pnpm release`, when Eldar says to release.
 
+## 2026-11-18 Recurring todos: their own view, and planned time that repeats (#12)
+
+The full version was built (series with single changes), not the fallback.
+
+**A repeat of todos is a chain.** Marking a repeating todo done makes the next todo (recurrence_prev_id
+points back), as before. The Recurring view shows each chain once by its newest todo: rule, next date,
+how often it was done, planned time. Done never hides it there.
+
+**Planned time is a series owned by the chain.** It is a `series` row with owner_kind 'todo' and todo_id =
+the chain's open todo, moved to the next todo when one is made and back when an untouched next is undone
+(services/repeat-plan-owner.ts). Deleting the open todo deletes its planned time (cascade), like single
+blocks. One planned repeat per chain (with parts after "this and following"); more time is single blocks.
+
+**Its own rule, copied from the todo's.** Planning makes a schedule rule from the todo's repeat, moved to
+the weekday (or day of month) it was planned on: time planned on Tuesday for a Monday todo comes back every
+Tuesday. Changing the todo's rule later leaves the planned time as it is; stopping the repeat (no rule, or
+counted from done) or passing its last date ends the planned time today, and past dates stay as history.
+
+**Done comes from the todos, not from the series.** A planned date belongs to the newest todo of the chain
+dated on or before it (shared `todoForDate`); it shows done when that todo is done. So no "done" exception
+kind was needed; series_exceptions stay moved or cancelled.
+
+**Repeats counted from the done date get no planned repeat.** Their dates are not known ahead; time for
+them is planned one date at a time (the dialog and the API say so).
+
+**This / following / all** work exactly like meetings: the edit logic moved from meetings into
+services/series-editor.ts, which takes an owner. Cancelling all removes the planned time.
+
+**Elsewhere.** The calendar feed has one event per planned date (moved ones at their new time, cancelled
+ones left out, UID per date). MCP: list_plan shows planned dates, plan_time takes `repeat`, list_recurring
+lists the repeats; changing single dates stays in the app, like meeting dates. Export format 8 carries the
+rows; a todo's Markdown lists its planned time. All of it is scoped per account like the rest.
+
+**Migration note.** Drizzle runs migrations in one transaction with foreign keys on, so `PRAGMA
+foreign_keys=OFF` in a generated table rebuild does nothing and the drop cascades. 0008 keeps
+series_exceptions aside during the rebuild; check any future generated rebuild for the same.
+

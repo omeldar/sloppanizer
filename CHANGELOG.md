@@ -15,6 +15,12 @@ app shows "Sloppanizer is updating".
 - A banner says when Sloppanizer is updating (the server is still on the previous release for a few
   minutes) and when a new version is ready in an old open tab, with a Reload button (#16).
 
+- Recurring view (`g r`): every repeating todo once, with its rule, next date, how often it was done
+  and its planned time. Marking one done never hides it (#12).
+- Planned time repeats with a repeating todo: plan it once and it comes back on every date, also after
+  one is done. Move, resize or remove one date, this and following, or all, like a calendar. The calendar
+  feed, MCP (`list_plan`, `plan_time` with `repeat`, `list_recurring`) and exports include it (#12).
+
 ## 0.1.0
 
 Everything before numbered releases: todos, notes, people, the planner, meetings, accounts, the hosted
