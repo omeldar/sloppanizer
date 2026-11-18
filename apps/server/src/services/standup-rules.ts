@@ -5,7 +5,8 @@ import type { StandupKind, TodoStatus } from "@organizer/shared";
  * per standup with its cutoff: the later of the standup's window start and its newest mark there.
  *
  * - done: done after the cutoff (later comments do not bring it back).
- * - blocked: an update or comment after the cutoff.
+ * - blocked: an update or comment after the cutoff. A blocked todo this standup never marked is
+ *   always on the list, also without changes, until it is said or dismissed (like in progress).
  * - in progress: "started" when it moved to in progress after the cutoff, else "updated" when it has
  *   an update or comment after it. A todo in progress this standup never marked is always on the list
  *   (the first standup shows everything in progress), as "started" when nothing else is new.
@@ -43,8 +44,8 @@ export function mayBeItem(
   marked: boolean,
 ): boolean {
   if (todo.status === "done") return todo.doneAt !== null && todo.doneAt > cutoff;
-  if (todo.status === "in_progress" && !marked) return true;
-  return todo.status !== "open" && todo.lastActivityAt > cutoff;
+  if (todo.status === "open") return false;
+  return !marked || todo.lastActivityAt > cutoff;
 }
 
 const atRest = (todo: RuleTodo): string => todo.statusSince ?? todo.lastActivityAt;
@@ -63,7 +64,10 @@ export function classify(
   if (todo.status === "done") return { kind: "done", at: todo.doneAt as string };
   const fresh = activity.filter((a) => a.createdAt > cutoff);
   const newest = fresh.reduce((max, a) => (a.createdAt > max ? a.createdAt : max), "");
-  if (todo.status === "blocked") return newest === "" ? null : { kind: "blocked", at: newest };
+  if (todo.status === "blocked") {
+    if (newest !== "") return { kind: "blocked", at: newest };
+    return marked ? null : { kind: "blocked", at: atRest(todo) };
+  }
   if (fresh.some((a) => a.start === true)) return { kind: "started", at: newest };
   if (newest !== "") return { kind: "updated", at: newest };
   return marked ? null : { kind: "started", at: atRest(todo) };

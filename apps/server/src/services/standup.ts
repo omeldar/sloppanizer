@@ -75,8 +75,8 @@ interface Listed extends Candidate {
 }
 
 /**
- * Todos that can be on a list: in progress, blocked with activity after `since` (the earliest window
- * of the lists asked for) or done after it, with their label ids when a filter needs them.
+ * Todos that can be on a list: in progress or blocked, or done after `since` (the earliest window of
+ * the lists asked for), with their label ids when a filter needs them.
  */
 function candidates(sc: Scoped, since: string, withLabels: boolean): Listed[] {
   const rows = sc.db
@@ -95,8 +95,7 @@ function candidates(sc: Scoped, since: string, withLabels: boolean): Listed[] {
         sc,
         todos,
         or(
-          eq(todos.status, "in_progress"),
-          and(eq(todos.status, "blocked"), gt(todos.lastActivityAt, since)),
+          inArray(todos.status, ["in_progress", "blocked"]),
           and(eq(todos.status, "done"), gt(todos.doneAt, since)),
         ),
       ),

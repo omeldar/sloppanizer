@@ -59,4 +59,21 @@ describe("standup rules", () => {
     expect(classify(blocked, [{ createdAt: AFTER }], CUTOFF, true)).toEqual({ kind: "blocked", at: AFTER });
     expect(classify(blocked, [], AFTER, true)).toBeNull();
   });
+
+  it("always lists a blocked todo the standup never marked, also without changes", () => {
+    // Blocked long before the window, nothing since: on the list at the time it was blocked.
+    const stuck = todo({ status: "blocked", lastActivityAt: BEFORE, statusSince: BEFORE });
+    expect(mayBeItem(stuck, CUTOFF, false)).toBe(true);
+    expect(classify(stuck, [], CUTOFF, false)).toEqual({ kind: "blocked", at: BEFORE });
+    // No status change in the history (e.g. restored): the last activity instead.
+    expect(classify(todo({ status: "blocked" }), [], CUTOFF, false)).toEqual({
+      kind: "blocked",
+      at: BEFORE,
+    });
+    // Once said or dismissed it stays away until there is news.
+    expect(mayBeItem(stuck, CUTOFF, true)).toBe(false);
+    expect(classify(stuck, [], CUTOFF, true)).toBeNull();
+    const news = todo({ status: "blocked", lastActivityAt: LATER, statusSince: BEFORE });
+    expect(classify(news, [{ createdAt: LATER }], AFTER, true)).toEqual({ kind: "blocked", at: LATER });
+  });
 });
