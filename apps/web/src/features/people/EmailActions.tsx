@@ -1,17 +1,14 @@
-import { mailtoUrl, teamsChatUrl } from "@organizer/shared";
+import { mailtoUrl } from "@organizer/shared";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import styles from "./People.module.css";
 
-/** Mail, Teams chat and Copy for a person's address. */
+/** Mail and Copy for a person's address. */
 export function EmailActions({ email }: { email: string }) {
   const toast = useToast();
   return (
     <span className={styles.emailActions}>
       <a href={mailtoUrl(email)} className={styles.action}>
         Mail
-      </a>
-      <a href={teamsChatUrl(email)} target="_blank" rel="noreferrer noopener" className={styles.action}>
-        Teams chat
       </a>
       <button
         type="button"

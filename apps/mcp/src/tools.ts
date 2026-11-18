@@ -49,7 +49,9 @@ import {
   UpdateTodo,
   addDays as addLocalDays,
   CalendarDate as PlanDate,
+  formatDate,
   localTimeToInstant,
+  type MeetingOccurrence,
   type TimeBlock,
   toLocalDate as planLocalDate,
   toLocalTime,
@@ -57,6 +59,7 @@ import {
 } from "@organizer/shared";
 import { z } from "zod";
 import { type Api, ApiError, ToolError } from "./api.ts";
+import { registerMeetingTools } from "./meeting-tools.ts";
 import {
   activityLine,
   type DateContext,
@@ -64,6 +67,7 @@ import {
   labelLine,
   nextUpText,
   noteDetail,
+  occurrenceLine,
   noteLine,
   peopleStatsText,
   personDetail,
@@ -391,7 +395,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       const c = ctx();
       const lines = [
         `Account ${me.account.username}`,
-        `Today ${c.today} (${c.timeZone})`,
+        `Today ${formatDate(c.today)} (${c.timeZone})`,
         statsLine(stats, c),
       ];
       if (plan) lines.push("", "Planned today (list_plan shows more days):", blockLines(plan));
@@ -980,10 +984,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       'Short hint shown next to the name, e.g. "Platform team, Basel" (tells namesakes apart).',
     ),
     team: CreatePerson.shape.team.describe('Team or department, e.g. "Network team".'),
-    email: CreatePerson.shape.email.describe(
-      "Email address (enables mail and chat links); empty text removes it.",
-    ),
+    email: CreatePerson.shape.email.describe("Email address (enables the mail link); empty text removes it."),
     notes: CreatePerson.shape.notesMd.describe("Longer notes about the person in Markdown."),
+    languages: CreatePerson.shape.languages.describe(
+      'Languages to use with them: "de" (German), "en" (English), both, or [] for not set. Replaces the full set.',
+    ),
   };
 
   tool(
@@ -991,7 +996,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     {
       title: "Create person",
       description:
-        "Add a person to the directory, with team, email, topics they help with and person tags. create_todo " +
+        "Add a person to the directory, with team, email, languages, topics they help with and person tags. create_todo " +
         "and update_todo also create people by name. Fails if the name exists, unless allowDuplicate is true " +
         "(then give a note that tells them apart).",
       inputSchema: {
@@ -1017,7 +1022,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     {
       title: "Update person",
       description:
-        "Change a person: name, short note, team, email, notes, topics and tags. topics/tags replace the full " +
+        "Change a person: name, short note, team, email, notes, languages, topics and tags. topics/tags replace the full " +
         "set; addTopics/removeTopics and addTags/removeTags change only those. Does not touch their todos.",
       inputSchema: {
         person: PersonInput.describe('Person id, or "First Last" (exact name).'),
@@ -1387,23 +1392,33 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   const blockLine = (b: TimeBlock): string => {
     const day = planLocalDate(b.startAt, deps.timeZone);
     const endDay = planLocalDate(b.endAt, deps.timeZone);
-    const endText = `${endDay === day ? "" : `${endDay} `}${toLocalTime(b.endAt, deps.timeZone)}`;
+    const endText = `${endDay === day ? "" : `${formatDate(endDay)} `}${toLocalTime(b.endAt, deps.timeZone)}`;
     const what = b.todo
       ? `#${b.todo.id} ${b.todo.title}${b.todo.status === "done" ? " (done)" : ""}`
       : b.title;
     const project = b.project ? ` [${b.project.name}]` : "";
-    return `block ${b.id} | ${day} ${toLocalTime(b.startAt, deps.timeZone)}-${endText} | ${what}${project}`;
+    return `block ${b.id} | ${formatDate(day)} ${toLocalTime(b.startAt, deps.timeZone)}-${endText} | ${what}${project}`;
   };
   const blockLines = (blocks: readonly TimeBlock[]): string =>
     blocks.length === 0 ? "Nothing planned." : blocks.map(blockLine).join("\n");
+  /** Blocks and meeting dates in one list, by start. */
+  const planLines = (blocks: readonly TimeBlock[], meetings: readonly MeetingOccurrence[]): string =>
+    [
+      ...blocks.map((b) => ({ startAt: b.startAt, line: blockLine(b) })),
+      ...meetings.map((o) => ({ startAt: o.startAt, line: occurrenceLine(o, deps.timeZone) })),
+    ]
+      .toSorted((a, b) => a.startAt.localeCompare(b.startAt))
+      .map((x) => x.line)
+      .join("\n") || "Nothing planned.";
 
   tool(
     "list_plan",
     {
       title: "List planned time",
       description:
-        "The user's planner: time blocks reserved for todos (or with their own title) between two days, " +
-        "in local time. Default: today and the next 6 days. Use it before plan_time to find free time.",
+        "The user's planner: time blocks reserved for todos (or with their own title) and meeting dates " +
+        "between two days, in local time. Default: today and the next 6 days. Use it before plan_time to " +
+        "find free time.",
       inputSchema: {
         from: PlanDate.optional().describe("First day YYYY-MM-DD (default today)."),
         to: PlanDate.optional().describe("Last day YYYY-MM-DD (default from + 6)."),
@@ -1415,8 +1430,18 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async (args) => {
       const from = args.from ?? ctx().today;
       const to = args.to ?? addLocalDays(from, 6);
-      const blocks = await api.get<TimeBlock[]>("/blocks", { from, to, todoId: args.todo });
-      return out(args.format, blocks, (data) => `Plan ${from} to ${to}:\n${blockLines(data)}`);
+      const [blocks, meetings] = await Promise.all([
+        api.get<TimeBlock[]>("/blocks", { from, to, todoId: args.todo }),
+        // Meetings are busy too, but not when asking for one todo's blocks; an older server has none.
+        args.todo === undefined
+          ? api.get<MeetingOccurrence[]>("/meetings/occurrences", { from, to }).catch(() => [])
+          : Promise.resolve([]),
+      ]);
+      return out(
+        args.format,
+        { blocks, meetings },
+        (data) => `Plan ${formatDate(from)} to ${formatDate(to)}:\n${planLines(data.blocks, data.meetings)}`,
+      );
     },
   );
 
@@ -1520,4 +1545,6 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       return `Deleted block ${args.block}.`;
     },
   );
+
+  registerMeetingTools(tool, deps);
 }

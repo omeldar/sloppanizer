@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatDate,
+  formatDateTime,
+  formatDayMonth,
   addDays,
   localTimeToInstant,
   toLocalTime,
@@ -9,7 +12,6 @@ import {
   isValidTimeZone,
   startOfLocalDay,
   toLocalDate,
-  toLocalDateTime,
   weekDays,
 } from "./dates.ts";
 
@@ -162,11 +164,44 @@ describe("weekDays", () => {
   });
 });
 
-describe("toLocalDateTime", () => {
+describe("formatDate", () => {
+  it("writes day, month and year with two-digit day and month", () => {
+    expect(formatDate("2026-10-03")).toBe("03.10.2026");
+    expect(formatDate("2026-01-09")).toBe("09.01.2026");
+    expect(formatDate("2026-12-31")).toBe("31.12.2026");
+    expect(formatDate("2027-01-01")).toBe("01.01.2027");
+  });
+
+  it("leaves anything that is not a calendar date alone", () => {
+    expect(formatDate("")).toBe("");
+    expect(formatDate("2026-11-12T10:00:00Z")).toBe("2026-11-12T10:00:00Z");
+  });
+});
+
+describe("formatDayMonth", () => {
+  it("drops the year and keeps the trailing dot", () => {
+    expect(formatDayMonth("2026-10-03")).toBe("03.10.");
+    expect(formatDayMonth("2026-01-09")).toBe("09.01.");
+    expect(formatDayMonth("2026-12-31")).toBe("31.12.");
+  });
+
+  it("also takes a year date (MM-DD) from a yearly repeat", () => {
+    expect(formatDayMonth("03-14")).toBe("14.03.");
+    expect(formatDayMonth("02-29")).toBe("29.02.");
+    expect(formatDayMonth("3-14")).toBe("3-14");
+  });
+});
+
+describe("formatDateTime", () => {
   it("formats the wall clock in the zone with minutes", () => {
-    expect(toLocalDateTime("2026-11-12T13:03:59.000Z", PARIS)).toBe("2026-11-12 14:03");
-    expect(toLocalDateTime("2026-07-01T22:15:00.000Z", PARIS)).toBe("2026-07-02 00:15");
-    expect(toLocalDateTime("2026-12-31T23:00:00.000Z", "UTC")).toBe("2026-12-31 23:00");
+    expect(formatDateTime("2026-11-12T13:03:59.000Z", PARIS)).toBe("12.11.2026 14:03");
+    expect(formatDateTime("2026-07-01T22:15:00.000Z", PARIS)).toBe("02.07.2026 00:15");
+    expect(formatDateTime("2026-12-31T23:00:00.000Z", "UTC")).toBe("31.12.2026 23:00");
+  });
+
+  it("takes the date of the zone across a year boundary", () => {
+    expect(formatDateTime("2026-12-31T23:30:00.000Z", PARIS)).toBe("01.01.2027 00:30");
+    expect(formatDateTime("2027-01-01T03:00:00.000Z", "America/New_York")).toBe("31.12.2026 22:00");
   });
 });
 

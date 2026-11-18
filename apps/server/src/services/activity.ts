@@ -42,7 +42,7 @@ function withCurrentTitles(value: unknown, titles: ReadonlyMap<number, string>):
  * Event data as clients see it: description texts become their lengths, project ids become
  * { id, name|null } (null name = deleted project), people_changed always has a role.
  */
-function normalize(rows: readonly EventRow[], sc: Scoped): ActivityEvent[] {
+export function normalizeEvents(rows: readonly EventRow[], sc: Scoped): ActivityEvent[] {
   const parsed = rows.map((row) => ({ row, data: JSON.parse(row.data) as unknown }));
   const ids = parsed
     .filter(({ row }) => row.kind === "project_changed")
@@ -122,7 +122,7 @@ export function getActivity(sc: Scoped, todoId: number): Activity {
     .limit(ACTIVITY_CAP)
     .all();
   const items: ActivityItem[] = [
-    ...normalize(eventRows, sc).map((event) => ({ type: "event" as const, event })),
+    ...normalizeEvents(eventRows, sc).map((event) => ({ type: "event" as const, event })),
     ...commentRows(sc, todoId).map((row) => ({ type: "comment" as const, comment: toComment(row) })),
   ];
   items.sort(

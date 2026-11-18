@@ -1,6 +1,7 @@
 import type { PersonStatMonth } from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
 import type { CSSProperties } from "react";
+import { formatMonth } from "../../lib/format.ts";
 import { usePersonStats } from "../../lib/queries.ts";
 import styles from "./PeopleStats.module.css";
 import { daysText, tookText } from "./stats.ts";
@@ -63,7 +64,7 @@ export function PersonStats({ personId }: { personId: number }) {
 }
 
 function MonthBar({ month, max }: { month: PersonStatMonth; max: number }) {
-  const label = `${month.month}: ${month.requested} requested, ${month.done} done, ${month.contact} as contact`;
+  const label = `${formatMonth(month.month)}: ${month.requested} requested, ${month.done} done, ${month.contact} as contact`;
   return (
     <li
       className={styles.month}

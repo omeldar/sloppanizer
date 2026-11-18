@@ -2,7 +2,7 @@ import { describeRecurrence, ordinal, type RecurrenceRule, WEEKDAYS, type Weekda
 import { type FormEvent, useId, useState } from "react";
 import { Popover } from "../../../components/Popover.tsx";
 import { Button, FieldButton } from "../../../components/ui.tsx";
-import { today as localToday } from "../../../lib/format.ts";
+import { formatDate, today as localToday } from "../../../lib/format.ts";
 import { checkRule, type Draft, draftFrom, presets, ruleFrom, sameRule, WEEKDAY_SHORT } from "./repeat.ts";
 import styles from "./Repeat.module.css";
 
@@ -23,10 +23,12 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   /** Saves the rule (null stops repeating). */
   onChange: (rule: RecurrenceRule | null) => void;
+  /** Meetings: always on a schedule, so no "Does not repeat" and no counting from done. */
+  scheduleOnly?: boolean;
 }
 
 /** The Repeat field: plain words for the rule, a popover with presets and a custom form. */
-export function RepeatField({ value, anchor, open, onOpenChange, onChange }: Props) {
+export function RepeatField({ value, anchor, open, onOpenChange, onChange, scheduleOnly }: Props) {
   const hintId = useId();
   if (!anchor) {
     return (
@@ -54,6 +56,7 @@ export function RepeatField({ value, anchor, open, onOpenChange, onChange }: Pro
         <RepeatPanel
           value={value}
           anchor={anchor}
+          scheduleOnly={scheduleOnly}
           onPick={(rule) => {
             onOpenChange(false);
             onChange(rule);
@@ -68,10 +71,12 @@ export function RepeatPanel({
   value,
   anchor,
   onPick,
+  scheduleOnly = false,
 }: {
   value: RecurrenceRule | null;
   anchor: string;
   onPick: (rule: RecurrenceRule | null) => void;
+  scheduleOnly?: boolean | undefined;
 }) {
   const today = localToday();
   const choices = presets(anchor);
@@ -86,24 +91,27 @@ export function RepeatPanel({
         today={today}
         onSave={onPick}
         onBack={() => setCustom(false)}
+        scheduleOnly={scheduleOnly}
       />
     );
   }
   return (
     <div className={styles.panel} role="group" aria-label="Repeat">
       <ul className={styles.choices}>
-        <li>
-          <button
-            type="button"
-            className={styles.choice}
-            aria-pressed={value === null}
-            onClick={() => onPick(null)}
-            // oxlint-disable-next-line jsx-a11y/no-autofocus -- the panel opens to pick
-            autoFocus={value === null}
-          >
-            Does not repeat
-          </button>
-        </li>
+        {!scheduleOnly && (
+          <li>
+            <button
+              type="button"
+              className={styles.choice}
+              aria-pressed={value === null}
+              onClick={() => onPick(null)}
+              // oxlint-disable-next-line jsx-a11y/no-autofocus -- the panel opens to pick
+              autoFocus={value === null}
+            >
+              Does not repeat
+            </button>
+          </li>
+        )}
         {choices.map((preset) => {
           const on = value !== null && sameRule(preset.rule, value, anchor);
           const check = checkRule(preset.rule, anchor, today);
@@ -144,14 +152,19 @@ function CustomForm({
   today,
   onSave,
   onBack,
+  scheduleOnly,
 }: {
   value: RecurrenceRule | null;
   anchor: string;
   today: string;
   onSave: (rule: RecurrenceRule) => void;
   onBack: () => void;
+  scheduleOnly: boolean;
 }) {
-  const [draft, setDraft] = useState<Draft>(() => draftFrom(value, anchor));
+  const [draft, setDraft] = useState<Draft>(() => ({
+    ...draftFrom(value, anchor),
+    ...(scheduleOnly && { basis: "schedule" as const }),
+  }));
   const set = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }));
   const check = checkRule(ruleFrom(draft), anchor, today);
   const pattern = draft.basis === "schedule";
@@ -279,36 +292,38 @@ function CustomForm({
           <span>On</span>
           <input
             className={styles.text}
-            aria-label="Date in the year (MM-DD)"
+            aria-label="Day and month (dd.MM.)"
             value={draft.yearDate}
-            maxLength={5}
-            placeholder="03-14"
+            maxLength={6}
+            placeholder="14.03."
             onChange={(e) => set({ yearDate: e.target.value })}
           />
         </label>
       )}
 
-      <fieldset className={styles.fieldset}>
-        <legend className={styles.legend}>Count the next one</legend>
-        <label className={styles.row}>
-          <input
-            type="radio"
-            name="basis"
-            checked={draft.basis === "schedule"}
-            onChange={() => set({ basis: "schedule" })}
-          />
-          <span>from the schedule</span>
-        </label>
-        <label className={styles.row}>
-          <input
-            type="radio"
-            name="basis"
-            checked={draft.basis === "done"}
-            onChange={() => set({ basis: "done" })}
-          />
-          <span>from when it is done</span>
-        </label>
-      </fieldset>
+      {!scheduleOnly && (
+        <fieldset className={styles.fieldset}>
+          <legend className={styles.legend}>Count the next one</legend>
+          <label className={styles.row}>
+            <input
+              type="radio"
+              name="basis"
+              checked={draft.basis === "schedule"}
+              onChange={() => set({ basis: "schedule" })}
+            />
+            <span>from the schedule</span>
+          </label>
+          <label className={styles.row}>
+            <input
+              type="radio"
+              name="basis"
+              checked={draft.basis === "done"}
+              onChange={() => set({ basis: "done" })}
+            />
+            <span>from when it is done</span>
+          </label>
+        </fieldset>
+      )}
 
       <label className={styles.row}>
         <span>Ends</span>
@@ -329,7 +344,7 @@ function CustomForm({
       <p className={styles.preview} data-problem={!check.ok || undefined} aria-live="polite">
         {check.ok
           ? check.next
-            ? `${check.text}. Next: ${check.next}`
+            ? `${check.text}. Next: ${formatDate(check.next)}`
             : `${check.text}. No next one: the end date has passed.`
           : check.problem}
       </p>

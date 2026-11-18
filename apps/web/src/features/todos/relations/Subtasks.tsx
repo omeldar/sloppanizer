@@ -15,7 +15,7 @@ import { Menu } from "../../../components/Menu.tsx";
 import { useToast } from "../../../components/toast/ToastProvider.tsx";
 import { type KeyBinding, useKeys } from "../../../keyboard/KeyboardProvider.tsx";
 import { errorMessage } from "../../../lib/api.ts";
-import { dueState } from "../../../lib/format.ts";
+import { dueState, formatDate } from "../../../lib/format.ts";
 import { childrenParams, useSavePositions, useTodos } from "../../../lib/queries.ts";
 import { planMove } from "../../../lib/positions.ts";
 import { useTodoActions } from "../useTodoActions.ts";
@@ -200,7 +200,7 @@ function SubtaskRow({
       </Link>
       <span className={styles.rowStatus}>{STATUS_LABELS[todo.status]}</span>
       <span className={styles.rowDue} data-state={todo.dueOn && !done ? dueState(todo.dueOn) : undefined}>
-        {todo.dueOn ?? ""}
+        {todo.dueOn ? formatDate(todo.dueOn) : ""}
       </span>
       <Menu
         label={`Subtask #${todo.id}`}

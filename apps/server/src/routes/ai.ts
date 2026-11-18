@@ -3,10 +3,14 @@ import {
   AiBreakdownResponse,
   AiPlanRequest,
   AiPlanResponse,
+  AiStandupRequest,
+  AiStandupResponse,
   AiSettings,
   API_PREFIX,
   BreakdownAnswer,
+  checkSummary,
   PlanAnswer,
+  StandupSummaryAnswer,
   UpdateAiSettings,
 } from "@organizer/shared";
 import { ApiError } from "../http/errors.ts";
@@ -14,6 +18,7 @@ import { enforce } from "../http/rate-limit.ts";
 import {
   buildBreakdown,
   buildPlan,
+  buildStandupSummary,
   type ClaudeRunner,
   claudeKey,
   getAiSettings,
@@ -24,7 +29,7 @@ import type { AuthServices } from "../services/auth/index.ts";
 import { authOf, type App, ctxOf, type Deps } from "./types.ts";
 
 /**
- * The in-app AI assistant. Settings belong to the browser session. Plan and breakdown answer with the
+ * The in-app AI assistant. Settings belong to the browser session. Plan, breakdown and the standup summary answer with the
  * result when the account uses Claude (the server calls it), or with the prompt when it uses a local
  * Ollama (the browser runs it, the server cannot reach that machine).
  */
@@ -113,6 +118,34 @@ export function aiRoutes(app: App, deps: Deps, auth: AuthServices, claude: Claud
         throw new ApiError("conflict", "No Claude API key yet. Add one under Settings, AI assistant.");
       const answer = await claude({ apiKey, model: settings.claudeModel, prompt, schema: BreakdownAnswer });
       return { mode: "result" as const, answer };
+    },
+  );
+
+  app.post(
+    `${API_PREFIX}/ai/standup`,
+    {
+      schema: {
+        tags,
+        summary: "Sum up a standup's open list in a few lines to read out (not saved)",
+        body: AiStandupRequest,
+        response: { 200: AiStandupResponse },
+      },
+    },
+    async (request) => {
+      const { accountId } = authOf(request);
+      const settings = ready(accountId);
+      const prompt = buildStandupSummary(ctxOf(request, deps), request.body.meetingId, request.body.kinds);
+      if (settings.provider === "ollama") return { mode: "prompt" as const, prompt };
+      const apiKey = claudeKey(deps.db, dataKey, accountId);
+      if (!apiKey)
+        throw new ApiError("conflict", "No Claude API key yet. Add one under Settings, AI assistant.");
+      const answer = await claude({
+        apiKey,
+        model: settings.claudeModel,
+        prompt,
+        schema: StandupSummaryAnswer,
+      });
+      return { mode: "result" as const, answer: checkSummary(answer) };
     },
   );
 }

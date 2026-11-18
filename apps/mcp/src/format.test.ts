@@ -6,6 +6,8 @@ import type {
   Person,
   PersonBrief,
   SearchResult,
+  Standup,
+  StandupItem,
   Todo,
 } from "@organizer/shared";
 import { describe, expect, it } from "vitest";
@@ -15,10 +17,12 @@ import {
   nextUpText,
   noteDetail,
   noteLine,
+  occurrenceLine,
   personDetail,
   personLine,
   personTagLine,
   searchText,
+  standupText,
   statsLine,
   todoDetail,
   todoLine,
@@ -64,6 +68,7 @@ function person(overrides: Partial<Person> = {}): Person {
   return {
     ...max,
     notesMd: "",
+    languages: ["de", "en"],
     topics: ["firewall rules", "VPN"],
     tags: [
       {
@@ -122,7 +127,7 @@ describe("todoLine", () => {
       ctx,
     );
     expect(line).toBe(
-      "#142 open | Renew SSL certs | priority::high, homelab | project homelab | due 2026-11-09 (overdue 2d) | open 41d | req: Anna Meier",
+      "#142 open | Renew SSL certs | priority::high, homelab | project homelab | due 09.11.2026 (overdue 2d) | open 41d | req: Anna Meier",
     );
   });
 
@@ -133,9 +138,9 @@ describe("todoLine", () => {
   });
 
   it("says today and in Nd for upcoming due dates and shows the planned day", () => {
-    expect(todoLine(todo({ dueOn: "2026-11-11" }), ctx)).toContain("due 2026-11-11 (today)");
+    expect(todoLine(todo({ dueOn: "2026-11-11" }), ctx)).toContain("due 11.11.2026 (today)");
     expect(todoLine(todo({ dueOn: "2026-12-01", plannedOn: "2026-11-12" }), ctx)).toContain(
-      "due 2026-12-01 (in 20d) | planned 2026-11-12",
+      "due 01.12.2026 (in 20d) | planned 12.11.2026",
     );
   });
 
@@ -162,7 +167,7 @@ describe("todoLine", () => {
       ctx,
     );
     expect(line).toBe(
-      "#142 done | Renew SSL certs | project homelab | due 2026-11-09 | done 2026-11-04, took 3d 4h",
+      "#142 done | Renew SSL certs | project homelab | due 09.11.2026 | done 04.11.2026, took 3d 4h",
     );
   });
 });
@@ -202,7 +207,7 @@ describe("todoLine step 3 parts", () => {
 describe("todoDetail", () => {
   it("adds dates, people ids and the description", () => {
     const text = todoDetail(todo({ descriptionMd: "Use **certbot**.", requestedBy: [anna] }), ctx);
-    expect(text).toContain("created 2026-10-01 (41d ago)");
+    expect(text).toContain("created 01.10.2026 (41d ago)");
     expect(text).toContain("requested by: Anna Meier (person 7)");
     expect(text.endsWith("Use **certbot**.")).toBe(true);
   });
@@ -241,7 +246,7 @@ describe("nextUpText", () => {
       "Europe/Zurich",
     );
     expect(text.split("\n")).toEqual([
-      "Next up (smart), today 2026-11-11:",
+      "Next up (smart), today 11.11.2026:",
       "1. #142 open | Renew SSL certs | project homelab | open 41d | score 52.4 | why: overdue 2d, priority::high",
       "",
       "Blocked (1):",
@@ -269,7 +274,7 @@ describe("statsLine", () => {
     };
     expect(statsLine(stats, ctx)).toMatch(/^open 1, .*done last 7 days 2; never exported$/);
     expect(statsLine({ ...stats, lastExportAt: "2026-11-01T10:00:00.000Z" }, ctx)).toContain(
-      "last export 2026-11-01 (10d ago)",
+      "last export 01.11.2026 (10d ago)",
     );
   });
 });
@@ -277,13 +282,14 @@ describe("statsLine", () => {
 describe("personLine", () => {
   it("answers whom to ask: team, topics, tags, counts, then the short note", () => {
     expect(personLine(person())).toBe(
-      "person 9 | Max Muster | Network team | topics: firewall rules, VPN | tags: fast reply | contact for 3 (1 open) | note: Basel",
+      "person 9 | Max Muster | Network team | languages: German, English | topics: firewall rules, VPN | tags: fast reply | contact for 3 (1 open) | note: Basel",
     );
     expect(
       personLine(
         person({
           team: "",
           note: "",
+          languages: [],
           topics: [],
           tags: [],
           counts: { requested: 4, requestedOpen: 1, requestedDone: 3, contact: 0, contactOpen: 0 },
@@ -306,21 +312,28 @@ describe("personDetail", () => {
       ctx,
     );
     const lines = text.split("\n");
-    expect(lines.slice(0, 8)).toEqual([
+    expect(lines.slice(0, 9)).toEqual([
       "person 9 | Max Muster",
       "note: Basel",
       "team: Network team",
       "email: (none)",
+      "languages: German, English",
       "topics: firewall rules, VPN",
       "tags: fast reply",
       "requested 0 (0 open, 0 done), contact for 3 (1 open)",
-      "created 2026-10-01 (41d ago), updated 2026-10-01 (41d ago)",
+      "created 01.10.2026 (41d ago), updated 01.10.2026 (41d ago)",
     ]);
     expect(text).toContain("Open todos they requested (0):\nNone.");
     expect(text).toContain(
       "Open todos they are a contact for (1):\n#142 open | Renew SSL certs | project homelab | open 41d | contact: Max Muster",
     );
     expect(text.endsWith("Notes:\nPrefers **Teams** over mail.")).toBe(true);
+    expect(personDetail(person({ languages: ["en"] }), { requested: [], contactFor: [] }, ctx)).toContain(
+      "\nlanguages: English\n",
+    );
+    expect(personDetail(person({ languages: [] }), { requested: [], contactFor: [] }, ctx)).toContain(
+      "\nlanguages: (not set)\n",
+    );
   });
 });
 
@@ -355,7 +368,7 @@ describe("activityLine", () => {
       },
     };
     expect(activityLine(item, "Europe/Zurich")).toBe(
-      "2026-11-12 14:03 you: changed status from Open to Done",
+      "12.11.2026 14:03 you: changed status from Open to Done",
     );
   });
 
@@ -370,7 +383,7 @@ describe("activityLine", () => {
       editedAt: null,
     };
     expect(activityLine({ type: "comment", comment }, "Europe/Zurich")).toBe(
-      "2026-11-12 14:05 planner commented (comment 12): Ordered the part.\n  Arrives Monday.",
+      "12.11.2026 14:05 planner commented (comment 12): Ordered the part.\n  Arrives Monday.",
     );
     expect(
       activityLine({ type: "comment", comment: { ...comment, editedAt: at } }, "Europe/Zurich"),
@@ -394,17 +407,17 @@ describe("notes", () => {
   it("lists a summary on one line", () => {
     const { bodyMd: _body, ...rest } = note;
     expect(noteLine({ ...rest, excerpt: "VLANs\n 10 home" }, ctx)).toBe(
-      "note 4 | Router setup | project homelab | pinned | updated 2026-11-10 | VLANs 10 home",
+      "note 4 | Router setup | project homelab | pinned | updated 10.11.2026 | VLANs 10 home",
     );
     expect(noteLine({ ...rest, project: null, projectId: null, pinnedAt: null, excerpt: "" }, ctx)).toBe(
-      "note 4 | Router setup | no project | updated 2026-11-10",
+      "note 4 | Router setup | no project | updated 10.11.2026",
     );
   });
 
   it("shows the body after the header", () => {
     expect(noteDetail(note, ctx).split("\n")).toEqual([
-      "note 4 | Router setup | project homelab | pinned | updated 2026-11-10",
-      "created 2026-10-01 (41d ago) by you",
+      "note 4 | Router setup | project homelab | pinned | updated 10.11.2026",
+      "created 01.10.2026 (41d ago) by you",
       "",
       "## VLANs",
       "",
@@ -465,7 +478,7 @@ describe("search", () => {
           highlights: [[16, 24]],
           todoId: 142,
           status: null,
-          subtitle: "you, 2026-11-12",
+          subtitle: "you, 12.11.2026",
         },
       ],
       counts: { todo: 3, note: 0, comment: 1, person: 1 },
@@ -477,7 +490,7 @@ describe("search", () => {
       "#142 open | Open the firewall",
       "",
       "Comments:",
-      "comment 12 on #142 | you, 2026-11-12 | asked about the **firewall**",
+      "comment 12 on #142 | you, 12.11.2026 | asked about the **firewall**",
       "",
       "People:",
       "person 9 | Max Muster | Network team | firewall rules | Network team **firewall** rules",
@@ -485,5 +498,90 @@ describe("search", () => {
     expect(searchText({ q: "zz", items: [], counts: { todo: 0, note: 0, comment: 0, person: 0 } })).toBe(
       'Nothing found for "zz".',
     );
+  });
+});
+
+describe("meetings", () => {
+  const occurrence = {
+    meetingId: 2,
+    seriesId: 1,
+    name: "Weekly Standup",
+    type: "standup" as const,
+    occursOn: "2026-11-19",
+    startAt: "2026-11-19T08:00:00.000Z",
+    endAt: "2026-11-19T08:15:00.000Z",
+    status: "scheduled" as const,
+    noteId: null,
+  };
+
+  it("writes a meeting date in local time, moved, cancelled or past midnight", () => {
+    expect(occurrenceLine(occurrence, ctx.timeZone)).toBe(
+      "meeting 2 | 19.11.2026 09:00-09:15 | Weekly Standup",
+    );
+    expect(
+      occurrenceLine(
+        {
+          ...occurrence,
+          status: "moved",
+          startAt: "2026-11-18T22:30:00.000Z",
+          endAt: "2026-11-18T23:30:00.000Z",
+          noteId: 7,
+        },
+        ctx.timeZone,
+      ),
+    ).toBe("meeting 2 | 18.11.2026 23:30-19.11.2026 00:30 | Weekly Standup | moved from 19.11.2026 | note 7");
+    expect(occurrenceLine({ ...occurrence, status: "cancelled" }, ctx.timeZone)).toMatch(/\| cancelled$/);
+  });
+
+  it("groups the standup list by kind with changes, comments and what was said", () => {
+    const item = (id: number, kind: StandupItem["kind"], more: Partial<StandupItem> = {}): StandupItem => ({
+      todo: { id, title: `Todo ${id}`, status: "in_progress" },
+      project: null,
+      parent: null,
+      kind,
+      at,
+      changes: [],
+      newCommentCount: 0,
+      lastComment: null,
+      again: false,
+      ...more,
+    });
+    const standup: Standup = {
+      meetingId: 2,
+      on: "2026-11-19",
+      since: "2026-11-12T08:00:00.000Z",
+      items: [
+        item(1, "done", { project: { id: 3, slug: "lab", name: "Lab", color: "#8B95A5" } }),
+        item(2, "updated", {
+          parent: { id: 9, title: "Rack", status: "open" },
+          changes: ["added subtask #4", 'checked "cables"'],
+          newCommentCount: 2,
+          lastComment: { actor: "you", excerpt: "Waiting\nfor parts", createdAt: at },
+          again: true,
+        }),
+      ],
+      counts: { done: 1, started: 0, updated: 1, blocked: 0 },
+      said: [{ todo: { id: 5, title: "Certs", status: "done" }, project: null, markedAt: at }],
+      dismissedCount: 1,
+    };
+    expect(standupText(standup, "Weekly Standup", ctx.timeZone).split("\n")).toEqual([
+      "Weekly Standup on 19.11.2026: 2 to say (done 1, started 0, updates 1, blocked 0), counting from 12.11.2026 09:00.",
+      "Done:",
+      "- #1 Todo 1 [Lab]",
+      "Updates:",
+      '- #2 Todo 2 (part of #9 Rack) | added subtask #4; checked "cables" | 2 new comments, last by you: "Waiting for parts" | again',
+      "Said on 19.11.2026: #5 Certs",
+      "Dismissed on 19.11.2026: 1",
+    ]);
+    const empty = {
+      ...standup,
+      items: [],
+      counts: { done: 0, started: 0, updated: 0, blocked: 0 },
+      said: [],
+      dismissedCount: 0,
+    };
+    expect(standupText(empty, "Weekly Standup", ctx.timeZone).split("\n")[1]).toBe("Nothing to say.");
+    // Asked only for some kinds while others are open.
+    expect(standupText({ ...standup, items: [] }, "S", ctx.timeZone)).toContain("Nothing of these kinds.");
   });
 });

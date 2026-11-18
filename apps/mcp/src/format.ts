@@ -3,8 +3,14 @@ import {
   daysBetween,
   describeEvent,
   describeRecurrence,
+  formatDate,
+  formatDateTime,
   formatDuration,
   type Label,
+  languageNames,
+  type Meeting,
+  type MeetingOccurrence,
+  type MeetingTodos,
   type NextUp,
   type Note,
   type NoteSummary,
@@ -17,12 +23,15 @@ import {
   type Project,
   type SearchHit,
   type SearchResult,
+  type Standup,
+  type StandupItem,
+  type StandupKind,
   type Stats,
   type Todo,
   type TodoRef,
   type Topic,
   toLocalDate,
-  toLocalDateTime,
+  toLocalTime,
   waitingReason,
 } from "@organizer/shared";
 
@@ -53,7 +62,7 @@ export const personName = (person: Pick<PersonBrief, "displayName">): string => 
 
 /**
  * One line per todo, e.g.
- * `#142 open | Renew SSL certs | priority::high, homelab | project homelab | due 2026-11-09 (overdue 2d) | open 41d | req: Anna Meier`
+ * `#142 open | Renew SSL certs | priority::high, homelab | project homelab | due 09.11.2026 (overdue 2d) | open 41d | req: Anna Meier`
  * and, when they apply, `| 2/5 subtasks | checklist 3/7 | waiting on #12 | repeats every week`.
  */
 export function todoLine(todo: Todo, ctx: DateContext): string {
@@ -62,11 +71,15 @@ export function todoLine(todo: Todo, ctx: DateContext): string {
   parts.push(todo.project ? `project ${todo.project.slug}` : "inbox");
   const done = todo.status === "done";
   if (todo.dueOn)
-    parts.push(done ? `due ${todo.dueOn}` : `due ${todo.dueOn} (${relativeDue(todo.dueOn, ctx.today)})`);
-  if (todo.plannedOn && !done) parts.push(`planned ${todo.plannedOn}`);
+    parts.push(
+      done
+        ? `due ${formatDate(todo.dueOn)}`
+        : `due ${formatDate(todo.dueOn)} (${relativeDue(todo.dueOn, ctx.today)})`,
+    );
+  if (todo.plannedOn && !done) parts.push(`planned ${formatDate(todo.plannedOn)}`);
   if (done && todo.doneAt) {
     const took = todo.durationMs === null ? "" : `, took ${formatDuration(todo.durationMs)}`;
-    parts.push(`done ${toLocalDate(todo.doneAt, ctx.timeZone)}${took}`);
+    parts.push(`done ${formatDate(toLocalDate(todo.doneAt, ctx.timeZone))}${took}`);
   } else {
     parts.push(`open ${Math.max(0, daysBetween(toLocalDate(todo.createdAt, ctx.timeZone), ctx.today))}d`);
   }
@@ -87,8 +100,10 @@ export function todoLines(todos: readonly Todo[], ctx: DateContext, empty = "No 
   return todos.length === 0 ? empty : todos.map((todo) => todoLine(todo, ctx)).join("\n");
 }
 
-const local = (instant: string, ctx: DateContext): string =>
-  `${toLocalDate(instant, ctx.timeZone)} (${ago(toLocalDate(instant, ctx.timeZone), ctx.today)})`;
+const local = (instant: string, ctx: DateContext): string => {
+  const date = toLocalDate(instant, ctx.timeZone);
+  return `${formatDate(date)} (${ago(date, ctx.today)})`;
+};
 
 const contactRef = (p: PersonBrief): string =>
   `${p.displayName} (person ${p.id}${p.team ? `, ${p.team}` : ""})`;
@@ -99,7 +114,7 @@ export function todoDetail(todo: Todo, ctx: DateContext, subtasks: readonly Todo
   if (todo.parent) lines.push(`Subtask of #${todo.parent.id} ${todo.parent.title}`);
   lines.push(`created ${local(todo.createdAt, ctx)}`);
   lines.push(`last activity ${local(todo.lastActivityAt, ctx)}`);
-  if (todo.plannedOn) lines.push(`planned ${todo.plannedOn} (${ago(todo.plannedOn, ctx.today)})`);
+  if (todo.plannedOn) lines.push(`planned ${formatDate(todo.plannedOn)} (${ago(todo.plannedOn, ctx.today)})`);
   if (todo.requestedBy.length > 0) {
     lines.push(
       `requested by: ${todo.requestedBy.map((p) => `${p.displayName} (person ${p.id})`).join(", ")}`,
@@ -139,7 +154,7 @@ export function todoDetail(todo: Todo, ctx: DateContext, subtasks: readonly Todo
 
 export function nextUpText(next: NextUp, timeZone: string): string {
   const ctx = { today: next.today, timeZone };
-  const lines = [`Next up (${next.mode}), today ${next.today}:`];
+  const lines = [`Next up (${next.mode}), today ${formatDate(next.today)}:`];
   if (next.items.length === 0) lines.push("Nothing open. Add todos with create_todo.");
   next.items.forEach((item, index) => {
     const why = item.reasons.map((reason) => reason.label).join(", ");
@@ -171,13 +186,15 @@ const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n =
 
 /**
  * One line per person, e.g.
- * `person 7 | Max Muster | Network team | topics: firewall rules, VPN | tags: fast reply | contact for 3 | note: Basel`.
+ * `person 7 | Max Muster | Network team | languages: German | topics: firewall rules, VPN | tags: fast reply |
+ * contact for 3 | note: Basel`.
  * Takes the brief form too (inside todos and 409 candidates); then only the parts it has.
  */
 export function personLine(person: PersonBrief | Person): string {
   const parts = [`person ${person.id}`, person.displayName];
   if (person.team) parts.push(person.team);
   if ("topics" in person) {
+    if (person.languages.length > 0) parts.push(`languages: ${languageNames(person.languages).join(", ")}`);
     if (person.topics.length > 0) parts.push(`topics: ${person.topics.join(", ")}`);
     if (person.tags.length > 0) parts.push(`tags: ${person.tags.map((t) => t.name).join(", ")}`);
     const { requested, requestedOpen, contact, contactOpen } = person.counts;
@@ -199,6 +216,9 @@ export function personDetail(
   if (person.note) lines.push(`note: ${person.note}`);
   lines.push(`team: ${person.team || "(none)"}`);
   lines.push(`email: ${person.email || "(none)"}`);
+  lines.push(
+    `languages: ${person.languages.length > 0 ? languageNames(person.languages).join(", ") : "(not set)"}`,
+  );
   lines.push(`topics: ${person.topics.length > 0 ? person.topics.join(", ") : "(none)"}`);
   lines.push(`tags: ${person.tags.length > 0 ? person.tags.map((t) => t.name).join(", ") : "(none)"}`);
   lines.push(
@@ -235,7 +255,9 @@ export function personStatLine(stat: PersonStat): string {
 /** The period and totals, then one line per person. */
 export function peopleStatsText(stats: PeopleStats): string {
   const period =
-    stats.from || stats.to ? ` created ${stats.from ?? "any time"} to ${stats.to ?? "today"}` : "";
+    stats.from || stats.to
+      ? ` created ${stats.from ? formatDate(stats.from) : "any time"} to ${stats.to ? formatDate(stats.to) : "today"}`
+      : "";
   const { totals } = stats;
   const median = totals.medianDoneMs === null ? "" : `, median took ${formatDuration(totals.medianDoneMs)}`;
   const role = stats.role === "requester" ? "requesters" : "contacts";
@@ -260,26 +282,26 @@ export function personTagLine(tag: PersonTag): string {
 const indentRest = (text: string): string => text.trim().replaceAll("\n", "\n  ");
 
 /**
- * One line per thread item, oldest first, e.g. `2026-11-12 14:03 you: changed status from Open to Done`;
- * comments carry their text: `2026-11-12 14:05 planner commented (comment 12): Ordered the part.`
+ * One line per thread item, oldest first, e.g. `12.11.2026 14:03 you: changed status from Open to Done`;
+ * comments carry their text: `12.11.2026 14:05 planner commented (comment 12): Ordered the part.`
  */
 export function activityLine(item: ActivityItem, timeZone: string): string {
   if (item.type === "event") {
     const { event } = item;
-    return `${toLocalDateTime(event.createdAt, timeZone)} ${event.actor}: ${describeEvent(event)}`;
+    return `${formatDateTime(event.createdAt, timeZone)} ${event.actor}: ${describeEvent(event)}`;
   }
   const { comment } = item;
   const edited = comment.editedAt ? ", edited" : "";
-  return `${toLocalDateTime(comment.createdAt, timeZone)} ${comment.actor} commented (comment ${comment.id}${edited}): ${indentRest(comment.bodyMd)}`;
+  return `${formatDateTime(comment.createdAt, timeZone)} ${comment.actor} commented (comment ${comment.id}${edited}): ${indentRest(comment.bodyMd)}`;
 }
 
 const oneLine = (text: string): string => text.replace(/\s+/g, " ").trim();
 
-/** `note 4 | Title | project homelab | pinned | updated 2026-11-12 | excerpt` */
+/** `note 4 | Title | project homelab | pinned | updated 12.11.2026 | excerpt` */
 export function noteLine(note: NoteSummary | Note, ctx: DateContext): string {
   const parts = [`note ${note.id}`, note.title, note.project ? `project ${note.project.slug}` : "no project"];
   if (note.pinnedAt) parts.push("pinned");
-  parts.push(`updated ${toLocalDate(note.updatedAt, ctx.timeZone)}`);
+  parts.push(`updated ${formatDate(toLocalDate(note.updatedAt, ctx.timeZone))}`);
   const excerpt = oneLine("excerpt" in note ? note.excerpt : "");
   if (excerpt) parts.push(excerpt);
   return parts.join(" | ");
@@ -372,4 +394,107 @@ export function statsLine(stats: Stats, ctx: DateContext): string {
 export function urlLines(todo: Todo): string {
   if (todo.urls.length === 0) return "No web links.";
   return todo.urls.map((u) => `- link ${u.id}: ${u.label ? `${u.label} ` : ""}<${u.url}>`).join("\n");
+}
+
+// ---------- meetings ----------
+
+/** `meeting 2 | Weekly Standup | standup | every week on Thu, 09:00–09:15 | next 19.11.2026 09:00 | 4 to say` */
+export function meetingLine(meeting: Meeting, timeZone: string): string {
+  const next = meeting.next
+    ? `next ${formatDateTime(meeting.next.startAt, timeZone)}${meeting.next.status === "moved" ? " (moved)" : ""}`
+    : "no next date";
+  const parts = [`meeting ${meeting.id}`, meeting.name, meeting.type, meeting.schedule.text, next];
+  if (meeting.openCount !== null) parts.push(`${meeting.openCount} to say`);
+  return parts.join(" | ");
+}
+
+/** `meeting 2 | 19.11.2026 09:00-09:15 | Weekly Standup`, plus `| moved from 19.11.2026` or `| cancelled`. */
+export function occurrenceLine(o: MeetingOccurrence, timeZone: string): string {
+  const day = toLocalDate(o.startAt, timeZone);
+  const endDay = toLocalDate(o.endAt, timeZone);
+  const end = `${endDay === day ? "" : `${formatDate(endDay)} `}${toLocalTime(o.endAt, timeZone)}`;
+  const parts = [
+    `meeting ${o.meetingId}`,
+    `${formatDate(day)} ${toLocalTime(o.startAt, timeZone)}-${end}`,
+    o.name,
+  ];
+  if (o.status === "moved") parts.push(`moved from ${formatDate(o.occursOn)}`);
+  if (o.status === "cancelled") parts.push("cancelled");
+  if (o.noteId !== null) parts.push(`note ${o.noteId}`);
+  return parts.join(" | ");
+}
+
+const KIND_TITLES: Record<StandupKind, string> = {
+  done: "Done",
+  started: "Started",
+  updated: "Updates",
+  blocked: "Blocked",
+};
+
+/** `- #12 Title [Project] (part of #3 Rack) | changed status ...; ... | 2 new comments, last by you: "..." | again` */
+export function standupItemLine(item: StandupItem): string {
+  const head = [
+    `- #${item.todo.id} ${item.todo.title}`,
+    item.project ? `[${item.project.name}]` : "",
+    item.parent ? `(part of #${item.parent.id} ${item.parent.title})` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const parts = [head];
+  if (item.changes.length > 0) parts.push(item.changes.join("; "));
+  if (item.lastComment) {
+    const count = item.newCommentCount === 1 ? "1 new comment" : `${item.newCommentCount} new comments`;
+    parts.push(`${count}, last by ${item.lastComment.actor}: "${oneLine(item.lastComment.excerpt)}"`);
+  }
+  if (item.again) parts.push("again");
+  return parts.join(" | ");
+}
+
+/** `Weekly Standup: 2 todos added by hand (next date 12.11.2026):` then `- #5 Budget [Lab] | in_progress | due 12.11.2026`. */
+export function meetingTodosText(list: MeetingTodos, name: string): string {
+  const next = list.nextOn === null ? "no next date" : `next date ${formatDate(list.nextOn)}`;
+  if (list.items.length === 0) return `${name} has no todos added by hand (${next}).`;
+  const count = list.items.length === 1 ? "1 todo" : `${list.items.length} todos`;
+  return [
+    `${name}: ${count} added by hand (${next}):`,
+    ...list.items.map((item) =>
+      [
+        [
+          `- #${item.todo.id} ${item.todo.title}`,
+          item.project ? `[${item.project.name}]` : "",
+          item.parent ? `(part of #${item.parent.id} ${item.parent.title})` : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+        item.todo.status,
+        item.dueOn === null ? "" : `due ${formatDate(item.dueOn)}`,
+      ]
+        .filter(Boolean)
+        .join(" | "),
+    ),
+  ].join("\n");
+}
+
+/** The standup list grouped by kind, then what was said and how many were dismissed on the date. */
+export function standupText(standup: Standup, name: string, timeZone: string): string {
+  const { counts } = standup;
+  const total = counts.done + counts.started + counts.updated + counts.blocked;
+  const lines = [
+    `${name} on ${formatDate(standup.on)}: ${total} to say (done ${counts.done}, started ${counts.started}, ` +
+      `updates ${counts.updated}, blocked ${counts.blocked}), counting from ${formatDateTime(standup.since, timeZone)}.`,
+  ];
+  const kinds = Object.keys(KIND_TITLES) as StandupKind[];
+  for (const kind of kinds) {
+    const items = standup.items.filter((i) => i.kind === kind);
+    if (items.length > 0) lines.push(`${KIND_TITLES[kind]}:`, ...items.map(standupItemLine));
+  }
+  if (standup.items.length === 0) lines.push(total === 0 ? "Nothing to say." : "Nothing of these kinds.");
+  if (standup.said.length > 0) {
+    lines.push(
+      `Said on ${formatDate(standup.on)}: ${standup.said.map((s) => `#${s.todo.id} ${s.todo.title}`).join(", ")}`,
+    );
+  }
+  if (standup.dismissedCount > 0)
+    lines.push(`Dismissed on ${formatDate(standup.on)}: ${standup.dismissedCount}`);
+  return lines.join("\n");
 }

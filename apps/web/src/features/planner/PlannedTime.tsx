@@ -2,20 +2,13 @@ import { addDays, type Todo, toLocalDate } from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "../../components/ui.tsx";
-import { timeZone, today } from "../../lib/format.ts";
+import { dayLabel, timeZone, today } from "../../lib/format.ts";
 import { useBlocks } from "../../lib/queries.ts";
 import { useNow } from "../../lib/useNow.ts";
 import relations from "../todos/relations/Relations.module.css";
 import { BlockDialog, type BlockDraft, draftOf } from "./BlockDialog.tsx";
 import styles from "./Planner.module.css";
 import { minutesToTime, nextQuarter, spanText, timeToMinutes } from "./planner.ts";
-
-const DAY = new Intl.DateTimeFormat(undefined, {
-  weekday: "short",
-  month: "short",
-  day: "numeric",
-  timeZone: "UTC",
-});
 
 /** The time planned for a todo (two weeks back, seven weeks ahead) and a button to plan more. */
 export function PlannedTime({ todo }: { todo: Todo }) {
@@ -51,7 +44,6 @@ export function PlannedTime({ todo }: { todo: Todo }) {
       ) : (
         <ul className={styles.plannedList}>
           {list.map((block) => {
-            const day = toLocalDate(block.startAt, timeZone);
             return (
               <li key={block.id}>
                 <button
@@ -60,7 +52,7 @@ export function PlannedTime({ todo }: { todo: Todo }) {
                   data-past={Date.parse(block.endAt) < nowMs || undefined}
                   onClick={() => setDraft(draftOf(block))}
                 >
-                  <span>{DAY.format(new Date(`${day}T12:00:00Z`))}</span>
+                  <span>{dayLabel(toLocalDate(block.startAt, timeZone))}</span>
                   <span className={styles.plannedTime}>{spanText(block, timeZone)}</span>
                 </button>
               </li>

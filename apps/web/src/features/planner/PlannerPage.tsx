@@ -1,36 +1,48 @@
-import { addDays, toLocalTime, weekDays } from "@organizer/shared";
+import { addDays, type MeetingOccurrence, type SeriesScope, toLocalTime, weekDays } from "@organizer/shared";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import {
   type CSSProperties,
   type MouseEvent,
   type PointerEvent,
+  type RefObject,
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { Button, PageHeader } from "../../components/ui.tsx";
-import { timeZone, today } from "../../lib/format.ts";
+import { dayLabel, formatDate, formatDayMonth, timeZone, today, weekdayName } from "../../lib/format.ts";
 import { errorMessage } from "../../lib/api.ts";
 import { useBlocks, useCreateBlock, useNext, useTodos, useUpdateBlock } from "../../lib/queries.ts";
+import { useChangeOccurrence, useDeleteMeeting, useMeetings, useOccurrences } from "../../lib/meetings.ts";
+import { SeriesScopeDialog } from "../../components/SeriesScopeDialog.tsx";
+import { OccurrenceDialog } from "./OccurrenceDialog.tsx";
+import { useEdgeScroll } from "./useEdgeScroll.ts";
 import { useTodoDrag } from "./useTodoDrag.ts";
 import { planDay, useAiSettings } from "../../lib/ai.ts";
 import type { CheckedBlock } from "@organizer/shared";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
+import { useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { BlockDialog, type BlockDraft, draftOf } from "./BlockDialog.tsx";
 import styles from "./Planner.module.css";
 import {
+  blockItem,
   blockSpan,
   blockTitle,
+  MEETING_CANCEL_SCOPES,
+  meetingItem,
+  meetingMoveScopes,
   minutesToTime,
   movedSpan,
   nextQuarter,
-  type PlacedBlock,
-  placeBlocks,
+  type Placed,
+  placeItems,
+  scrollStartMinutes,
   snap,
   spanText,
   timeToMinutes,
-  visibleHours,
 } from "./planner.ts";
 
 const route = getRouteApi("/planner");
@@ -42,12 +54,14 @@ interface Proposal {
   blocks: CheckedBlock[];
   skipped: Set<number>;
 }
-const HOUR_PX = 52;
-const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: "short", timeZone: "UTC" });
-const DAY_NUMBER = new Intl.DateTimeFormat(undefined, { day: "numeric", timeZone: "UTC" });
-const MONTH = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+/** A meeting date change waiting for "this one, following or all". */
+type MeetingChange =
+  | { action: "move"; occurrence: MeetingOccurrence; startAt: string; endAt: string }
+  | { action: "cancel"; occurrence: MeetingOccurrence };
 
-const asDate = (day: string) => new Date(`${day}T12:00:00Z`);
+/** The grid always shows the whole day; it scrolls inside itself. */
+const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+const HOUR_PX = 52;
 
 /** Today and the minutes after local midnight now. */
 function readNow(): { day: string; minutes: number } {
@@ -66,6 +80,8 @@ function useNowMinutes(): { day: string; minutes: number } {
   return state;
 }
 
+const GRID_STYLE = { "--hour": `${HOUR_PX}px`, "--hours": HOURS.length } as CSSProperties;
+
 /**
  * The planner: a week of days with time blocks for todos (or with their own title). Click or tap a
  * free slot to plan time there, a block to change it; drag a todo from To plan or the Day row onto a
@@ -80,6 +96,13 @@ export function PlannerPage() {
   const first = days[0] as string;
   const last = days[6] as string;
   const blocks = useBlocks(first, last);
+  const occurrences = useOccurrences({ from: first, to: last });
+  const meetings = useMeetings();
+  const [openMeeting, setOpenMeeting] = useState<MeetingOccurrence | null>(null);
+  const [meetingChange, setMeetingChange] = useState<MeetingChange | null>(null);
+  const [changeError, setChangeError] = useState<string | null>(null);
+  const changeOccurrence = useChangeOccurrence();
+  const deleteMeeting = useDeleteMeeting();
   const plannedTodos = useTodos({
     plannedFrom: first,
     plannedTo: last,
@@ -98,19 +121,38 @@ export function PlannerPage() {
   const [planning, setPlanning] = useState(false);
 
   const go = (day: string) => void navigate({ to: "/planner", search: day === now.day ? {} : { day } });
+  useKeys([
+    { keys: "PageUp", run: () => go(addDays(selected, -7)), label: "Previous week", group: "Planner" },
+    { keys: "PageDown", run: () => go(addDays(selected, 7)), label: "Next week", group: "Planner" },
+  ]);
 
-  const placedByDay = useMemo(
-    () => new Map(days.map((day) => [day, placeBlocks(blocks.data ?? [], day, timeZone)])),
-    [blocks.data, days],
-  );
-  const hours = visibleHours([...placedByDay.values()].flat());
-  const hourList = Array.from({ length: hours.last - hours.first }, (_, i) => hours.first + i);
-  const gridStyle = { "--hour": `${HOUR_PX}px`, "--hours": hourList.length } as CSSProperties;
+  const placedByDay = useMemo(() => {
+    const items = [
+      ...(blocks.data ?? []).map(blockItem),
+      ...(occurrences.data ?? [])
+        .filter((o) => o.status !== "cancelled")
+        .map((o) =>
+          // A dropped meeting stays where it was dropped while the scope is asked.
+          meetingChange?.action === "move" &&
+          meetingChange.occurrence.meetingId === o.meetingId &&
+          meetingChange.occurrence.occursOn === o.occursOn
+            ? meetingItem(o, meetingChange)
+            : meetingItem(o),
+        ),
+    ];
+    return new Map(days.map((day) => [day, placeItems(items, day, timeZone)]));
+  }, [blocks.data, occurrences.data, meetingChange, days]);
+  // The grid scrolls inside itself; it opens near now on this week, at the start of the day on others.
+  const body = useRef<HTMLDivElement>(null);
+  const [openAt] = useState(() => scrollStartMinutes(days.includes(now.day), now.minutes));
+  useLayoutEffect(() => {
+    if (body.current) body.current.scrollTop = (openAt / 60) * HOUR_PX;
+  }, [openAt]);
 
   const planAt = (day: string, event: MouseEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const minutes = snap(hours.first * 60 + ((event.clientY - rect.top) / HOUR_PX) * 60 - 15);
+    const minutes = snap(((event.clientY - rect.top) / HOUR_PX) * 60 - 15);
     const start = Math.max(0, Math.min(23 * 60, minutes));
     setDraft({ day, start: minutesToTime(start), end: minutesToTime(Math.min(24 * 60, start + 60)) });
   };
@@ -122,8 +164,7 @@ export function PlannerPage() {
   };
 
   const create = useCreateBlock();
-  const { drag, bind } = useTodoDrag({
-    firstHour: hours.first,
+  const { drag, bind, retarget } = useTodoDrag({
     hourPx: HOUR_PX,
     onClick: (todo) => planTodo(todo),
     // A dropped todo gets an hour from where it landed; move or resize the block after.
@@ -141,6 +182,7 @@ export function PlannerPage() {
         { onError: (failure) => toast.show({ tone: "error", message: errorMessage(failure) }) },
       ),
   });
+  useEdgeScroll(body, drag?.active ? drag : null);
 
   const askPlan = async () => {
     if (!ai.data) return;
@@ -167,6 +209,46 @@ export function PlannerPage() {
     toast.show({ message: `Planned ${chosen.length} block${chosen.length === 1 ? "" : "s"}` });
   };
 
+  const applyMeetingChange = (pending: MeetingChange, scope: SeriesScope) => {
+    const { occurrence } = pending;
+    if (pending.action === "cancel" && scope === "all") {
+      deleteMeeting.mutate(occurrence.meetingId, {
+        onSuccess: () => {
+          setMeetingChange(null);
+          toast.show({ message: `Deleted ${occurrence.name}` });
+        },
+        onError: (failure) => setChangeError(errorMessage(failure)),
+      });
+      return;
+    }
+    const change =
+      pending.action === "move"
+        ? { scope, startAt: pending.startAt, endAt: pending.endAt }
+        : { scope: scope === "this" ? ("this" as const) : ("following" as const), cancelled: true as const };
+    changeOccurrence.mutate(
+      { id: occurrence.meetingId, on: occurrence.occursOn, change },
+      {
+        onSuccess: () => {
+          setMeetingChange(null);
+          if (pending.action === "cancel" && scope === "this")
+            toast.show({
+              message: `Cancelled ${occurrence.name} on ${dayLabel(occurrence.occursOn)}`,
+              action: {
+                label: "Undo",
+                run: () =>
+                  changeOccurrence.mutate({
+                    id: occurrence.meetingId,
+                    on: occurrence.occursOn,
+                    change: { scope: "this", cancelled: false },
+                  }),
+              },
+            });
+        },
+        onError: (failure) => setChangeError(errorMessage(failure)),
+      },
+    );
+  };
+
   const planned = new Set((blocks.data ?? []).flatMap((b) => (b.todoId === null ? [] : [b.todoId])));
   const toPlan = (next.data?.items ?? [])
     .map((item) => item.todo)
@@ -176,14 +258,15 @@ export function PlannerPage() {
   const dayTodos = (day: string) =>
     (plannedTodos.data?.items ?? []).filter(
       (todo) =>
-        todo.plannedOn === day && !(placedByDay.get(day) ?? []).some((p) => p.block.todoId === todo.id),
+        todo.plannedOn === day &&
+        !(placedByDay.get(day) ?? []).some((p) => p.item.kind === "block" && p.item.block.todoId === todo.id),
     );
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-fill>
       <PageHeader
         title="Planner"
-        meta={`${MONTH.format(asDate(first))} – ${MONTH.format(asDate(last))}`}
+        meta={`${formatDate(first)} – ${formatDate(last)}`}
         actions={
           <>
             <Button size="sm" onClick={() => go(addDays(selected, -7))} aria-label="Previous week">
@@ -218,10 +301,7 @@ export function PlannerPage() {
       {proposal && proposal.blocks.length > 0 && (
         <div className={styles.proposalBar} role="region" aria-label="Proposed plan">
           <div className={styles.proposalText}>
-            <strong>
-              Proposed for {WEEKDAY.format(asDate(proposal.day))} {DAY_NUMBER.format(asDate(proposal.day))}:
-            </strong>{" "}
-            {proposal.note}
+            <strong>Proposed for {dayLabel(proposal.day)}:</strong> {proposal.note}
           </div>
           <ul className={styles.proposalList}>
             {proposal.blocks.map((b) => (
@@ -262,7 +342,7 @@ export function PlannerPage() {
       )}
 
       <div className={styles.layout}>
-        <div className={styles.calendar} style={gridStyle}>
+        <div className={styles.calendar} style={GRID_STYLE}>
           <div className={styles.dayHeads} role="tablist" aria-label="Days">
             <span className={styles.corner} />
             {days.map((day) => (
@@ -276,8 +356,8 @@ export function PlannerPage() {
                 data-selected={day === selected || undefined}
                 onClick={() => go(day)}
               >
-                <span className={styles.weekday}>{WEEKDAY.format(asDate(day))}</span>
-                <span className={styles.dayNumber}>{DAY_NUMBER.format(asDate(day))}</span>
+                <span className={styles.weekday}>{weekdayName(day)}</span>
+                <span className={styles.dayNumber}>{formatDayMonth(day)}</span>
                 {(placedByDay.get(day)?.length ?? 0) > 0 && (
                   <span className={styles.dot} aria-hidden="true" />
                 )}
@@ -306,7 +386,9 @@ export function PlannerPage() {
             </div>
           )}
           <div
+            ref={body}
             className={styles.body}
+            onScroll={retarget}
             onTouchStart={(event) => {
               const touch = event.touches[0];
               swipe.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
@@ -325,7 +407,7 @@ export function PlannerPage() {
             }}
           >
             <div className={styles.axis} aria-hidden="true">
-              {hourList.map((hour) => (
+              {HOURS.map((hour) => (
                 <span key={hour} className={styles.hourLabel}>
                   {minutesToTime(hour * 60)}
                 </span>
@@ -341,10 +423,10 @@ export function PlannerPage() {
                 onClick={(event) => planAt(day, event)}
                 role="presentation"
               >
-                {day === now.day && now.minutes >= hours.first * 60 && now.minutes <= hours.last * 60 && (
+                {day === now.day && (
                   <span
                     className={styles.nowLine}
-                    style={{ top: ((now.minutes - hours.first * 60) / 60) * HOUR_PX }}
+                    style={{ top: (now.minutes / 60) * HOUR_PX }}
                     aria-hidden="true"
                   />
                 )}
@@ -356,7 +438,7 @@ export function PlannerPage() {
                         key={`p-${b.todoId}`}
                         className={styles.proposed}
                         style={{
-                          top: ((timeToMinutes(b.start) - hours.first * 60) / 60) * HOUR_PX,
+                          top: (timeToMinutes(b.start) / 60) * HOUR_PX,
                           height: ((timeToMinutes(b.end) - timeToMinutes(b.start)) / 60) * HOUR_PX - 2,
                         }}
                         title={b.why}
@@ -371,7 +453,7 @@ export function PlannerPage() {
                   <span
                     className={styles.dropPreview}
                     style={{
-                      top: ((drag.target.startMin - hours.first * 60) / 60) * HOUR_PX,
+                      top: (drag.target.startMin / 60) * HOUR_PX,
                       height: HOUR_PX - 2,
                     }}
                     aria-hidden="true"
@@ -379,27 +461,55 @@ export function PlannerPage() {
                     {minutesToTime(drag.target.startMin)} {drag.todo.title}
                   </span>
                 )}
-                {(placedByDay.get(day) ?? []).map((placed) => (
-                  <BlockCard
-                    key={`${placed.block.id}-${day}`}
-                    placed={placed}
-                    firstHour={hours.first}
-                    dayIndex={dayIndex}
-                    dayCount={days.length}
-                    onOpen={() => setDraft(draftOf(placed.block))}
-                    onDrop={(deltaMin, dayOffset, mode) =>
-                      update.mutate(
-                        {
-                          id: placed.block.id,
-                          patch: movedSpan(placed.block, deltaMin, dayOffset, mode, timeZone),
-                        },
-                        {
-                          onError: (failure) => toast.show({ tone: "error", message: errorMessage(failure) }),
-                        },
-                      )
-                    }
-                  />
-                ))}
+                {(placedByDay.get(day) ?? []).map((placed) => {
+                  const { item } = placed;
+                  const shared = {
+                    placed,
+                    area: body,
+                    dayIndex,
+                    dayCount: days.length,
+                  };
+                  if (item.kind === "meeting") {
+                    return (
+                      <BlockCard
+                        key={`${item.key}-${day}`}
+                        {...shared}
+                        title={item.occurrence.name}
+                        meeting
+                        onOpen={() => setOpenMeeting(item.occurrence)}
+                        // A meeting date asks which dates the move is for; Cancel puts it back.
+                        onDrop={(deltaMin, dayOffset, mode) => {
+                          setChangeError(null);
+                          setMeetingChange({
+                            action: "move",
+                            occurrence: item.occurrence,
+                            ...movedSpan(item, deltaMin, dayOffset, mode, timeZone),
+                          });
+                        }}
+                      />
+                    );
+                  }
+                  const { block } = item;
+                  return (
+                    <BlockCard
+                      key={`${item.key}-${day}`}
+                      {...shared}
+                      title={blockTitle(block)}
+                      color={block.project?.color}
+                      done={block.todo?.status === "done"}
+                      onOpen={() => setDraft(draftOf(block))}
+                      onDrop={(deltaMin, dayOffset, mode) =>
+                        update.mutate(
+                          { id: block.id, patch: movedSpan(block, deltaMin, dayOffset, mode, timeZone) },
+                          {
+                            onError: (failure) =>
+                              toast.show({ tone: "error", message: errorMessage(failure) }),
+                          },
+                        )
+                      }
+                    />
+                  );
+                })}
               </div>
             ))}
           </div>
@@ -407,7 +517,7 @@ export function PlannerPage() {
 
         <aside className={styles.side} aria-label="To plan">
           <h2 className={styles.sideTitle}>To plan</h2>
-          <p className={styles.sideNote}>Next up without time this week.</p>
+          <p className={`${styles.sideNote} ${styles.sideHint}`}>Next up without time this week.</p>
           {toPlan.length === 0 && (
             <p className={styles.sideNote}>Everything near the top has time planned.</p>
           )}
@@ -436,44 +546,126 @@ export function PlannerPage() {
         </div>
       )}
       <BlockDialog draft={draft} onClose={() => setDraft(null)} />
+      <OccurrenceDialog
+        occurrence={openMeeting}
+        onClose={() => setOpenMeeting(null)}
+        onMove={(occurrence, span) => {
+          setOpenMeeting(null);
+          setChangeError(null);
+          setMeetingChange({ action: "move", occurrence, ...span });
+        }}
+        onCancel={(occurrence) => {
+          setOpenMeeting(null);
+          setChangeError(null);
+          setMeetingChange({ action: "cancel", occurrence });
+        }}
+      />
+      <SeriesScopeDialog
+        open={meetingChange !== null}
+        title={
+          meetingChange?.action === "cancel"
+            ? `Cancel ${meetingChange.occurrence.name} on ${dayLabel(meetingChange.occurrence.occursOn)}`
+            : `Move ${meetingChange?.occurrence.name ?? "the meeting"}`
+        }
+        options={
+          meetingChange?.action === "move"
+            ? meetingMoveScopes(
+                meetings.data?.find((m) => m.id === meetingChange.occurrence.meetingId)?.segments ?? [],
+                meetingChange.occurrence,
+                meetingChange.startAt,
+                timeZone,
+              )
+            : MEETING_CANCEL_SCOPES
+        }
+        confirmLabel={meetingChange?.action === "cancel" ? "Cancel dates" : "Move"}
+        danger={meetingChange?.action === "cancel"}
+        busy={changeOccurrence.isPending || deleteMeeting.isPending}
+        error={changeError}
+        onPick={(scope) => meetingChange && applyMeetingChange(meetingChange, scope)}
+        onCancel={() => setMeetingChange(null)}
+      />
     </div>
   );
 }
 
 interface Drag {
   mode: "move" | "resize";
+  /** Where the pointer went down, and the grid's scroll position then. */
   x: number;
   y: number;
-  /** Width of a day column, for moving across days. */
+  scrollTop: number;
+  /** Where the pointer is now. */
+  atX: number;
+  atY: number;
+  /** Width of a day column, for moving across days (0: it stays on its day). */
   colWidth: number;
+  /** The day offsets within the shown week. */
+  minOffset: number;
+  maxOffset: number;
   moved: boolean;
   deltaMin: number;
   dayOffset: number;
 }
 
 /**
+ * The drag with the pointer at (atX, atY) and the grid scrolled to scrollTop: scrolling the grid under
+ * a held block moves it as far as moving the pointer would.
+ */
+function dragTo(drag: Drag, atX: number, atY: number, scrollTop: number): Drag {
+  const dx = atX - drag.x;
+  const dy = atY - drag.y + scrollTop - drag.scrollTop;
+  const offset = drag.mode === "move" && drag.colWidth > 0 ? Math.round(dx / drag.colWidth) : 0;
+  return {
+    ...drag,
+    atX,
+    atY,
+    moved: drag.moved || Math.abs(dx) > 4 || Math.abs(dy) > 4,
+    deltaMin: snap((dy / HOUR_PX) * 60),
+    dayOffset: Math.max(drag.minOffset, Math.min(drag.maxOffset, offset)),
+  };
+}
+
+/**
  * One block. With a mouse it can be dragged: the body moves it (also to another day), the bottom edge
  * resizes it, both in 15 minute steps; a click without moving opens it. On touch screens a long press
- * picks it up (move, or resize near the bottom edge) and a tap opens it.
+ * picks it up (move, or resize near the bottom edge) and a tap opens it. Near the grid's top or bottom
+ * edge a held block scrolls the grid, so it reaches every hour of the day.
  */
 function BlockCard({
   placed,
-  firstHour,
+  title,
+  color,
+  done = false,
+  meeting = false,
+  area,
   dayIndex,
   dayCount,
   onOpen,
   onDrop,
 }: {
-  placed: PlacedBlock;
-  firstHour: number;
+  placed: Placed;
+  title: string;
+  /** The project's colour; amber without one. */
+  color?: string | undefined;
+  done?: boolean;
+  /** A meeting date: its own look, and a drop asks which dates it is for. */
+  meeting?: boolean;
+  /** The grid's scroll area. */
+  area: RefObject<HTMLDivElement | null>;
   dayIndex: number;
   dayCount: number;
   onOpen: () => void;
   onDrop: (deltaMin: number, dayOffset: number, mode: "move" | "resize") => void;
 }) {
-  const { block } = placed;
-  const [drag, setDrag] = useState<Drag | null>(null);
-  const baseTop = ((placed.startMin - firstHour * 60) / 60) * HOUR_PX;
+  const { item } = placed;
+  // The drag lives in a ref too, for the native touch and scroll listeners.
+  const current = useRef<Drag | null>(null);
+  const [drag, setDragState] = useState<Drag | null>(null);
+  const setDrag = useCallback((next: Drag | null) => {
+    current.current = next;
+    setDragState(next);
+  }, []);
+  const baseTop = (placed.startMin / 60) * HOUR_PX;
   const baseHeight = Math.max(22, ((placed.endMin - placed.startMin) / 60) * HOUR_PX - 2);
   const deltaPx = drag ? (drag.deltaMin / 60) * HOUR_PX : 0;
   const top = drag?.mode === "move" ? baseTop + deltaPx : baseTop;
@@ -488,35 +680,52 @@ function BlockCard({
       mode,
       x: event.clientX,
       y: event.clientY,
+      scrollTop: area.current?.scrollTop ?? 0,
+      atX: event.clientX,
+      atY: event.clientY,
       colWidth: column,
+      minOffset: -dayIndex,
+      maxOffset: dayCount - 1 - dayIndex,
       moved: false,
       deltaMin: 0,
       dayOffset: 0,
     });
   };
+  // Touch drags run on the native touch listeners below.
   const move = (event: PointerEvent<HTMLElement>) => {
-    if (!drag) return;
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-    const moved = drag.moved || Math.abs(dx) > 4 || Math.abs(dy) > 4;
-    const deltaMin = snap((dy / HOUR_PX) * 60);
-    const offset = drag.mode === "move" && drag.colWidth > 0 ? Math.round(dx / drag.colWidth) : 0;
-    const dayOffset = Math.max(-dayIndex, Math.min(dayCount - 1 - dayIndex, offset));
-    setDrag({ ...drag, moved, deltaMin, dayOffset });
+    const held = current.current;
+    if (!held || event.pointerType !== "mouse") return;
+    setDrag(dragTo(held, event.clientX, event.clientY, area.current?.scrollTop ?? held.scrollTop));
   };
-  const end = () => {
-    if (!drag) return;
+  const end = (event: PointerEvent<HTMLElement>) => {
+    const held = current.current;
+    if (!held || event.pointerType !== "mouse") return;
     setDrag(null);
-    if (!drag.moved) {
-      if (drag.mode === "move") onOpen();
+    if (!held.moved) {
+      if (held.mode === "move") onOpen();
       return;
     }
-    if (drag.deltaMin !== 0 || drag.dayOffset !== 0) onDrop(drag.deltaMin, drag.dayOffset, drag.mode);
+    if (held.deltaMin !== 0 || held.dayOffset !== 0) onDrop(held.deltaMin, held.dayOffset, held.mode);
   };
 
-  // Touch: a long press picks the block up (near its bottom edge: resizes it), then it follows the
-  // finger in 15 minute steps; a quick swipe still scrolls and a tap opens it. Native listeners, because
-  // only a non-passive touchmove can stop the page from scrolling once the drag has started.
+  // A held block follows the grid when it scrolls (by the edge or the mouse wheel).
+  const holding = drag !== null;
+  useEffect(() => {
+    const el = area.current;
+    if (!holding || !el) return undefined;
+    const follow = () => {
+      const held = current.current;
+      if (held) setDrag(dragTo(held, held.atX, held.atY, el.scrollTop));
+    };
+    el.addEventListener("scroll", follow, { passive: true });
+    return () => el.removeEventListener("scroll", follow);
+  }, [holding, area, setDrag]);
+  useEdgeScroll(area, drag?.moved ? { x: drag.atX, y: drag.atY } : null);
+
+  // Touch: a long press picks the block up (near the bottom edge of a tall one: resizes it), then it
+  // follows the finger in 15 minute steps; a quick swipe still scrolls and a tap opens it. Native
+  // listeners, because only a non-passive touchmove can stop the grid from scrolling once the drag has
+  // started.
   const ref = useRef<HTMLButtonElement>(null);
   const dropRef = useRef(onDrop);
   useEffect(() => {
@@ -527,23 +736,37 @@ function BlockCard({
     if (!el) return undefined;
     let timer: number | undefined;
     let origin: { x: number; y: number } | null = null;
-    let active: Drag | null = null;
     const onStart = (event: TouchEvent) => {
       const touch = event.touches[0];
       if (event.touches.length !== 1 || !touch) return;
       origin = { x: touch.clientX, y: touch.clientY };
-      const mode = touch.clientY > el.getBoundingClientRect().bottom - 16 ? "resize" : "move";
+      // A short card (a 15 minute meeting) has no room for both: a long press there moves it.
+      const rect = el.getBoundingClientRect();
+      const mode = rect.height >= 40 && touch.clientY > rect.bottom - 16 ? "resize" : "move";
       timer = window.setTimeout(() => {
         if (!origin) return;
-        active = { mode, x: origin.x, y: origin.y, colWidth: 0, moved: true, deltaMin: 0, dayOffset: 0 };
         navigator.vibrate?.(10);
-        setDrag(active);
+        setDrag({
+          mode,
+          x: origin.x,
+          y: origin.y,
+          scrollTop: area.current?.scrollTop ?? 0,
+          atX: origin.x,
+          atY: origin.y,
+          colWidth: 0,
+          minOffset: 0,
+          maxOffset: 0,
+          moved: true,
+          deltaMin: 0,
+          dayOffset: 0,
+        });
       }, 350);
     };
     const onMove = (event: TouchEvent) => {
       const touch = event.touches[0];
       if (!touch || !origin) return;
-      if (!active) {
+      const held = current.current;
+      if (!held) {
         if (Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) > 8) {
           window.clearTimeout(timer);
           origin = null;
@@ -552,20 +775,18 @@ function BlockCard({
       }
       event.preventDefault();
       event.stopPropagation();
-      active = { ...active, deltaMin: snap(((touch.clientY - active.y) / HOUR_PX) * 60) };
-      setDrag(active);
+      setDrag(dragTo(held, touch.clientX, touch.clientY, area.current?.scrollTop ?? held.scrollTop));
     };
     const onEnd = (event: TouchEvent) => {
       window.clearTimeout(timer);
       origin = null;
-      if (!active) return;
+      const dropped = current.current;
+      if (!dropped) return;
       // Neither a click (opening the block) nor the day swipe of the calendar.
       event.preventDefault();
       event.stopPropagation();
-      const done = active;
-      active = null;
       setDrag(null);
-      if (done.deltaMin !== 0) dropRef.current(done.deltaMin, 0, done.mode);
+      if (dropped.deltaMin !== 0) dropRef.current(dropped.deltaMin, 0, dropped.mode);
     };
     el.addEventListener("touchstart", onStart, { passive: true });
     el.addEventListener("touchmove", onMove, { passive: false });
@@ -578,7 +799,7 @@ function BlockCard({
       el.removeEventListener("touchend", onEnd);
       el.removeEventListener("touchcancel", onEnd);
     };
-  }, []);
+  }, [area, setDrag]);
 
   const style = {
     top,
@@ -589,29 +810,34 @@ function BlockCard({
     left: `calc(${placed.lane * Math.min(28, 60 / placed.lanes)}% + 2px)`,
     right: "2px",
     zIndex: 1 + placed.lane,
-    "--block": block.project?.color ?? "var(--amber)",
+    "--block": color ?? (meeting ? "var(--meeting)" : "var(--amber)"),
   } as CSSProperties;
+  const time = spanText(item, timeZone);
   return (
     <button
       ref={ref}
       type="button"
       className={styles.block}
       style={style}
-      data-done={block.todo?.status === "done" || undefined}
+      data-done={done || undefined}
+      data-meeting={meeting || undefined}
       data-short={height < 40 || undefined}
       data-dragging={drag?.moved || undefined}
       onPointerDown={(event) => start(event, "move")}
       onPointerMove={move}
       onPointerUp={end}
-      onPointerCancel={() => setDrag(null)}
+      onPointerCancel={(event) => event.pointerType === "mouse" && setDrag(null)}
       // Keyboard and touch: a click opens the block (a mouse click is handled on pointer up).
       onClick={(event) => {
         if (event.detail === 0 || !matchesMouse(event)) onOpen();
       }}
-      title={`${blockTitle(block)}, ${spanText(block, timeZone)}`}
+      title={`${title}, ${time}${meeting ? ", meeting" : ""}`}
     >
-      <span className={styles.blockTitle}>{blockTitle(block)}</span>
-      <span className={styles.blockTime}>{spanText(block, timeZone)}</span>
+      <span className={styles.blockTitle}>
+        {meeting && <MeetingMark />}
+        {title}
+      </span>
+      <span className={styles.blockTime}>{time}</span>
       {!placed.continuesAfter && (
         <span
           className={styles.resize}
@@ -622,6 +848,21 @@ function BlockCard({
         />
       )}
     </button>
+  );
+}
+
+/** The small speech bubbles that mark a meeting card. */
+function MeetingMark() {
+  return (
+    <svg className={styles.meetingMark} width="11" height="11" viewBox="0 0 20 20" aria-hidden="true">
+      <path
+        d="M3 4h10v7H8l-3 2.5V11H3zM13 7.5h4v7h-2V17l-3-2.5H9V11"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

@@ -106,11 +106,13 @@
   min-width: 0;
 }
 
+/* One line of pills with a pixel of room around them, like the list rows (see Strip.module.css). */
 .labels {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 4px;
-  height: 18px;
+  gap: 4px 4px;
+  height: calc(var(--pill-h) + 2px);
+  padding: 1px 0;
   overflow: hidden;
   flex: 1 1 auto;
   min-width: 0;

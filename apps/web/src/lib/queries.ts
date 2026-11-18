@@ -262,9 +262,21 @@ export const useNext = (params: NextParams) =>
 export function invalidateTodoViews(client: QueryClient): Promise<void> {
   return client.invalidateQueries({
     predicate: (query) =>
-      ["todos", "todo", "activity", "next", "stats", "projects", "people", "person", "search"].includes(
-        String(query.queryKey[0]),
-      ),
+      [
+        "todos",
+        "todo",
+        "activity",
+        "next",
+        "stats",
+        "projects",
+        "people",
+        "person",
+        "search",
+        // A todo change can put it on a standup list or take it off.
+        "standup",
+        // Todos on a meeting show their title, status and due date.
+        "meetingTodos",
+      ].includes(String(query.queryKey[0])),
   });
 }
 
@@ -471,7 +483,7 @@ function useCommentMutation<TInput, TOutput>(fn: (input: TInput) => Promise<TOut
     onSuccess: () =>
       client.invalidateQueries({
         predicate: (query) =>
-          ["activity", "todo", "todos", "next", "search"].includes(String(query.queryKey[0])),
+          ["activity", "todo", "todos", "next", "search", "standup"].includes(String(query.queryKey[0])),
       }),
   });
 }

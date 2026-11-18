@@ -1,6 +1,7 @@
 import {
   formatDuration,
   type Person,
+  type PersonLanguage,
   type PersonRole,
   priorityOf,
   PROJECT_COLORS,
@@ -32,7 +33,7 @@ import {
 } from "../../components/ui.tsx";
 import { useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { ApiError, errorMessage } from "../../lib/api.ts";
-import { absoluteTime, toDate } from "../../lib/format.ts";
+import { absoluteDate, absoluteTime } from "../../lib/format.ts";
 import {
   useCreatePersonTag,
   useDeletePerson,
@@ -48,6 +49,7 @@ import {
 } from "../../lib/queries.ts";
 import { EmailActions } from "./EmailActions.tsx";
 import { InlineText } from "./InlineText.tsx";
+import { LanguagePicker } from "./LanguagePicker.tsx";
 import { PersonStats } from "./PersonStats.tsx";
 import styles from "./People.module.css";
 import { TopicInput } from "./TopicInput.tsx";
@@ -75,6 +77,7 @@ function PersonDetail({ person }: { person: Person }) {
   const toast = useToast();
   const teams = useTeams();
   const teamList = useId();
+  const languagesLabel = useId();
   // One query for every chip's count and id; a chip whose topic is not in it looks it up when needed.
   const allTopics = useTopics("", true, TOPIC_LIST_LIMIT);
   const topicByName = new Map((allTopics.data ?? []).map((t) => [t.name.toLowerCase(), t]));
@@ -184,6 +187,10 @@ function PersonDetail({ person }: { person: Person }) {
               />
               {person.email && <EmailActions email={person.email} />}
             </dd>
+            <dt id={languagesLabel}>Languages</dt>
+            <dd>
+              <LanguagesField person={person} save={save} labelledBy={languagesLabel} />
+            </dd>
             <dt>Topics</dt>
             <dd>
               <TopicInput
@@ -227,6 +234,34 @@ function PersonDetail({ person }: { person: Person }) {
       </div>
       <DeletePersonDialog person={person} open={confirmDelete} onOpenChange={setConfirmDelete} />
     </div>
+  );
+}
+
+/**
+ * The person's languages, saved on every click. Shows the clicked state until the save is done, so a
+ * second quick click builds on the first instead of on the old value.
+ */
+function LanguagesField({
+  person,
+  save,
+  labelledBy,
+}: {
+  person: Person;
+  save: (patch: UpdatePerson) => Promise<boolean>;
+  labelledBy: string;
+}) {
+  const [pending, setPending] = useState<PersonLanguage[] | null>(null);
+  const change = async (languages: PersonLanguage[]) => {
+    setPending(languages);
+    await save({ languages });
+    setPending((current) => (current === languages ? null : current));
+  };
+  return (
+    <LanguagePicker
+      value={pending ?? person.languages}
+      onChange={(languages) => void change(languages)}
+      labelledBy={labelledBy}
+    />
   );
 }
 
@@ -586,7 +621,7 @@ function PersonTodoRow({ todo }: { todo: Todo }) {
         {STATUS_LABELS[todo.status]}
       </span>
       <span className={styles.todoDate} title={`Created ${absoluteTime(todo.createdAt)}`}>
-        {toDate(todo.createdAt)}
+        {absoluteDate(todo.createdAt)}
       </span>
       <span className={styles.todoDate}>
         {todo.doneAt && todo.durationMs !== null ? `took ${formatDuration(todo.durationMs)}` : ""}

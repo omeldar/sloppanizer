@@ -56,6 +56,15 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || target.closest(EDITABLE) !== null);
 }
 
+/** Short names of named keys in hints. */
+const KEY_NAMES: Record<string, string> = {
+  Escape: "Esc",
+  ArrowDown: "Down",
+  ArrowUp: "Up",
+  PageUp: "PgUp",
+  PageDown: "PgDn",
+};
+
 /** Display form for hints: "ctrl+k" -> ["Ctrl", "K"], "g n" -> ["g", "n"]. */
 export function keyCaps(text: string): string[] {
   return parseKeys(text).flatMap((chord) => {
@@ -64,14 +73,7 @@ export function keyCaps(text: string): string[] {
     if (chord.meta) caps.push("Cmd");
     if (chord.alt) caps.push("Alt");
     if (chord.shift) caps.push("Shift");
-    const name =
-      chord.key === "Escape"
-        ? "Esc"
-        : chord.key === "ArrowDown"
-          ? "Down"
-          : chord.key === "ArrowUp"
-            ? "Up"
-            : chord.key;
+    const name = KEY_NAMES[chord.key] ?? chord.key;
     caps.push(caps.length > 0 && name.length === 1 ? name.toUpperCase() : name);
     return caps;
   });

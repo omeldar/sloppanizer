@@ -93,6 +93,7 @@ export function makePerson(
     team: "",
     email: "",
     notesMd: "",
+    languages: [],
     topics: [],
     tags: [],
     counts: { requested: 0, requestedOpen: 0, requestedDone: 0, contact: 0, contactOpen: 0 },

@@ -31,3 +31,16 @@ describe("shift chords", () => {
     expect(keyCaps("g b")).toEqual(["g", "b"]);
   });
 });
+
+describe("named keys", () => {
+  it("shows Page Up and Page Down short, like the other named keys", () => {
+    expect(keyCaps("PageUp")).toEqual(["PgUp"]);
+    expect(keyCaps("PageDown")).toEqual(["PgDn"]);
+    expect(keyCaps("Escape")).toEqual(["Esc"]);
+  });
+
+  it("matches the Page keys only without modifiers", () => {
+    expect(matchesChord(parseChord("PageDown"), press("PageDown"))).toBe(true);
+    expect(matchesChord(parseChord("PageDown"), press("PageDown", { ctrlKey: true }))).toBe(false);
+  });
+});

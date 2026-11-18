@@ -56,6 +56,7 @@ const MATRIX: [method: string, path: string, access: Access][] = [
   ["PATCH", "/ai/settings", "session"],
   ["POST", "/ai/plan", "write"],
   ["POST", "/ai/breakdown", "write"],
+  ["POST", "/ai/standup", "write"],
   ["GET", "/calendar-feed", "session"],
   ["POST", "/calendar-feed", "session"],
   ["DELETE", "/calendar-feed", "session"],
@@ -66,6 +67,25 @@ const MATRIX: [method: string, path: string, access: Access][] = [
   ["GET", "/todos/1/activity", "read"],
   ["PATCH", "/comments/1", "write"],
   ["DELETE", "/comments/1", "write"],
+  ["GET", "/meetings", "read"],
+  ["POST", "/meetings", "write"],
+  ["GET", "/meetings/occurrences?from=2026-11-01&to=2026-11-02", "read"],
+  ["GET", "/meetings/1", "read"],
+  ["PATCH", "/meetings/1", "write"],
+  ["DELETE", "/meetings/1", "write"],
+  ["PATCH", "/meetings/1/schedule", "write"],
+  ["PATCH", "/meetings/1/occurrences/2026-11-19", "write"],
+  ["GET", "/meetings/1/standup", "read"],
+  ["POST", "/meetings/1/standup/marks", "write"],
+  ["DELETE", "/meetings/1/standup/marks/2026-11-19/2", "write"],
+  ["GET", "/meetings/1/notes", "read"],
+  ["POST", "/meetings/1/notes", "write"],
+  ["DELETE", "/meetings/1/notes/2026-11-19", "write"],
+  ["GET", "/meetings/1/todos", "read"],
+  ["POST", "/meetings/1/todos", "write"],
+  ["DELETE", "/meetings/1/todos/2", "write"],
+  ["POST", "/meetings/1/todos/2/due", "write"],
+  ["GET", "/todos/1/meetings", "read"],
   ["GET", "/notes", "read"],
   ["POST", "/notes", "write"],
   ["GET", "/notes/1", "read"],
@@ -118,7 +138,8 @@ const shape = (path: string) =>
     .replace(/\/\d+(?=\/|$)/g, "/:id")
     .replace(/\/[a-f0-9]{32}(?=\/|$)/, "/:uploadId")
     .replace(/(?<=^\/attachments\/:id\/)(?!meta$)[^/]+$/, ":name")
-    .replace(/(?<=^\/restore\/backups\/)[^/]+$/, ":fileName");
+    .replace(/(?<=^\/restore\/backups\/)[^/]+$/, ":fileName")
+    .replace(/\/\d{4}-\d{2}-\d{2}(?=\/|$)/g, "/:on");
 
 /** Status of every matrix route for one caller, as "METHOD path -> status" lines. */
 const statuses = async (call: (method: string, url: string) => Promise<{ statusCode: number }>) =>

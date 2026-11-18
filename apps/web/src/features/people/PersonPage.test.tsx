@@ -9,7 +9,10 @@ await import("./PersonPage.tsx");
 
 afterEach(() => vi.unstubAllGlobals());
 
-const person = makePerson("Anna", "Meier", 1, { topics: ["DNS", "Backup"] });
+const person = makePerson("Anna", "Meier", 1, {
+  topics: ["DNS", "Backup"],
+  email: "anna.meier@example.com",
+});
 
 /** The person page; the page's topic list knows DNS but not Backup (as if past its limit). */
 function renderPerson() {
@@ -50,5 +53,44 @@ describe("person page topics", () => {
     const dialog = await screen.findByRole("dialog", { name: "Rename Backup" });
     expect(within(dialog).getByRole<HTMLInputElement>("textbox", { name: /New name/ }).value).toBe("Backup");
     expect(topicCalls(calls).map((c) => c.path)).toContain("/api/v1/topics?q=Backup&limit=20");
+  });
+});
+
+describe("person page email actions", () => {
+  it("offers Mail and Copy for the address, but no Teams chat", async () => {
+    renderPerson();
+    const mail = await screen.findByRole("link", { name: "Mail" }, LAZY_PAGE);
+    expect(mail.getAttribute("href")).toBe("mailto:anna.meier@example.com");
+    expect(screen.getByRole("button", { name: "Copy" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Teams/ })).toBeNull();
+    expect(document.querySelector('a[href*="teams.microsoft.com"]')).toBeNull();
+  });
+});
+
+describe("person page languages", () => {
+  it("saves the full set on each click and keeps a quick second click", async () => {
+    let current = makePerson("Anna", "Meier", 1, { languages: ["en"] });
+    const { calls } = renderAppAt("/people/1", ({ method, path, body }: RecordedCall) => {
+      if (path === "/api/v1/people/1") {
+        if (method === "PATCH") current = { ...current, ...(body as Partial<typeof current>) };
+        return { body: current };
+      }
+      if (path.startsWith("/api/v1/topics")) return { body: [] };
+      if (path.startsWith("/api/v1/todos?")) return { body: { items: [], total: 0, limit: 50, offset: 0 } };
+      if (path.startsWith("/api/v1/teams") || path.startsWith("/api/v1/person-tags")) return { body: [] };
+      if (path === "/api/v1/projects" || path === "/api/v1/labels") return { body: [] };
+      return { status: 404, body: { error: { code: "not_found", message: "Not here." } } };
+    });
+    const group = await screen.findByRole("group", { name: "Languages" }, LAZY_PAGE);
+    const german = within(group).getByRole("button", { name: "German" });
+    const english = within(group).getByRole("button", { name: "English" });
+    expect([german, english].map((b) => b.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
+    fireEvent.click(german);
+    fireEvent.click(english);
+    expect([german, english].map((b) => b.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
+    const patches = () => calls.filter((c) => c.method === "PATCH").map((c) => c.body);
+    await waitFor(() => expect(patches()).toEqual([{ languages: ["de", "en"] }, { languages: ["de"] }]));
+    await waitFor(() => expect(current.languages).toEqual(["de"]));
+    expect([german, english].map((b) => b.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
   });
 });

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { checkRule, draftFrom, presets, ruleFrom, sameRule } from "./repeat.ts";
+import {
+  checkRule,
+  draftFrom,
+  parseYearDate,
+  presets,
+  ruleFrom,
+  sameRule,
+  YEAR_DATE_PROBLEM,
+} from "./repeat.ts";
 
 // 2026-11-12 is a Thursday.
 const ANCHOR = "2026-11-12";
@@ -11,7 +19,7 @@ describe("repeat presets", () => {
       "Every weekday",
       "Every week on Thu",
       "Every month on the 12th",
-      "Every year on 11-12",
+      "Every year on 12.11.",
     ]);
   });
 
@@ -66,8 +74,36 @@ describe("custom form draft", () => {
     });
   });
 
+  it("shows the date in the year as dd.MM. and turns it back into the rule's MM-DD", () => {
+    const draft = draftFrom({ every: "year", interval: 1, basis: "schedule", yearDate: "03-04" }, ANCHOR);
+    expect(draft.yearDate).toBe("04.03.");
+    expect(ruleFrom(draft)).toEqual({ every: "year", interval: 1, basis: "schedule", yearDate: "03-04" });
+    expect(ruleFrom({ ...draft, yearDate: "29.2" })).toMatchObject({ yearDate: "02-29" });
+  });
+
+  it("explains a date in the year that does not exist in the form's own words", () => {
+    const draft = { ...draftFrom(null, ANCHOR), every: "year" as const, yearDate: "31.02." };
+    expect(checkRule(ruleFrom(draft), ANCHOR, ANCHOR)).toEqual({ ok: false, problem: YEAR_DATE_PROBLEM });
+  });
+
   it("drops calendar patterns when counting from done", () => {
     const draft = { ...draftFrom(null, ANCHOR), every: "day" as const, interval: 3, basis: "done" as const };
     expect(ruleFrom(draft)).toEqual({ every: "day", interval: 3, basis: "done" });
+  });
+});
+
+describe("parseYearDate", () => {
+  it("reads day and month with or without padding and the last dot", () => {
+    expect(parseYearDate("14.03.")).toBe("03-14");
+    expect(parseYearDate("4.3")).toBe("03-04");
+    expect(parseYearDate(" 01.01. ")).toBe("01-01");
+    expect(parseYearDate("29.02.")).toBe("02-29");
+  });
+
+  it("refuses days that do not exist and other shapes", () => {
+    expect(parseYearDate("31.04.")).toBeNull();
+    expect(parseYearDate("14.13.")).toBeNull();
+    expect(parseYearDate("03-14")).toBeNull();
+    expect(parseYearDate("")).toBeNull();
   });
 });

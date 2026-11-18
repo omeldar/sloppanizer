@@ -1,17 +1,26 @@
+/* The page fills the main area and never scrolls; only the calendar's hours scroll inside it. */
 .page {
-  padding-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-bottom: 16px;
 }
 
 .layout {
   display: grid;
+  flex: 1;
   grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-rows: minmax(0, 1fr);
   gap: 16px;
-  align-items: start;
+  min-height: 0;
 }
 
 /* Calendar: a time axis and seven day columns. */
 .calendar {
   --axis: 52px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--raised);
@@ -20,9 +29,6 @@
 }
 
 .dayHeads {
-  position: sticky;
-  top: 0;
-  z-index: 3;
   display: grid;
   grid-template-columns: var(--axis) repeat(7, minmax(0, 1fr));
   border-bottom: 1px solid var(--line);
@@ -56,12 +62,25 @@
 .dayNumber {
   display: grid;
   place-items: center;
-  width: 30px;
+  min-width: 30px;
   height: 30px;
+  padding: 0 8px;
   border-radius: var(--radius-round);
   color: var(--text);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Phones: seven "17.11." side by side need a smaller date. */
+@media (max-width: 640px) {
+  .dayNumber {
+    min-width: 0;
+    height: 24px;
+    padding: 0 3px;
+    font-size: min(12px, 3.3vw);
+  }
 }
 
 .dayHead[data-today] .dayNumber {
@@ -80,9 +99,11 @@
 
 .body {
   display: grid;
+  flex: 1;
   grid-template-columns: var(--axis) repeat(7, minmax(0, 1fr));
-  max-height: calc(100dvh - 220px);
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .axis {
@@ -214,7 +235,16 @@
 }
 
 .block[data-short] .blockTitle {
+  min-width: 0;
   white-space: nowrap;
+}
+
+/* In a short card the title wins: the time gives way first. */
+.block[data-short] .blockTime {
+  flex-shrink: 100;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .blockTime {
@@ -223,8 +253,12 @@
   white-space: nowrap;
 }
 
-/* Todos planned for a day without a time yet. */
+/* Todos planned for a day without a time yet. Capped, so many items scroll here and the hours stay usable. */
 .allDay {
+  flex: none;
+  max-height: clamp(56px, 22vh, 104px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
   grid-template-columns: var(--axis) repeat(7, minmax(0, 1fr));
   border-bottom: 1px solid var(--line);
@@ -272,8 +306,11 @@
   border-color: var(--amber-line);
 }
 
-/* Side list */
+/* Side list: as tall as it needs, scrolling itself when it is taller than the calendar. */
 .side {
+  align-self: start;
+  max-height: 100%;
+  overflow-y: auto;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
@@ -411,9 +448,43 @@
   flex: 1;
 }
 
+/* Narrow screens: To plan becomes a row of chips under the calendar, so the calendar keeps the height. */
 @media (max-width: 1100px) {
   .layout {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+  .side {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    overflow: hidden;
+    padding: 6px 6px 6px 12px;
+  }
+  .sideTitle {
+    flex-shrink: 0;
+    font-size: var(--fs-small);
+  }
+  .sideHint {
+    display: none;
+  }
+  .sideNote {
+    margin: 0;
+  }
+  .toPlan {
+    flex: 1;
+    flex-direction: row;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .toPlan > li {
+    flex-shrink: 0;
+    max-width: 220px;
+  }
+  .toPlanItem {
+    padding: 6px 10px;
   }
 }
 
@@ -437,7 +508,6 @@
   }
   .body {
     grid-template-columns: var(--axis) minmax(0, 1fr);
-    max-height: none;
   }
   .day:not([data-selected]),
   .allDayCell:not([data-selected]) {
@@ -683,4 +753,75 @@
   border: 2px dashed var(--amber-line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--amber-tint) 70%, var(--raised));
+}
+
+/* Meeting dates: outlined and striped, so they read apart from planned todo time. */
+.page {
+  --meeting: #8b7cf6;
+}
+
+.block[data-meeting] {
+  border: 1px dashed color-mix(in srgb, var(--block) 70%, transparent);
+  border-left: 3px solid var(--block);
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--block) 16%, transparent) 0 6px,
+      color-mix(in srgb, var(--block) 6%, transparent) 6px 12px
+    ),
+    var(--raised-2);
+}
+
+.block[data-meeting]:hover {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--block) 22%, transparent) 0 6px,
+      transparent 6px 12px
+    ),
+    var(--raised-2);
+}
+
+.meetingMark {
+  margin-right: 4px;
+  vertical-align: -1px;
+  color: var(--block);
+}
+
+.occurrenceWhen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.occurrenceTime {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.occurrenceMoved {
+  color: var(--text-3);
+  font-size: var(--fs-small);
+  font-weight: 400;
+}
+
+.occurrenceLinks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.occurrenceLink {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+}
+
+.moveForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }

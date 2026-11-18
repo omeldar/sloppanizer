@@ -7,7 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { addDays, type Todo, toLocalDate } from "@organizer/shared";
+import { addDays, formatDate, type Todo, toLocalDate } from "@organizer/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { systemClock } from "../../server/src/clock.ts";
 import { openDb } from "../../server/src/db/index.ts";
@@ -185,6 +185,13 @@ describe("MCP server against the real API", () => {
         "remove_web_link",
         "list_plan",
         "plan_time",
+        "list_meetings",
+        "standup_list",
+        "mark_said",
+        "meeting_note",
+        "meeting_todos",
+        "add_to_meeting",
+        "remove_from_meeting",
         "move_block",
         "delete_block",
         "bulk_update",
@@ -240,7 +247,7 @@ describe("MCP server against the real API", () => {
     });
     expect(first).toMatch(
       new RegExp(
-        `^Created #\\d+ open \\| Renew SSL certs \\| priority::high, homelab \\| project homelab \\| due ${addDays(today, -2)} \\(overdue 2d\\) \\| open 0d \\| req: Anna Meier$`,
+        `^Created #\\d+ open \\| Renew SSL certs \\| priority::high, homelab \\| project homelab \\| due ${formatDate(addDays(today, -2))} \\(overdue 2d\\) \\| open 0d \\| req: Anna Meier$`,
       ),
     );
     const a = idOf(first);
@@ -276,16 +283,16 @@ describe("MCP server against the real API", () => {
     const tomorrow = addDays(today, 1);
     const bulk = await ok("bulk_update", { ids: [a, b], plannedOn: tomorrow });
     expect(bulk.split("\n")[0]).toBe("Updated 2:");
-    expect(bulk.match(new RegExp(`planned ${tomorrow}`, "g"))).toHaveLength(2);
+    expect(bulk.match(new RegExp(`planned ${formatDate(tomorrow)}`, "g"))).toHaveLength(2);
 
     const next = await ok("next_up");
     const lines = next.split("\n");
-    expect(lines[0]).toBe(`Next up (smart), today ${today}:`);
+    expect(lines[0]).toBe(`Next up (smart), today ${formatDate(today)}:`);
     expect(lines[1]).toMatch(new RegExp(`^1\\. #${a} open .*\\| why: .*overdue 2d`));
     expect(lines[1]).toContain("priority::critical");
 
     const overview = await ok("overview");
-    expect(overview).toContain(`Today ${today} (${TZ})`);
+    expect(overview).toContain(`Today ${formatDate(today)} (${TZ})`);
     expect(overview).toContain("- inbox: 1");
     expect(overview).toContain("- homelab (Home lab): 1");
     expect(overview).toMatch(new RegExp(`Without priority \\(1\\):\\n#${b} open \\| Call the plumber`));
@@ -294,7 +301,7 @@ describe("MCP server against the real API", () => {
     expect(await ok("list_labels")).toContain("priority::critical | #F2555A | rank 0");
 
     const done = await ok("mark_done", { ids: [a] });
-    expect(done).toMatch(new RegExp(`^Done:\\n#${a} done \\| .* \\| done ${today}, took 0m`));
+    expect(done).toMatch(new RegExp(`^Done:\\n#${a} done \\| .* \\| done ${formatDate(today)}, took 0m`));
     expect(await ok("list_todos")).not.toContain(`#${a} `);
     expect(await ok("list_todos", { status: "all" })).toContain(`#${a} done`);
 
@@ -499,7 +506,7 @@ describe("step 2 tools against the real API", () => {
     );
     const thread = await ok("get_activity", { todo: todoId });
     expect(thread).toMatch(new RegExp(`^#${todoId} activity \\(3 items\\):`));
-    expect(thread).toMatch(/\d{4}-\d\d-\d\d \d\d:\d\d planner: .*Eva Keller/);
+    expect(thread).toMatch(/\d\d\.\d\d\.\d{4} \d\d:\d\d planner: .*Eva Keller/);
   });
 
   it("comments as the token and keeps browser comments out of its reach", async () => {
@@ -519,7 +526,7 @@ describe("step 2 tools against the real API", () => {
     expect(lines.slice(-3)).toEqual([
       expect.stringMatching(
         new RegExp(
-          `^\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d ${TOKEN_NAME} commented \\(comment ${own}\\): Asked Max about the \\*\\*firewall\\*\\*\\.$`,
+          `^\\d\\d\\.\\d\\d\\.\\d{4} \\d\\d:\\d\\d ${TOKEN_NAME} commented \\(comment ${own}\\): Asked Max about the \\*\\*firewall\\*\\*\\.$`,
         ),
       ),
       "  Waiting.",
@@ -685,7 +692,9 @@ describe("step 3 tools against the real API", () => {
     const done = await ok("mark_done", { ids: [first] });
     const [, nextPart = ""] = done.split("Next occurrence:\n");
     expect(nextPart).toMatch(
-      new RegExp(`^#\\d+ open \\| Water the plants \\| inbox \\| due ${addDays(today, 7)} \\(in 7d\\)`),
+      new RegExp(
+        `^#\\d+ open \\| Water the plants \\| inbox \\| due ${formatDate(addDays(today, 7))} \\(in 7d\\)`,
+      ),
     );
     expect(nextPart).toContain("checklist 0/2");
     const second = idOf(nextPart);
@@ -736,12 +745,12 @@ describe("step 3 tools against the real API", () => {
     expect(removed.split("\n").slice(1).join("\n")).not.toContain("wiki.example.com");
 
     const planned = await ok("plan_time", { todo: id, date: "2026-11-20", start: "09:00", minutes: 90 });
-    expect(planned).toMatch(/block (\d+) \| 2026-11-20 09:00-10:30 \| #\d+ Review the rack PR/);
+    expect(planned).toMatch(/block (\d+) \| 20\.11\.2026 09:00-10:30 \| #\d+ Review the rack PR/);
     const block = Number(/block (\d+)/.exec(planned)?.[1]);
     const plan = await ok("list_plan", { from: "2026-11-20", to: "2026-11-20" });
-    expect(plan).toContain(`block ${block} | 2026-11-20 09:00-10:30`);
+    expect(plan).toContain(`block ${block} | 20.11.2026 09:00-10:30`);
     const moved = await ok("move_block", { block, date: "2026-11-21", start: "14:00" });
-    expect(moved).toContain("2026-11-21 14:00-15:30");
+    expect(moved).toContain("21.11.2026 14:00-15:30");
     await ok("plan_time", { title: "Gym", date: "2026-11-21", start: "18:00", end: "19:00" });
     expect(await ok("list_plan", { from: "2026-11-21", to: "2026-11-21" })).toMatch(/Gym/);
     expect(await ok("delete_block", { block })).toBe(`Deleted block ${block}.`);
@@ -750,5 +759,51 @@ describe("step 3 tools against the real API", () => {
     // overview shows what is planned for today.
     await ok("plan_time", { title: "Standup", date: today, start: "23:00", minutes: 15 });
     expect(await ok("overview")).toMatch(/Planned today[^\n]*\n.*Standup/);
+  });
+});
+
+describe("meeting tools against the real API", () => {
+  it("lists a standup, ticks what was said, writes the date's note and shows the date in the plan", async () => {
+    // Meetings are created in the web app; here through the API as the browser session.
+    const created = await rest("session", "POST", "/meetings", {
+      name: "MCP Standup",
+      schedule: { rule: { every: "week" }, startsOn: today, startTime: "23:50", durationMinutes: 10 },
+    });
+    expect(created.status).toBe(201);
+    const meetingId = Number(created.json?.id);
+    const todoId = idOf(await ok("create_todo", { title: "Patch the router" }));
+    await ok("mark_done", { ids: [todoId] });
+
+    expect(await ok("list_meetings")).toMatch(
+      new RegExp(`meeting ${meetingId} \\| MCP Standup \\| standup \\|.*\\| \\d+ to say`),
+    );
+    const list = await ok("standup_list", { meeting: "mcp standup", kinds: ["done"] });
+    expect(list).toContain(`Done:\n- #${todoId} Patch the router`);
+    expect(await ok("mark_said", { meeting: meetingId, todos: [todoId] })).toMatch(
+      new RegExp(`^Said #${todoId} at MCP Standup on ${formatDate(today).replaceAll(".", "\\.")}\\.`),
+    );
+    expect(await ok("standup_list", { meeting: meetingId })).toContain(
+      `Said on ${formatDate(today)}: #${todoId} Patch the router`,
+    );
+
+    const noted = await ok("meeting_note", { meeting: meetingId, text: "Router is patched." });
+    const noteId = Number(/note (\d+)/.exec(noted)?.[1]);
+    expect(await ok("get_note", { id: noteId })).toContain("Router is patched.");
+    expect(await ok("list_plan", { from: today, to: today })).toContain(
+      `meeting ${meetingId} | ${formatDate(today)} 23:50-${formatDate(addDays(today, 1))} 00:00 | MCP Standup | note ${noteId}`,
+    );
+
+    // A topic added by hand, with the meeting's next date as due date, then taken off again.
+    const topicId = idOf(await ok("create_todo", { title: "Budget talk" }));
+    expect(await ok("add_to_meeting", { meeting: meetingId, todos: [topicId], dueAtNext: true })).toBe(
+      `Added #${topicId} to MCP Standup, due ${formatDate(today)}.`,
+    );
+    expect(await ok("meeting_todos", { meeting: "mcp standup" })).toContain(
+      `- #${topicId} Budget talk | open | due ${formatDate(today)}`,
+    );
+    expect(await ok("remove_from_meeting", { meeting: meetingId, todos: [topicId] })).toBe(
+      `Removed #${topicId} from MCP Standup.`,
+    );
+    expect(await ok("meeting_todos", { meeting: meetingId })).toMatch(/has no todos added by hand/);
   });
 });

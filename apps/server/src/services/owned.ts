@@ -6,10 +6,12 @@ import {
   events,
   type IdTable,
   labels,
+  meetings,
   notes,
   people,
   personTags,
   projects,
+  series,
   timeBlocks,
   todoLinks,
   todos,
@@ -64,7 +66,9 @@ type IdTableDef =
   | typeof notes
   | typeof attachments
   | typeof todoUrls
-  | typeof timeBlocks;
+  | typeof timeBlocks
+  | typeof meetings
+  | typeof series;
 
 /**
  * Inserts rows into an id table of the scope's account: stamps account_id and gives each row the next

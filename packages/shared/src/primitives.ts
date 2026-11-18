@@ -40,6 +40,14 @@ export const PERSON_ROLES = ["requester", "contact"] as const;
 export const PersonRole = z.enum(PERSON_ROLES);
 export type PersonRole = z.infer<typeof PersonRole>;
 
+/** Languages to use with a person, as stable codes, in this order. */
+export const PERSON_LANGUAGES = ["de", "en"] as const;
+export const PersonLanguage = z.enum(PERSON_LANGUAGES);
+export type PersonLanguage = z.infer<typeof PersonLanguage>;
+
+/** Names of the person languages for people. */
+export const LANGUAGE_LABELS: Record<PersonLanguage, string> = { de: "German", en: "English" };
+
 /** Kinds of todo history events (comments are their own rows, not events). */
 export const EVENT_KINDS = [
   "created",

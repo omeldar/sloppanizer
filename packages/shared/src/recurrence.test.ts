@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   describeRecurrence,
   DONE_BASIS_MESSAGE,
+  matchesRule,
+  nextRuleDate,
   nextOccurrence,
   normalizeRecurrence,
+  previousRuleDate,
   recurrenceProblem,
   RecurrenceRule,
   type RecurrenceRuleInput,
@@ -73,7 +76,9 @@ describe("RecurrenceRule", () => {
   });
 
   it("flags an end date before the anchor", () => {
-    expect(recurrenceProblem({ until: "2026-11-01" }, "2026-11-12")).toMatch(/before/);
+    expect(recurrenceProblem({ until: "2026-11-01" }, "2026-11-12")).toBe(
+      "The repeat ends (01.11.2026) before the todo's date (12.11.2026).",
+    );
     expect(recurrenceProblem({ until: "2026-11-12" }, "2026-11-12")).toBeNull();
     expect(recurrenceProblem({ until: null }, "2026-11-12")).toBeNull();
   });
@@ -259,9 +264,46 @@ describe("describeRecurrence", () => {
     expect(describeRecurrence({ every: "month", monthWeekday: { nth: -1, weekday: "fri" } })).toBe(
       "every month on the last Friday",
     );
-    expect(describeRecurrence({ every: "year", yearDate: "03-14" })).toBe("every year on 03-14");
+    expect(describeRecurrence({ every: "year", yearDate: "03-14" })).toBe("every year on 14.03.");
     expect(describeRecurrence({ every: "day", interval: 3, basis: "done" })).toBe("every 3 days after done");
     expect(describeRecurrence({ every: "week", interval: 2 })).toBe("every 2 weeks");
-    expect(describeRecurrence({ every: "day", until: "2026-12-31" })).toBe("every day until 2026-12-31");
+    expect(describeRecurrence({ every: "day", until: "2026-12-31" })).toBe("every day until 31.12.2026");
+  });
+});
+
+describe("matchesRule and previousRuleDate", () => {
+  it("matches the pattern on both sides of the anchor", () => {
+    const every3 = normalizeRecurrence({ every: "day", interval: 3 }, "2026-11-10");
+    expect(
+      ["2026-11-07", "2026-11-08", "2026-11-10", "2026-11-13"].map((d) =>
+        matchesRule(every3, "2026-11-10", d),
+      ),
+    ).toEqual([true, false, true, true]);
+    // Weekly on Thursday from a Tuesday: the anchor itself is not a date.
+    const thu = normalizeRecurrence({ every: "week", weekdays: ["thu"] }, "2026-11-03");
+    expect(matchesRule(thu, "2026-11-03", "2026-11-03")).toBe(false);
+    expect(matchesRule(thu, "2026-11-03", "2026-10-29")).toBe(true);
+    const lastDay = normalizeRecurrence({ every: "month", interval: 2, monthDay: -1 }, "2026-11-30");
+    expect(matchesRule(lastDay, "2026-11-30", "2026-09-30")).toBe(true);
+    expect(matchesRule(lastDay, "2026-11-30", "2026-10-31")).toBe(false);
+    expect(matchesRule(lastDay, "2026-11-30", "2027-01-31")).toBe(true);
+  });
+
+  it("finds the last pattern date before a day, also before the anchor", () => {
+    const every3 = normalizeRecurrence({ every: "day", interval: 3 }, "2026-11-10");
+    expect(previousRuleDate(every3, "2026-11-10", "2026-11-10")).toBe("2026-11-07");
+    expect(previousRuleDate(every3, "2026-11-10", "2026-11-14")).toBe("2026-11-13");
+    const biweekly = normalizeRecurrence({ every: "week", interval: 2 }, "2026-12-03");
+    expect(previousRuleDate(biweekly, "2026-12-03", "2026-11-19")).toBe("2026-11-05");
+    const monthly = normalizeRecurrence({ every: "month" }, "2027-01-15");
+    expect(previousRuleDate(monthly, "2027-01-15", "2026-11-15")).toBe("2026-10-15");
+    expect(previousRuleDate(monthly, "2027-01-15", "2026-11-16")).toBe("2026-11-15");
+    const yearly = normalizeRecurrence({ every: "year" }, "2028-02-29");
+    expect(previousRuleDate(yearly, "2028-02-29", "2027-03-01")).toBe("2027-02-28");
+  });
+
+  it("nextRuleDate steps forward from the anchor on", () => {
+    const thu = normalizeRecurrence({ every: "week", weekdays: ["thu"] }, "2026-11-03");
+    expect(nextRuleDate(thu, "2026-11-03", "2026-11-03")).toBe("2026-11-05");
   });
 });

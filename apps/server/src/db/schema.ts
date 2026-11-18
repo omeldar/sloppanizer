@@ -1,4 +1,4 @@
-import { PERSON_ROLES } from "@organizer/shared";
+import { MARK_KINDS, MEETING_TYPES, PERSON_ROLES } from "@organizer/shared";
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -31,6 +31,8 @@ import { accounts } from "./auth-schema.ts";
  * nullable in SQL (a restore leaves it out, services/name-keys.ts fills it) but notNull here so every insert
  * sets it; todos.recurrence has CHECK json_valid; the search index (search_fts, FTS5) exists only in SQL,
  * services/search-index.ts keeps it up to date.
+ *
+ * JSON columns of later tables (series.rule, meetings.filter) have their CHECK json_valid here.
  */
 
 const accountId = () =>
@@ -103,6 +105,8 @@ export const people = sqliteTable(
     team: text("team").notNull().default(""),
     email: text("email").notNull().default(""),
     notesMd: text("notes_md").notNull().default(""),
+    /** Language codes, comma-separated in the order of PERSON_LANGUAGES ("de,en"; "" = not set). */
+    languages: text("languages").notNull().default(""),
   },
   (t) => [
     primaryKey({ columns: [t.accountId, t.id] }),
@@ -244,6 +248,8 @@ export const todos = sqliteTable(
     index("todos_project_idx").on(t.accountId, t.projectId),
     index("todos_parent_idx").on(t.accountId, t.parentId),
     index("todos_created_idx").on(t.accountId, t.createdAt),
+    // The standup list's first filter: todos with activity since the window start.
+    index("todos_activity_idx").on(t.accountId, t.lastActivityAt),
     // One next occurrence per todo, also against double clicks and races.
     uniqueIndex("todos_recurrence_prev_idx")
       .on(t.accountId, t.recurrencePrevId)
@@ -354,7 +360,8 @@ export const events = sqliteTable(
       columns: [t.accountId, t.todoId],
       foreignColumns: [todos.accountId, todos.id],
     }).onDelete("cascade"),
-    index("events_todo_idx").on(t.accountId, t.todoId),
+    // Covers lookups by todo and the standup list's "events of these todos since" query.
+    index("events_todo_time_idx").on(t.accountId, t.todoId, t.createdAt),
   ],
 );
 
@@ -532,6 +539,186 @@ export const accountSettings = sqliteTable(
   (t) => [primaryKey({ columns: [t.accountId, t.key] })],
 );
 
+/**
+ * Meetings. A meeting has a repeat (one or more series segments), a type and, for standups, a filter
+ * (JSON StandupFilter: project and label ids). The filter is JSON, not link tables: a deleted project's
+ * id then matches nothing instead of a cascade turning the filter into "everything".
+ */
+export const meetings = sqliteTable(
+  "meetings",
+  {
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    name: text("name").notNull(),
+    type: text("type", { enum: MEETING_TYPES }).notNull().default("other"),
+    filter: text("filter").notNull().default("{}"),
+    /** The standup list counts activity after this instant. */
+    since: text("since").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.id] }),
+    check("meetings_name_check", sql`length(${t.name}) BETWEEN 1 AND 200`),
+    check("meetings_type_check", sql`${t.type} IN ('standup','other')`),
+    check("meetings_filter_check", sql`json_valid(${t.filter})`),
+  ],
+);
+
+/**
+ * A segment of a repeat: a schedule rule (JSON RecurrenceRule, basis schedule, no until) anchored at
+ * starts_on, up to ends_on, at a wall-clock time in the account's zone. Generic so recurring planner
+ * blocks can own series too: owner_kind names the owner ('meeting' now) and has no SQL CHECK, so a new
+ * kind needs no table rebuild (zod and the services check it). Segments of one owner never overlap.
+ */
+export const series = sqliteTable(
+  "series",
+  {
+    accountId: accountId(),
+    id: integer("id").notNull(),
+    ownerKind: text("owner_kind").notNull(),
+    meetingId: integer("meeting_id"),
+    rule: text("rule").notNull(),
+    startsOn: text("starts_on").notNull(),
+    endsOn: text("ends_on"),
+    /** "HH:MM". */
+    startTime: text("start_time").notNull(),
+    durationMin: integer("duration_min").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.id] }),
+    foreignKey({
+      name: "series_meeting_fk",
+      columns: [t.accountId, t.meetingId],
+      foreignColumns: [meetings.accountId, meetings.id],
+    }).onDelete("cascade"),
+    check("series_rule_check", sql`json_valid(${t.rule})`),
+    check("series_duration_check", sql`${t.durationMin} BETWEEN 5 AND 1440`),
+    check("series_dates_check", sql`${t.endsOn} IS NULL OR ${t.endsOn} >= ${t.startsOn}`),
+    index("series_meeting_idx").on(t.accountId, t.meetingId, t.startsOn),
+  ],
+);
+
+/** One date of a series moved or cancelled, keyed by its original date. */
+export const seriesExceptions = sqliteTable(
+  "series_exceptions",
+  {
+    accountId: accountId(),
+    seriesId: integer("series_id").notNull(),
+    occursOn: text("occurs_on").notNull(),
+    kind: text("kind", { enum: ["cancelled", "moved"] }).notNull(),
+    /** UTC instants, set when moved. */
+    startAt: text("start_at"),
+    endAt: text("end_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.seriesId, t.occursOn] }),
+    foreignKey({
+      name: "series_exceptions_series_fk",
+      columns: [t.accountId, t.seriesId],
+      foreignColumns: [series.accountId, series.id],
+    }).onDelete("cascade"),
+    check("series_exceptions_kind_check", sql`${t.kind} IN ('cancelled','moved')`),
+    check(
+      "series_exceptions_moved_check",
+      sql`${t.kind} = 'cancelled' OR (${t.startAt} IS NOT NULL AND ${t.endAt} > ${t.startAt})`,
+    ),
+    index("series_exceptions_start_idx").on(t.accountId, t.startAt),
+  ],
+);
+
+/** The note of a meeting date. Deleting the note removes the link; deleting the meeting keeps the note. */
+export const meetingNotes = sqliteTable(
+  "meeting_notes",
+  {
+    accountId: accountId(),
+    meetingId: integer("meeting_id").notNull(),
+    occursOn: text("occurs_on").notNull(),
+    noteId: integer("note_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.meetingId, t.occursOn] }),
+    foreignKey({
+      name: "meeting_notes_meeting_fk",
+      columns: [t.accountId, t.meetingId],
+      foreignColumns: [meetings.accountId, meetings.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "meeting_notes_note_fk",
+      columns: [t.accountId, t.noteId],
+      foreignColumns: [notes.accountId, notes.id],
+    }).onDelete("cascade"),
+    // A note belongs to at most one meeting date.
+    unique("meeting_notes_note_unique").on(t.accountId, t.noteId),
+  ],
+);
+
+/**
+ * A todo said or dismissed at a standup date. Activity up to covered_until is covered: the todo shows
+ * again when it has newer activity. Kept per standup (meeting).
+ */
+export const standupMarks = sqliteTable(
+  "standup_marks",
+  {
+    accountId: accountId(),
+    meetingId: integer("meeting_id").notNull(),
+    todoId: integer("todo_id").notNull(),
+    occursOn: text("occurs_on").notNull(),
+    kind: text("kind", { enum: MARK_KINDS }).notNull(),
+    coveredUntil: text("covered_until").notNull(),
+    markedAt: text("marked_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.meetingId, t.todoId, t.occursOn] }),
+    foreignKey({
+      name: "standup_marks_meeting_fk",
+      columns: [t.accountId, t.meetingId],
+      foreignColumns: [meetings.accountId, meetings.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "standup_marks_todo_fk",
+      columns: [t.accountId, t.todoId],
+      foreignColumns: [todos.accountId, todos.id],
+    }).onDelete("cascade"),
+    check("standup_marks_kind_check", sql`${t.kind} IN ('said','dismissed')`),
+    index("standup_marks_on_idx").on(t.accountId, t.meetingId, t.occursOn),
+    index("standup_marks_todo_idx").on(t.accountId, t.todoId),
+  ],
+);
+
+/**
+ * A todo added by hand to a meeting: it is on every date of the meeting until removed. Deleting the
+ * meeting or the todo removes the link.
+ */
+export const meetingTodos = sqliteTable(
+  "meeting_todos",
+  {
+    accountId: accountId(),
+    meetingId: integer("meeting_id").notNull(),
+    todoId: integer("todo_id").notNull(),
+    addedAt: text("added_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.meetingId, t.todoId] }),
+    foreignKey({
+      name: "meeting_todos_meeting_fk",
+      columns: [t.accountId, t.meetingId],
+      foreignColumns: [meetings.accountId, meetings.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "meeting_todos_todo_fk",
+      columns: [t.accountId, t.todoId],
+      foreignColumns: [todos.accountId, todos.id],
+    }).onDelete("cascade"),
+    index("meeting_todos_todo_idx").on(t.accountId, t.todoId),
+  ],
+);
+
 /** Every table with a per-account id (counted in account_sequences). */
 export const ID_TABLES = [
   "projects",
@@ -547,5 +734,7 @@ export const ID_TABLES = [
   "attachments",
   "todo_urls",
   "time_blocks",
+  "meetings",
+  "series",
 ] as const;
 export type IdTable = (typeof ID_TABLES)[number];

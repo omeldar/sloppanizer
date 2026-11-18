@@ -127,7 +127,8 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 3px;
+  /* 2px plus the pixel of room in .tags: pills still sit 3px above the reasons. */
+  gap: 2px;
   min-width: 0;
   padding: 6px 12px 6px 0;
 }
@@ -171,16 +172,22 @@
   outline: none;
 }
 
-/* Labels and names give way before the title does; a pill that does not fit wraps out of sight whole. */
+/*
+ * Labels and names give way before the title does; a pill that does not fit wraps out of sight whole.
+ * The clip box is a pixel taller than a pill on each side: at zoom levels and on high DPI screens the
+ * row sits on fractions of a pixel, and a box exactly as tall as the pill cut off its top or bottom
+ * border. The row gap keeps wrapped pills below the box.
+ */
 .tags {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   align-content: flex-start;
-  gap: 0 6px;
+  gap: 4px 6px;
   flex: 0 1000 auto;
   min-width: 0;
-  height: 18px;
+  height: calc(var(--pill-h) + 2px);
+  padding: 1px 0;
   overflow: hidden;
 }
 

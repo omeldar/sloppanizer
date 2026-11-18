@@ -67,10 +67,10 @@ describe("GET /export.zip", () => {
     const manifest = JSON.parse(strFromU8(files["manifest.json"] as Uint8Array));
     expect(manifest).toMatchObject({
       app: "sloppanizer",
-      format: 5,
+      format: 7,
       exportedAt: "2026-11-14T13:04:05.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 13,
+      schemaVersion: 16,
       account: { username: "anna" },
       attachments: { count: 0, bytes: 0, missing: [] },
     });
@@ -156,7 +156,7 @@ const frontMatter = (md: string) => {
   return { meta: parse(match?.[1] ?? "") as Record<string, unknown>, body: match?.[2] ?? "" };
 };
 
-describe("export format 5", () => {
+describe("export format 7", () => {
   it("holds the new tables, the uploaded files and Markdown for notes and people", async () => {
     const t = await makeApp({ now: "2026-11-11T13:04:05.000Z", timeZone: "Europe/Zurich" });
     const sqlite = t.deps.db.$client;
@@ -173,12 +173,13 @@ describe("export format 5", () => {
 
     // Rows for the new tables straight into the database: this test is about the export, not the endpoints.
     sqlite
-      .prepare("UPDATE people SET team = ?, email = ?, notes_md = ?, note = ? WHERE id = ?")
+      .prepare("UPDATE people SET team = ?, email = ?, notes_md = ?, note = ?, languages = ? WHERE id = ?")
       .run(
         "Network team",
         "anna@example.com",
         "Knows the **old** setup.\n![net](/api/v1/attachments/2/net.txt)",
         "Basel",
+        "de,en",
         anna,
       );
     sqlite
@@ -272,7 +273,7 @@ describe("export format 5", () => {
     expect(methods["attachments/2-net.txt"]).toBe(8);
 
     const manifest = JSON.parse(text("manifest.json"));
-    expect(manifest.format).toBe(5);
+    expect(manifest.format).toBe(7);
     expect(manifest.attachments).toEqual({ count: 2, bytes: png.length + txt.length, missing: [3] });
     const data = JSON.parse(text("data.json"));
     expect(Object.keys(data)).toEqual([...EXPORT_TABLES]);
@@ -306,11 +307,11 @@ describe("export format 5", () => {
         "",
         "## Comments",
         "",
-        "### you, 2026-11-11 14:05",
+        "### you, 11.11.2026 14:05",
         "",
         "Asked Max.",
         "",
-        "### planner, 2026-11-12 09:00",
+        "### planner, 12.11.2026 09:00",
         "",
         // The file is missing, so the link stays as it was.
         "Done: [log](/api/v1/attachments/3/log.pdf)",
@@ -348,6 +349,7 @@ describe("export format 5", () => {
       name: "Anna Meier",
       team: "Network team",
       email: "anna@example.com",
+      languages: ["German", "English"],
       note: "Basel",
       topics: ["firewall rules", "VPN"],
       tags: ["fast reply"],
@@ -358,12 +360,92 @@ describe("export format 5", () => {
     expect(annaMd.body).toBe("Knows the **old** setup.\n![net](../attachments/2-net.txt)\n");
     expect(frontMatter(text("people/0002-max-muller.md")).meta).toMatchObject({
       name: "Max Müller",
+      languages: [],
       topics: [],
       tags: [],
       requested: [],
       contact_for: [todo.id],
     });
-    expect(text("README.md")).toContain("Export format 5.");
+    expect(text("README.md")).toContain("Export format 7.");
+  });
+});
+
+describe("meetings in the export", () => {
+  it("writes a Markdown file per meeting with its repeat, dates, filter, todos, notes and said todos", async () => {
+    const t = await makeApp();
+    const project = await t.create<{ id: number }>("/api/v1/projects", { name: "Lab" });
+    const label = await t.create<{ id: number }>("/api/v1/labels", { name: "ops" });
+    const todo = await t.create<Todo>("/api/v1/todos", { title: "Rack", projectId: project.id });
+    await t.call("PATCH", `/api/v1/todos/${todo.id}`, { status: "done" });
+    const meeting = await t.create<{ id: number }>("/api/v1/meetings", {
+      name: "Team standup",
+      schedule: { rule: { every: "week" }, startsOn: "2026-11-12", startTime: "09:00", durationMinutes: 15 },
+      filter: { projectIds: [project.id], inbox: true, labelIds: [label.id] },
+    });
+    const date = (on: string, body: unknown) =>
+      t.call("PATCH", `/api/v1/meetings/${meeting.id}/occurrences/${on}`, body);
+    await date("2026-11-19", {
+      scope: "this",
+      startAt: "2026-11-18T13:00:00.000Z",
+      endAt: "2026-11-18T13:15:00.000Z",
+    });
+    await date("2026-11-26", { scope: "this", cancelled: true });
+    await t.call("PATCH", `/api/v1/meetings/${meeting.id}/schedule`, {
+      scope: "following",
+      from: "2026-12-03",
+      startTime: "10:00",
+    });
+    await t.call("POST", `/api/v1/meetings/${meeting.id}/standup/marks`, {
+      on: "2026-11-12",
+      marks: [{ todoId: todo.id, kind: "said", coveredUntil: "2026-11-11T10:00:00.000Z" }],
+    });
+    const note = await t.create<{ note: { id: number } }>(`/api/v1/meetings/${meeting.id}/notes`, {
+      on: "2026-11-12",
+    });
+    const topic = await t.create<Todo>("/api/v1/todos", { title: "Budget" });
+    await t.create(`/api/v1/meetings/${meeting.id}/todos`, { todoId: topic.id });
+    t.advance(1000);
+    await t.create(`/api/v1/meetings/${meeting.id}/todos`, { todoId: todo.id });
+
+    const files = unzipSync((await t.call("GET", "/api/v1/export.zip")).rawPayload);
+    const md = strFromU8(files["meetings/0001-team-standup.md"] as Uint8Array);
+    const { meta, body } = frontMatter(md);
+    expect(meta).toEqual({
+      id: meeting.id,
+      name: "Team standup",
+      type: "standup",
+      schedule: [
+        "from 12.11.2026: every week on Thu until 02.12.2026, 09:00–09:15",
+        "from 03.12.2026: every week on Thu, 10:00–10:15",
+      ],
+      cancelled: ["2026-11-26"],
+      moved: [{ date: "2026-11-19", to: "18.11.2026 14:00" }],
+      filter: { projects: ["lab"], inbox: true, labels: ["ops"] },
+      since: "2026-11-05T08:00:00.000Z",
+      created: "2026-11-11T10:00:00.000Z",
+    });
+    expect(body).toBe(
+      [
+        "## Todos",
+        "",
+        `- #${topic.id} Budget`,
+        `- #${todo.id} Rack`,
+        "",
+        "## Notes",
+        "",
+        `- 12.11.2026: [Team standup 12.11.2026](../notes/${String(note.note.id).padStart(4, "0")}-team-standup-12-11-2026.md)`,
+        "",
+        "## Said",
+        "",
+        "### 12.11.2026",
+        "",
+        `- #${todo.id} Rack`,
+        "",
+      ].join("\n"),
+    );
+    expect(Object.keys(files)).toContain(
+      `notes/${String(note.note.id).padStart(4, "0")}-team-standup-12-11-2026.md`,
+    );
   });
 });
 
@@ -429,7 +511,7 @@ describe("export Markdown helpers", () => {
         "Europe/Zurich",
       ),
     ).toBe(
-      "## Comments\n\n### you, 2026-11-12 14:03\n\nFirst **one**\n\n### planner, 2026-03-29 03:30\n\nSecond",
+      "## Comments\n\n### you, 12.11.2026 14:03\n\nFirst **one**\n\n### planner, 29.03.2026 03:30\n\nSecond",
     );
   });
 });

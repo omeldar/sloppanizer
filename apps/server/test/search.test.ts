@@ -73,7 +73,7 @@ describe("GET /search", () => {
       title: "Renew VPN certificate",
       todoId: todo.id,
       status: null,
-      subtitle: "you, 2026-11-11 11:00",
+      subtitle: "you, 11.11.2026 11:00",
     });
     expect(hitsOf(r, "note")[0]).toMatchObject({
       id: note.id,

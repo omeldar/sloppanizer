@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { type APIRequestContext, type BrowserContext, expect, type Page, test } from "@playwright/test";
+import { formatDate } from "@organizer/shared";
 import { strFromU8, unzipSync } from "fflate";
 import {
   API,
@@ -151,12 +152,9 @@ test("a person with team, email, topic and tag becomes a contact and is found by
   const tags = await getJson<Array<{ id: number; name: string }>>(api, "/person-tags");
   made.tags.push(...tags.filter((t) => t.name === `fast reply ${stamp}`).map((t) => t.id));
 
-  // Mail and Teams links carry the address.
+  // Mail carries the address; there is no Teams chat link.
   await expect(details.getByRole("link", { name: "Mail" })).toHaveAttribute("href", `mailto:${email}`);
-  await expect(details.getByRole("link", { name: "Teams chat" })).toHaveAttribute(
-    "href",
-    `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(email)}`,
-  );
+  await expect(details.getByRole("link", { name: "Teams chat" })).toHaveCount(0);
 
   // Add as a contact on a todo.
   const id = await createTodo(`Open port 443 ${word}`, { projectId });
@@ -291,7 +289,8 @@ test("week: drag onto Wednesday plans it, back to Unplanned clears it, shift+l m
   const wednesday = localDate(2, new Date(`${monday}T12:00:00`));
   const thursday = localDate(3, new Date(`${monday}T12:00:00`));
   await page.goto("/week");
-  const day = (date: string) => page.getByRole("region", { name: new RegExp(`${date}$`) });
+  const day = (date: string) =>
+    page.getByRole("region", { name: new RegExp(`${formatDate(date).replaceAll(".", "\\.")}$`) });
   const unplanned = page.getByRole("region", { name: "Unplanned", exact: true });
   const card = (zone: ReturnType<typeof day>) => zone.getByRole("listitem").filter({ hasText: `#${id}` });
   await expect(card(unplanned)).toBeVisible();
