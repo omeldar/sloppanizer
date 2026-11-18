@@ -268,6 +268,28 @@ Layout: `packages/shared` (API contract as zod schemas, Next up scoring), `apps/
 Drizzle migrations), `apps/web` (React, Vite), `apps/mcp` (MCP server), `deploy/` (service template, install).
 Commits follow Conventional Commits (checked on commit).
 
+## Releases
+
+Every release has a version `major.minor.patch`, set once for the whole repo and listed in
+[CHANGELOG.md](CHANGELOG.md). New entries go under "Unreleased" with each change. To cut a release on `dev`:
+
+```sh
+pnpm release 1.4.0          # changelog, every package.json, commit "chore(release): v1.4.0", tag v1.4.0
+git push --follow-tags
+```
+
+Merging `dev` into `main` then ships it: CI builds the server image with the version and commit
+(`ghcr.io/omeldar/sloppanizer:1.4.0`, `:latest` and `:<commit>`), and the web build carries the same version
+(status bar; hover shows the commit). `GET /api/v1/health` answers `{ ok, version }` and nothing more.
+
+The web app compares its version with the server's (at start, on returning to the tab, every minute while they
+differ, otherwise every 15 minutes). While the server runs an older minor release than the web app (Watchtower
+has not pulled the new image yet), a banner says "Sloppanizer is updating" and errors of new features read "in
+a few minutes"; it goes away by itself. When the server is newer than an open tab, the banner offers Reload.
+Bump the minor version when the web app needs something new from the server, the patch version for fixes; if a
+fix release of the web app needs that same fix on the server, set `MIN_SERVER_VERSION` in
+`apps/web/src/lib/serverVersion.ts`.
+
 ## Troubleshooting
 
 - **The page does not load.** `systemctl --user status organizer`, then `journalctl --user -u organizer -n 50`.

@@ -13,6 +13,7 @@
     "format:check": "oxfmt --check .",
     "test": "pnpm -r run test",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test",
+    "release": "node scripts/release.ts",
     "prepare": "lefthook install"
   },
   "devDependencies": {

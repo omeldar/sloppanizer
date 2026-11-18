@@ -315,3 +315,22 @@ describe("headers and files", () => {
     expect(statSync(t.filesDir).mode & 0o777).toBe(0o700);
   });
 });
+
+describe("version for the web app", () => {
+  it("health tells the web origin the release version and nothing else", async () => {
+    const t = await makeApp();
+    const res = await t.app.inject({ method: "GET", url: "/api/v1/health", headers: { origin: WEB } });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["access-control-allow-origin"]).toBe(WEB);
+    const rootVersion = (await import("../../../package.json", { with: { type: "json" } })).default.version;
+    expect(res.json()).toEqual({ ok: true, version: rootVersion });
+  });
+
+  it("answers an unknown route in the form the web app reads as 'not on this server yet'", async () => {
+    // apps/web/src/lib/serverVersion.ts matches this text while the server is being updated.
+    const t = await makeApp();
+    const res = await t.app.inject({ method: "GET", url: "/api/v1/recurring", headers: authHeaders(t) });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.message).toMatch(/^GET \/api\/v1\/recurring does not exist\. See \/api\/docs/);
+  });
+});

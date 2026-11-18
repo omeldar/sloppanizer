@@ -1,0 +1,21 @@
+# Changelog
+
+What changed in each release of Sloppanizer. New entries go under "Unreleased"; `pnpm release <version>`
+moves them under the version's heading, sets the version everywhere and tags the commit `v<version>`.
+Versions follow `major.minor.patch`: a new minor release when the web app needs something new from the
+server, a patch release for fixes. While the server is on an older minor release than the web app, the
+app shows "Sloppanizer is updating".
+
+## Unreleased
+
+- Projects: edit a project's name, description and color from the project page or its menu in the
+  sidebar. New projects start with a color no other project uses yet (#17).
+- Releases have real versions (this changelog, `pnpm release`, git tags `v<version>`); the web app and
+  the server image carry the version and the commit (#16).
+- A banner says when Sloppanizer is updating (the server is still on the previous release for a few
+  minutes) and when a new version is ready in an old open tab, with a Reload button (#16).
+
+## 0.1.0
+
+Everything before numbered releases: todos, notes, people, the planner, meetings, accounts, the hosted
+MCP server and the AI assistant. See the git history for details.

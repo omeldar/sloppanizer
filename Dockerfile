@@ -15,12 +15,18 @@ COPY apps/server/src apps/server/src
 COPY apps/server/drizzle apps/server/drizzle
 
 FROM node:24-bookworm-slim
+# Set by CI from package.json and the commit; shown in the image labels and the start log.
+ARG VERSION=dev
+ARG COMMIT=unknown
 ENV NODE_ENV=production \
+    SLOPPANIZER_COMMIT=${COMMIT} \
     SLOPPANIZER_HOST=0.0.0.0 \
     SLOPPANIZER_PORT=4711 \
     SLOPPANIZER_DATA_DIR=/data
 LABEL org.opencontainers.image.source="https://github.com/omeldar/sloppanizer" \
-      org.opencontainers.image.title="sloppanizer"
+      org.opencontainers.image.title="sloppanizer" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}"
 COPY --from=deps /app /app
 RUN mkdir -p /data && chown 10001:10001 /data
 USER 10001:10001

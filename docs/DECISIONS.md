@@ -69,3 +69,22 @@ never changes its due date.
 **Blocked todos on standups.** Like a todo in progress, a blocked todo that a standup never marked is
 always on its list, also without changes, until it is said or dismissed there. After that only new
 updates bring it back. The rules per status are one pure function (services/standup-rules.ts).
+
+## 2026-11-18 Versions and the updating banner (#16)
+
+**One version, set at release.** The root package.json holds the release version; `pnpm release <version>`
+copies it into every package, moves the changelog's Unreleased entries under it, commits and tags
+`v<version>`. A test fails when a package carries another version. The server image gets the version and
+commit as labels (and the commit in its start log); the web build reads its package.json and the commit
+(Vercel's variable, else git). The health route answers only `{ ok, version }`.
+
+**When the banner shows.** "Updating" only while the server is on an older *minor* release than the web app
+(or below `MIN_SERVER_VERSION` when the web app declares one), so a fix release of one side never shows it.
+"A new version is ready" whenever the server is newer than the page. Versions are polled from the health
+route, no header on every answer, so CORS stays as it is. While updating, an unknown-route 404, an
+"Unrecognized key" 422 or an answer the app cannot read turns into "available in a few minutes". The
+banner is a grid row under the top bar, so it never covers the tab bar or the page.
+
+**Not done here.** Bumping to the first real version (proposed 1.0.0) is part of the next release, by
+`pnpm release`, when Eldar says to release.
+

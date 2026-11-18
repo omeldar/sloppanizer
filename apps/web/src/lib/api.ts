@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { ApiError, NETWORK_MESSAGE, responseError, safeJson } from "./apiError.ts";
 import { apiUrl } from "./config.ts";
+import { duringUpdate } from "./serverVersion.ts";
 import { accessToken, renewAccessToken, sessionEnded } from "./session.ts";
 
 export { ApiError } from "./apiError.ts";
@@ -54,10 +55,12 @@ export async function api<S extends z.ZodType>(
   const parsed = schema.safeParse(json);
   if (!parsed.success) {
     console.error(`Unexpected answer from ${path}`, parsed.error.issues);
-    throw new ApiError(
-      200,
-      "bad_response",
-      "The server sent an answer this version of the app does not understand. Reload the page.",
+    throw duringUpdate(
+      new ApiError(
+        200,
+        "bad_response",
+        "The server sent an answer this version of the app does not understand. Reload the page.",
+      ),
     );
   }
   return parsed.data;
@@ -126,7 +129,7 @@ async function authorizedFetch(path: string, options: RequestOptions): Promise<R
   }
   if (!response.ok) {
     const text = await response.text();
-    throw responseError(response.status, text ? safeJson(text) : null);
+    throw duringUpdate(responseError(response.status, text ? safeJson(text) : null));
   }
   return response;
 }
