@@ -8,6 +8,7 @@ export const ICONS = {
   planner: <path d="M3 5h14v12H3zM3 9h14M7 3v4M13 3v4M7 12.5h3v2.5H7z" />,
   week: <path d="M3 5h14v12H3zM3 9h14M7 3v4M13 3v4" />,
   meetings: <path d="M3 4h10v7H8l-3 2.5V11H3zM13 7.5h4v7h-2V17l-3-2.5H9V11" />,
+  recurring: <path d="M4 9a6 6 0 0 1 10.5-4M16 11a6 6 0 0 1-10.5 4M14.5 1.5V5H11M5.5 18.5V15H9" />,
   notes: <path d="M5 3h7l3 3v11H5zM12 3v3h3M8 10h5M8 13h5" />,
   labels: <path d="M3 3h7l7 7-7 7-7-7zM7 7h.01" />,
   people: (

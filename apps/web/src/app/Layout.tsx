@@ -64,6 +64,7 @@ export function Layout() {
     { keys: "g w", run: go("/week"), label: "Go to Week", group: "Go to" },
     { keys: "g t", run: go("/planner"), label: "Go to Planner", group: "Go to" },
     { keys: "g m", run: go("/meetings"), label: "Go to Meetings", group: "Go to" },
+    { keys: "g r", run: go("/recurring"), label: "Go to Recurring", group: "Go to" },
     { keys: "g o", run: go("/notes"), label: "Go to Notes", group: "Go to" },
     { keys: "g l", run: go("/labels"), label: "Go to Labels", group: "Go to" },
     { keys: "g p", run: go("/people"), label: "Go to People", group: "Go to" },
@@ -160,6 +161,7 @@ function Sidebar({ open }: { open: boolean }) {
         <NavItem to="/board" icon="board" label="Board" keys="g b" />
         <NavItem to="/planner" icon="planner" label="Planner" keys="g t" />
         <NavItem to="/meetings" icon="meetings" label="Meetings" keys="g m" />
+        <NavItem to="/recurring" icon="recurring" label="Recurring" keys="g r" />
         <NavItem to="/week" icon="week" label="Week" keys="g w" />
         <NavItem to="/notes" icon="notes" label="Notes" keys="g o" />
       </ul>
@@ -323,6 +325,7 @@ function Breadcrumb() {
   else if (pathname === "/week") trail = [{ label: "Week" }];
   else if (pathname === "/planner") trail = [{ label: "Planner" }];
   else if (pathname === "/meetings") trail = [{ label: "Meetings" }];
+  else if (pathname === "/recurring") trail = [{ label: "Recurring" }];
   else if (pathname.startsWith("/meetings/"))
     trail = [{ label: "Meetings", to: "/meetings" }, { label: meeting.data?.name ?? "Meeting" }];
   else if (pathname === "/search") trail = [{ label: "Search" }];

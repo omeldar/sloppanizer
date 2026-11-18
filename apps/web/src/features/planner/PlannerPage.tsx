@@ -1,4 +1,13 @@
-import { addDays, type MeetingOccurrence, type SeriesScope, toLocalTime, weekDays } from "@organizer/shared";
+import {
+  addDays,
+  type BlockOccurrence,
+  canRepeatPlan,
+  type MeetingOccurrence,
+  type SeriesScope,
+  type Todo,
+  toLocalTime,
+  weekDays,
+} from "@organizer/shared";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import {
   type CSSProperties,
@@ -16,6 +25,14 @@ import { useBlocks, useCreateBlock, useNext, useTodos, useUpdateBlock } from "..
 import { useChangeOccurrence, useDeleteMeeting, useMeetings, useOccurrences } from "../../lib/meetings.ts";
 import { SeriesScopeDialog } from "../../components/SeriesScopeDialog.tsx";
 import { OccurrenceDialog } from "./OccurrenceDialog.tsx";
+import { PlannedDateDialog } from "./PlannedDateDialog.tsx";
+import {
+  useChangeRepeatDate,
+  useCreateRepeatPlan,
+  useDeleteRepeatPlan,
+  useRepeatOccurrences,
+  useRepeatPlan,
+} from "../../lib/plans.ts";
 import { useEdgeScroll } from "./useEdgeScroll.ts";
 import { useTodoDrag } from "./useTodoDrag.ts";
 import { BlockCard } from "./BlockCard.tsx";
@@ -31,8 +48,10 @@ import {
   blockTitle,
   HOUR_PX,
   MEETING_CANCEL_SCOPES,
+  REPEAT_CANCEL_SCOPES,
+  repeatItem,
   meetingItem,
-  meetingMoveScopes,
+  seriesMoveScopes,
   minutesToTime,
   movedSpan,
   nextQuarter,
@@ -55,6 +74,10 @@ interface Proposal {
 type MeetingChange =
   | { action: "move"; occurrence: MeetingOccurrence; startAt: string; endAt: string }
   | { action: "cancel"; occurrence: MeetingOccurrence };
+/** A change of a repeating todo's planned date, waiting for "this one, following or all". */
+type RepeatChange =
+  | { action: "move"; occurrence: BlockOccurrence; startAt: string; endAt: string }
+  | { action: "cancel"; occurrence: BlockOccurrence };
 
 /** The grid always shows the whole day; it scrolls inside itself. */
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
@@ -99,6 +122,14 @@ export function PlannerPage() {
   const [changeError, setChangeError] = useState<string | null>(null);
   const changeOccurrence = useChangeOccurrence();
   const deleteMeeting = useDeleteMeeting();
+  const repeats = useRepeatOccurrences(first, last);
+  const [openRepeat, setOpenRepeat] = useState<BlockOccurrence | null>(null);
+  const [repeatChange, setRepeatChange] = useState<RepeatChange | null>(null);
+  const [repeatError, setRepeatError] = useState<string | null>(null);
+  const changeRepeat = useChangeRepeatDate();
+  const deleteRepeat = useDeleteRepeatPlan();
+  const createRepeat = useCreateRepeatPlan();
+  const changingPlan = useRepeatPlan(repeatChange?.occurrence.ownerTodoId ?? 0, repeatChange !== null);
   const plannedTodos = useTodos({
     plannedFrom: first,
     plannedTo: last,
@@ -135,9 +166,18 @@ export function PlannerPage() {
             ? meetingItem(o, meetingChange)
             : meetingItem(o),
         ),
+      ...(repeats.data ?? [])
+        .filter((o) => o.status !== "cancelled")
+        .map((o) =>
+          repeatChange?.action === "move" &&
+          repeatChange.occurrence.seriesId === o.seriesId &&
+          repeatChange.occurrence.occursOn === o.occursOn
+            ? repeatItem(o, repeatChange)
+            : repeatItem(o),
+        ),
     ];
     return new Map(days.map((day) => [day, placeItems(items, day, timeZone)]));
-  }, [blocks.data, occurrences.data, meetingChange, days]);
+  }, [blocks.data, occurrences.data, meetingChange, repeats.data, repeatChange, days]);
   // The grid scrolls inside itself; it opens near now on this week, at the start of the day on others.
   const body = useRef<HTMLDivElement>(null);
   const [openAt] = useState(() => scrollStartMinutes(days.includes(now.day), now.minutes));
@@ -160,23 +200,29 @@ export function PlannerPage() {
   };
 
   const create = useCreateBlock();
+  const toastError = (failure: unknown) => toast.show({ tone: "error", message: errorMessage(failure) });
   const { drag, bind, retarget } = useTodoDrag({
     hourPx: HOUR_PX,
     onClick: (todo) => planTodo(todo),
-    // A dropped todo gets an hour from where it landed; move or resize the block after.
-    onDrop: (todo, day, startMin) =>
-      create.mutate(
-        {
-          todoId: todo.id,
-          ...blockSpan(
-            day,
-            minutesToTime(startMin),
-            minutesToTime(Math.min(24 * 60, startMin + 60)),
-            timeZone,
-          ),
-        },
-        { onError: (failure) => toast.show({ tone: "error", message: errorMessage(failure) }) },
-      ),
+    // A dropped todo gets an hour from where it landed; move or resize the block after. A todo that
+    // repeats on a schedule gets time on every date of its repeat, unless it has planned time already.
+    onDrop: (todo, day, startMin) => {
+      const span = blockSpan(
+        day,
+        minutesToTime(startMin),
+        minutesToTime(Math.min(24 * 60, startMin + 60)),
+        timeZone,
+      );
+      if (canRepeatPlan(knownTodos.get(todo.id)?.recurrence ?? null) && !plannedRepeats.has(todo.id))
+        createRepeat.mutate(
+          { todoId: todo.id, span },
+          {
+            onSuccess: (plan) => toast.show({ message: `Planned ${todo.title}: ${plan.schedule.text}` }),
+            onError: toastError,
+          },
+        );
+      else create.mutate({ todoId: todo.id, ...span }, { onError: toastError });
+    },
   });
   useEdgeScroll(body, drag?.active ? drag : null);
 
@@ -245,7 +291,62 @@ export function PlannerPage() {
     );
   };
 
-  const planned = new Set((blocks.data ?? []).flatMap((b) => (b.todoId === null ? [] : [b.todoId])));
+  const applyRepeatChange = (pending: RepeatChange, scope: SeriesScope) => {
+    const { occurrence } = pending;
+    const todoId = occurrence.ownerTodoId;
+    const settled = {
+      onError: (failure: unknown) => setRepeatError(errorMessage(failure)),
+    };
+    if (pending.action === "cancel" && scope === "all") {
+      deleteRepeat.mutate(todoId, {
+        ...settled,
+        onSuccess: () => {
+          setRepeatChange(null);
+          toast.show({ message: `Removed the planned time of ${occurrence.todo.title}` });
+        },
+      });
+      return;
+    }
+    const change =
+      pending.action === "move"
+        ? { scope, startAt: pending.startAt, endAt: pending.endAt }
+        : { scope: scope === "this" ? ("this" as const) : ("following" as const), cancelled: true as const };
+    changeRepeat.mutate(
+      { todoId, on: occurrence.occursOn, change },
+      {
+        ...settled,
+        onSuccess: () => {
+          setRepeatChange(null);
+          if (pending.action === "cancel" && scope === "this")
+            toast.show({
+              message: `Removed ${occurrence.todo.title} on ${dayLabel(occurrence.occursOn)}`,
+              action: {
+                label: "Undo",
+                run: () =>
+                  changeRepeat.mutate({
+                    todoId,
+                    on: occurrence.occursOn,
+                    change: { scope: "this", cancelled: false },
+                  }),
+              },
+            });
+        },
+      },
+    );
+  };
+
+  /** Todos the page knows in full (for their repeat), and those whose repeat has planned time. */
+  const knownTodos = new Map<number, Todo>(
+    [...(next.data?.items ?? []).map((item) => item.todo), ...(plannedTodos.data?.items ?? [])].map((t) => [
+      t.id,
+      t,
+    ]),
+  );
+  const plannedRepeats = new Set((repeats.data ?? []).flatMap((o) => [o.todo.id, o.ownerTodoId]));
+  const planned = new Set([
+    ...(blocks.data ?? []).flatMap((b) => (b.todoId === null ? [] : [b.todoId])),
+    ...plannedRepeats,
+  ]);
   const toPlan = (next.data?.items ?? [])
     .map((item) => item.todo)
     .filter((todo) => !planned.has(todo.id))
@@ -255,7 +356,11 @@ export function PlannerPage() {
     (plannedTodos.data?.items ?? []).filter(
       (todo) =>
         todo.plannedOn === day &&
-        !(placedByDay.get(day) ?? []).some((p) => p.item.kind === "block" && p.item.block.todoId === todo.id),
+        !(placedByDay.get(day) ?? []).some(
+          (p) =>
+            (p.item.kind === "block" && p.item.block.todoId === todo.id) ||
+            (p.item.kind === "repeat" && p.item.occurrence.todo.id === todo.id),
+        ),
     );
 
   return (
@@ -485,6 +590,29 @@ export function PlannerPage() {
                       />
                     );
                   }
+                  if (item.kind === "repeat") {
+                    const { occurrence } = item;
+                    return (
+                      <BlockCard
+                        key={`${item.key}-${day}`}
+                        {...shared}
+                        title={occurrence.todo.title}
+                        color={occurrence.project?.color}
+                        done={occurrence.todo.status === "done"}
+                        repeats
+                        onOpen={() => setOpenRepeat(occurrence)}
+                        // A planned date of a repeat asks which dates the move is for; Cancel puts it back.
+                        onDrop={(deltaMin, dayOffset, mode) => {
+                          setRepeatError(null);
+                          setRepeatChange({
+                            action: "move",
+                            occurrence,
+                            ...movedSpan(item, deltaMin, dayOffset, mode, timeZone),
+                          });
+                        }}
+                      />
+                    );
+                  }
                   const { block } = item;
                   return (
                     <BlockCard
@@ -556,6 +684,44 @@ export function PlannerPage() {
           setMeetingChange({ action: "cancel", occurrence });
         }}
       />
+      <PlannedDateDialog
+        occurrence={openRepeat}
+        onClose={() => setOpenRepeat(null)}
+        onMove={(occurrence, span) => {
+          setOpenRepeat(null);
+          setRepeatError(null);
+          setRepeatChange({ action: "move", occurrence, ...span });
+        }}
+        onCancel={(occurrence) => {
+          setOpenRepeat(null);
+          setRepeatError(null);
+          setRepeatChange({ action: "cancel", occurrence });
+        }}
+      />
+      <SeriesScopeDialog
+        open={repeatChange !== null}
+        title={
+          repeatChange?.action === "cancel"
+            ? `Remove ${repeatChange.occurrence.todo.title} on ${dayLabel(repeatChange.occurrence.occursOn)}`
+            : `Move ${repeatChange?.occurrence.todo.title ?? "the planned time"}`
+        }
+        options={
+          repeatChange?.action === "move"
+            ? seriesMoveScopes(
+                changingPlan.data?.segments ?? [],
+                repeatChange.occurrence,
+                repeatChange.startAt,
+                timeZone,
+              )
+            : REPEAT_CANCEL_SCOPES
+        }
+        confirmLabel={repeatChange?.action === "cancel" ? "Remove" : "Move"}
+        danger={repeatChange?.action === "cancel"}
+        busy={changeRepeat.isPending || deleteRepeat.isPending}
+        error={repeatError}
+        onPick={(scope) => repeatChange && applyRepeatChange(repeatChange, scope)}
+        onCancel={() => setRepeatChange(null)}
+      />
       <SeriesScopeDialog
         open={meetingChange !== null}
         title={
@@ -565,7 +731,7 @@ export function PlannerPage() {
         }
         options={
           meetingChange?.action === "move"
-            ? meetingMoveScopes(
+            ? seriesMoveScopes(
                 meetings.data?.find((m) => m.id === meetingChange.occurrence.meetingId)?.segments ?? [],
                 meetingChange.occurrence,
                 meetingChange.startAt,
