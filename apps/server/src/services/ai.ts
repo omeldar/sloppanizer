@@ -7,10 +7,14 @@ import {
   breakdownPrompt,
   checkPlan,
   type ClaudeModel,
+  formatDateTime,
   PlanAnswer,
   type PlanContext,
   planPrompt,
   priorityOf,
+  type StandupKind,
+  StandupSummaryAnswer,
+  standupPrompt,
   TodoListQuery,
   toLocalDate,
   toLocalTime,
@@ -25,6 +29,9 @@ import { ApiError } from "../http/errors.ts";
 import { decryptSecret, encryptSecret } from "./auth/crypto.ts";
 import { listBlocks } from "./blocks.ts";
 import type { Ctx } from "./context.ts";
+import { meetingRow } from "./meeting-data.ts";
+import { listOccurrences } from "./meetings.ts";
+import { getStandup } from "./standup.ts";
 import { getTodo, listTodos, nextUp } from "./todos.ts";
 
 const KEY_PURPOSE = "ai-claude-key";
@@ -102,13 +109,27 @@ export function buildPlan(
   const now = ctx.clock();
   const today = toLocalDate(now, ctx.timeZone);
   if (day < today) throw new ApiError("validation_failed", "Plan today or a later day.");
-  const blocks = listBlocks(ctx, { from: day, to: day });
-  const busy = blocks.map((b) => {
+  // Time blocks and the day's meetings (not the cancelled ones) are taken.
+  const taken = [
+    ...listBlocks(ctx, { from: day, to: day }).map((b) => ({
+      startAt: b.startAt,
+      endAt: b.endAt,
+      title: b.todo?.title ?? b.title,
+      todoId: b.todoId,
+    })),
+    ...listOccurrences(ctx, { from: day, to: day }).map((o) => ({
+      startAt: o.startAt,
+      endAt: o.endAt,
+      title: o.name,
+      todoId: null,
+    })),
+  ].toSorted((a, b) => a.startAt.localeCompare(b.startAt));
+  const busy = taken.map((b) => {
     const startDay = toLocalDate(b.startAt, ctx.timeZone);
     const endDay = toLocalDate(b.endAt, ctx.timeZone);
     const start = startDay < day ? "00:00" : toLocalTime(b.startAt, ctx.timeZone);
     const end = endDay > day ? "24:00" : toLocalTime(b.endAt, ctx.timeZone);
-    return { start, end, title: b.todo?.title ?? b.title, todoId: b.todoId };
+    return { start, end, title: b.title, todoId: b.todoId };
   });
   const planned = new Set(busy.flatMap((b) => (b.todoId === null ? [] : [b.todoId])));
   const ranked = nextUp(ctx, { mode: "smart", limit: CANDIDATES + planned.size })
@@ -161,6 +182,24 @@ export function buildBreakdown(ctx: Ctx, todoId: number): { prompt: AiPrompt; ex
     prompt: { ...prompt, schema: z.toJSONSchema(BreakdownAnswer) as Record<string, unknown> },
     existing,
   };
+}
+
+/** The prompt that sums up a standup's open list (only the given kinds, default all). */
+export function buildStandupSummary(ctx: Ctx, meetingId: number, kinds?: readonly StandupKind[]): AiPrompt {
+  const standup = getStandup(ctx, meetingId, kinds ? { kind: [...kinds] } : {});
+  const prompt = standupPrompt({
+    meetingName: meetingRow(ctx, meetingId).name,
+    since: formatDateTime(standup.since, ctx.timeZone),
+    items: standup.items.map((item) => ({
+      kind: item.kind,
+      title: item.todo.title,
+      project: item.project?.name ?? null,
+      parent: item.parent?.title ?? null,
+      changes: item.changes,
+      comment: item.lastComment?.excerpt ?? null,
+    })),
+  });
+  return { ...prompt, schema: z.toJSONSchema(StandupSummaryAnswer) as Record<string, unknown> };
 }
 
 // ---------- Claude ----------
