@@ -51,7 +51,7 @@ const say = (t: Caller, meetingId: number, standup: Standup, titles: string[], k
   );
 
 describe("the standup list", () => {
-  it("lists done, started, updated and blocked todos of the window, never open ones", async () => {
+  it("lists done, started, updated and blocked todos of the window and all blocked, never open ones", async () => {
     const t = await makeApp();
     t.setNow("2026-11-03T10:00:00.000Z");
     const oldDone = await todo(t, "Done before the window");
@@ -79,13 +79,16 @@ describe("the standup list", () => {
       said: [],
       dismissedCount: 0,
     });
+    // A todo blocked before the window is there too: never marked, so always on the list (like in progress).
     expect(lines(standup)).toEqual([
       "done Shipped",
       "started Started",
       "updated In progress before",
       "blocked Waiting for parts",
+      "blocked Blocked before the window",
     ]);
-    expect(standup.counts).toEqual({ done: 1, started: 1, updated: 1, blocked: 1 });
+    expect(standup.counts).toEqual({ done: 1, started: 1, updated: 1, blocked: 2 });
+    expect(item(standup, "Blocked before the window").at).toBe("2026-11-03T10:00:00.000Z");
     expect(item(standup, "Shipped").at).toBe("2026-11-10T10:00:00.000Z");
     expect(item(standup, "Started").changes).toEqual(["changed status from Open to In progress"]);
     expect(item(standup, "In progress before")).toMatchObject({
@@ -93,7 +96,8 @@ describe("the standup list", () => {
       lastComment: { actor: "you", excerpt: "Halfway there" },
       again: false,
     });
-    expect(json<Meeting>(await t.call("GET", `/api/v1/meetings/${id}`)).openCount).toBe(4);
+    const [listed] = json<Meeting[]>(await t.call("GET", "/api/v1/meetings"));
+    expect(listed?.openCount).toBe(5);
   });
 
   it("shows every todo in progress on a new standup, also one untouched for a month", async () => {
@@ -120,6 +124,46 @@ describe("the standup list", () => {
     const back = await list(t, id);
     expect(lines(back)).toEqual(["updated Long task"]);
     expect(item(back, "Long task")).toMatchObject({ again: true, changes: ["added subtask #2"] });
+  });
+
+  it("keeps a blocked todo without changes on every date until it is said, then only news bring it back", async () => {
+    const t = await makeApp();
+    t.setNow("2026-10-01T10:00:00.000Z");
+    const stuck = await todo(t, "Waiting for the vendor");
+    await setStatus(t, stuck.id, "blocked");
+    t.setNow("2026-11-11T10:00:00.000Z");
+    const { id } = await createStandup(t);
+    const first = await list(t, id);
+    expect(lines(first)).toEqual(["blocked Waiting for the vendor"]);
+    expect(item(first, "Waiting for the vendor")).toMatchObject({
+      at: "2026-10-01T10:00:00.000Z",
+      changes: [],
+      again: false,
+    });
+    // Not said at the first date: still there a week later, with nothing new.
+    t.setNow("2026-11-19T10:00:00.000Z");
+    const next = await list(t, id);
+    expect(next.on).toBe("2026-11-19");
+    expect(lines(next)).toEqual(["blocked Waiting for the vendor"]);
+    await say(t, id, next, ["Waiting for the vendor"]);
+    expect(lines(await list(t, id))).toEqual([]);
+    // A week later, still blocked and untouched: it stays away.
+    t.setNow("2026-11-26T10:00:00.000Z");
+    expect(lines(await list(t, id))).toEqual([]);
+    // A label is no news; a comment is.
+    await t.call("PATCH", `/api/v1/todos/${stuck.id}`, { addLabels: ["vendor"] });
+    expect(lines(await list(t, id))).toEqual([]);
+    await comment(t, stuck.id, "They answered");
+    const back = await list(t, id);
+    expect(lines(back)).toEqual(["blocked Waiting for the vendor"]);
+    expect(item(back, "Waiting for the vendor").again).toBe(true);
+    // A dismiss on another standup is that standup's own: here it is still on the list.
+    const daily = await createStandup(t, { name: "Daily" });
+    const other = await list(t, daily.id);
+    expect(lines(other)).toEqual(["blocked Waiting for the vendor"]);
+    await say(t, daily.id, other, ["Waiting for the vendor"], "dismissed");
+    expect(lines(await list(t, daily.id))).toEqual([]);
+    expect(lines(await list(t, id))).toEqual(["blocked Waiting for the vendor"]);
   });
 
   it("shows a todo again when a comment comes after it was said", async () => {
@@ -169,6 +213,28 @@ describe("the standup list", () => {
     t.advance(60_000);
     await comment(t, task.id, "Renewed one of two");
     expect(lines(await list(t, id))).toEqual(["blocked Certs"]);
+  });
+
+  it("never covers less when a date is marked again with an older time", async () => {
+    const t = await makeApp();
+    const { id } = await createStandup(t);
+    const task = await todo(t, "Switch");
+    await setStatus(t, task.id, "in_progress");
+    const first = await list(t, id);
+    t.advance(60_000);
+    await comment(t, task.id, "Ordered");
+    const second = await list(t, id);
+    await say(t, id, second, ["Switch"]);
+    expect(lines(await list(t, id))).toEqual([]);
+    // An old list (from before the comment) dismisses it on the same date: the comment stays covered.
+    await say(t, id, first, ["Switch"], "dismissed");
+    const after = await list(t, id);
+    expect(lines(after)).toEqual([]);
+    expect(after.dismissedCount).toBe(1);
+    const row = t.deps.db.$client
+      .prepare("SELECT covered_until FROM standup_marks WHERE todo_id = ?")
+      .get(task.id) as { covered_until: string };
+    expect(row.covered_until).toBe(item(second, "Switch").at);
   });
 
   it("dismisses an item without saying it; it comes back on new updates", async () => {

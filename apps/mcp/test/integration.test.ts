@@ -189,6 +189,9 @@ describe("MCP server against the real API", () => {
         "standup_list",
         "mark_said",
         "meeting_note",
+        "meeting_todos",
+        "add_to_meeting",
+        "remove_from_meeting",
         "move_block",
         "delete_block",
         "bulk_update",
@@ -789,5 +792,18 @@ describe("meeting tools against the real API", () => {
     expect(await ok("list_plan", { from: today, to: today })).toContain(
       `meeting ${meetingId} | ${formatDate(today)} 23:50-${formatDate(addDays(today, 1))} 00:00 | MCP Standup | note ${noteId}`,
     );
+
+    // A topic added by hand, with the meeting's next date as due date, then taken off again.
+    const topicId = idOf(await ok("create_todo", { title: "Budget talk" }));
+    expect(await ok("add_to_meeting", { meeting: meetingId, todos: [topicId], dueAtNext: true })).toBe(
+      `Added #${topicId} to MCP Standup, due ${formatDate(today)}.`,
+    );
+    expect(await ok("meeting_todos", { meeting: "mcp standup" })).toContain(
+      `- #${topicId} Budget talk | open | due ${formatDate(today)}`,
+    );
+    expect(await ok("remove_from_meeting", { meeting: meetingId, todos: [topicId] })).toBe(
+      `Removed #${topicId} from MCP Standup.`,
+    );
+    expect(await ok("meeting_todos", { meeting: meetingId })).toMatch(/has no todos added by hand/);
   });
 });

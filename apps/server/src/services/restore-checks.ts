@@ -1,6 +1,7 @@
 import {
   CalendarDate,
   MAX_EXCEPTIONS,
+  MAX_MEETING_TODOS,
   MAX_MEETINGS,
   MAX_SEGMENTS,
   StandupFilter,
@@ -57,6 +58,7 @@ const ROW_CHECKS: Partial<Record<string, (row: Row) => string | null>> = {
     return null;
   },
   meeting_notes: (row) => (isDate(row.occurs_on) ? null : "occurs_on is not a date"),
+  meeting_todos: (row) => (isInstant(row.added_at) ? null : "added_at is not a UTC time"),
   standup_marks: (row) => {
     if (!isDate(row.occurs_on)) return "occurs_on is not a date";
     return isInstant(row.covered_until) && isInstant(row.marked_at)
@@ -84,6 +86,13 @@ export function limitProblem(
   for (const [meetingId, n] of countBy(data.series ?? [], "meeting_id")) {
     if (n > MAX_SEGMENTS)
       return { table: "series", message: `meeting ${String(meetingId)} has more than ${MAX_SEGMENTS} parts` };
+  }
+  for (const [meetingId, n] of countBy(data.meeting_todos ?? [], "meeting_id")) {
+    if (n > MAX_MEETING_TODOS)
+      return {
+        table: "meeting_todos",
+        message: `meeting ${String(meetingId)} has more than ${MAX_MEETING_TODOS} todos`,
+      };
   }
   for (const [seriesId, n] of countBy(data.series_exceptions ?? [], "series_id")) {
     if (n > MAX_EXCEPTIONS)

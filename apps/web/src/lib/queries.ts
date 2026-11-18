@@ -274,6 +274,8 @@ export function invalidateTodoViews(client: QueryClient): Promise<void> {
         "search",
         // A todo change can put it on a standup list or take it off.
         "standup",
+        // Todos on a meeting show their title, status and due date.
+        "meetingTodos",
       ].includes(String(query.queryKey[0])),
   });
 }

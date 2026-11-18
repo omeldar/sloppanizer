@@ -1,4 +1,12 @@
-import type { BackupFile, Person, RestorePreview, RestoreResult, Settings, Todo } from "@organizer/shared";
+import type {
+  BackupFile,
+  MeetingTodos,
+  Person,
+  RestorePreview,
+  RestoreResult,
+  Settings,
+  Todo,
+} from "@organizer/shared";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -59,10 +67,10 @@ describe("restore upload and preview", () => {
     expect(preview).toMatchObject({
       fileName: "sloppanizer-export-20261111.zip",
       source: "sloppanizer",
-      format: 6,
+      format: 7,
       exportedAt: "2026-11-11T10:00:00.000Z",
       appVersion: "0.1.0",
-      schemaVersion: 15,
+      schemaVersion: 16,
       attachments: { count: 1, bytes: 11, missing: [] },
       warnings: [],
       expiresAt: "2026-11-11T11:00:00.000Z",
@@ -452,7 +460,14 @@ describe("restore apply", () => {
     const t = await makeApp();
     await fillEveryTable(t);
     const zip = await exportZip(t);
-    const meetingTables = ["meetings", "series", "series_exceptions", "meeting_notes", "standup_marks"];
+    const meetingTables = [
+      "meetings",
+      "series",
+      "series_exceptions",
+      "meeting_notes",
+      "standup_marks",
+      "meeting_todos",
+    ];
     const format5 = rework(zip, (m, d) => {
       m.format = 5;
       m.schemaVersion = 14;
@@ -486,6 +501,72 @@ describe("restore apply", () => {
     expect(problems(missing)).toContain('data.json misses the table "standup_marks".');
   });
 
+  it("restores a format 6 export, which has no todos on meetings, and refuses them in it", async () => {
+    const t = await makeApp();
+    const { meeting } = await fillEveryTable(t);
+    const zip = await exportZip(t);
+    const format6 = rework(zip, (m, d) => {
+      m.format = 6;
+      m.schemaVersion = 15;
+      delete d.meeting_todos;
+      delete m.counts.meeting_todos;
+    });
+    const preview = json<RestorePreview>(await upload(t, format6));
+    expect(preview).toMatchObject({ format: 6, source: "sloppanizer", warnings: [] });
+    const applied = await t.call("POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" });
+    expect(applied.statusCode).toBe(200);
+    expect(json<unknown[]>(await t.call("GET", "/api/v1/meetings"))).toHaveLength(1);
+    expect(json<MeetingTodos>(await t.call("GET", `/api/v1/meetings/${meeting.id}/todos`)).items).toEqual([]);
+
+    const withTodos = await upload(
+      t,
+      rework(zip, (m) => {
+        m.format = 6;
+      }),
+    );
+    expect(withTodos.statusCode).toBe(422);
+    expect(problems(withTodos)).toContain(
+      'data.json has a table "meeting_todos" that format 6 does not have.',
+    );
+    const missing = await upload(
+      t,
+      rework(zip, (_m, d) => {
+        delete d.meeting_todos;
+      }),
+    );
+    expect(problems(missing)).toContain('data.json misses the table "meeting_todos".');
+  });
+
+  it("restores a format 4 export, which has no web links, time blocks or meetings", async () => {
+    const t = await makeApp();
+    await fillEveryTable(t);
+    const zip = await exportZip(t);
+    const format4 = rework(zip, (m, d) => {
+      m.format = 4;
+      m.schemaVersion = 12;
+      for (const table of [
+        "todo_urls",
+        "time_blocks",
+        "meetings",
+        "series",
+        "series_exceptions",
+        "meeting_notes",
+        "standup_marks",
+        "meeting_todos",
+      ]) {
+        delete d[table];
+        delete m.counts[table];
+      }
+      for (const sequence of ["todo_urls", "time_blocks", "meetings", "series"]) delete m.sequences[sequence];
+    });
+    const preview = json<RestorePreview>(await upload(t, format4));
+    expect(preview).toMatchObject({ format: 4, source: "sloppanizer", warnings: [] });
+    const applied = await t.call("POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" });
+    expect(applied.statusCode).toBe(200);
+    expect(json<unknown[]>(await t.call("GET", "/api/v1/meetings"))).toEqual([]);
+    expect(json<{ total: number }>(await t.call("GET", "/api/v1/todos?status=all")).total).toBe(4);
+  });
+
   it("refuses meeting rows the services could not read, and more meetings than an account may have", async () => {
     const t = await makeApp();
     await fillEveryTable(t);
@@ -508,6 +589,11 @@ describe("restore apply", () => {
     await check((d) => (d.series_exceptions[0].start_at = "soon"), /a moved date needs start_at and end_at/);
     await check((d) => (d.standup_marks[0].covered_until = "now"), /covered_until and marked_at/);
     await check((d) => (d.meeting_notes[0].occurs_on = "12.11.2026"), /occurs_on is not a date/);
+    await check((d) => (d.meeting_todos[0].added_at = "yesterday"), /added_at is not a UTC time/);
+    await check((d) => {
+      const [link] = d.meeting_todos;
+      d.meeting_todos = Array.from({ length: 101 }, (_, i) => ({ ...link, todo_id: 1000 + i }));
+    }, /meeting_todos: meeting \d+ has more than 100 todos/);
     await check((d) => {
       const [meeting] = d.meetings;
       d.meetings = Array.from({ length: 101 }, (_, i) => ({ ...meeting, id: 1000 + i }));
@@ -516,14 +602,16 @@ describe("restore apply", () => {
     expect(json<unknown[]>(await t.call("GET", "/api/v1/meetings"))).toHaveLength(1);
   });
 
-  it("restores meetings with their dates, marks and note links", async () => {
+  it("restores meetings with their dates, marks, note links and todos", async () => {
     const t = await makeApp();
     const { meeting } = await fillEveryTable(t);
     const before = {
       meeting: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}`)),
       standup: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}/standup?on=2026-11-12`)),
       notes: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}/notes`)),
+      todos: json<MeetingTodos>(await t.call("GET", `/api/v1/meetings/${meeting.id}/todos`)),
     };
+    expect(before.todos.items).toHaveLength(1);
     const zip = await exportZip(t);
     await t.call("DELETE", `/api/v1/meetings/${meeting.id}`);
     const preview = json<RestorePreview>(await upload(t, zip));
@@ -532,6 +620,7 @@ describe("restore apply", () => {
       meeting: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}`)),
       standup: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}/standup?on=2026-11-12`)),
       notes: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}/notes`)),
+      todos: json<MeetingTodos>(await t.call("GET", `/api/v1/meetings/${meeting.id}/todos`)),
     }).toEqual(before);
   });
 
@@ -547,6 +636,15 @@ describe("restore apply", () => {
       delete d.todo_links;
       delete d.todo_urls;
       delete d.time_blocks;
+      for (const table of [
+        "meetings",
+        "series",
+        "series_exceptions",
+        "meeting_notes",
+        "standup_marks",
+        "meeting_todos",
+      ])
+        delete d[table];
       for (const row of d.todos) {
         delete row.recurrence;
         delete row.recurrence_prev_id;

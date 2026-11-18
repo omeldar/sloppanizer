@@ -43,6 +43,7 @@ import {
 import { useCommands } from "../../app/commands.tsx";
 import { AddLinkDialog } from "./relations/AddLinkDialog.tsx";
 import { Links, linkedIds, WaitingLine } from "./relations/Links.tsx";
+import { TodoMeetings } from "./relations/TodoMeetings.tsx";
 import { WebLinks } from "./relations/WebLinks.tsx";
 import { PlannedTime } from "../planner/PlannedTime.tsx";
 import { Subtasks } from "./relations/Subtasks.tsx";
@@ -186,6 +187,7 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
           <Subtasks todo={todo} inputRef={subtaskInput} />
           <Links todo={todo} onAdd={() => setAddingLink(true)} />
           <WebLinks todo={todo} />
+          <TodoMeetings todo={todo} />
           <PlannedTime todo={todo} />
           <Activity todo={todo} composerRef={composer} focusComment={focusComment} />
         </div>

@@ -5,17 +5,22 @@ import {
   Meeting,
   MeetingNote,
   MeetingOccurrence,
+  MeetingTodo,
+  MeetingTodos,
   type OccurrenceChange,
   type ScheduleChange,
   type Series,
   seriesDates,
   Standup,
   type StandupKind,
+  Todo,
+  TodoMeeting,
   type UpdateMeeting,
 } from "@organizer/shared";
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { api, apiVoid } from "./api.ts";
+import { invalidateTodoViews, keys } from "./queries.ts";
 
 /** Query keys of meetings. Every meeting change refreshes the list, the planner and the standup lists. */
 export const meetingKeys = {
@@ -24,6 +29,8 @@ export const meetingKeys = {
   occurrences: (query: OccurrenceParams) => ["occurrences", query] as const,
   notes: (id: number) => ["meetingNotes", id] as const,
   standup: (id: number, on: string, kind: StandupKind | null) => ["standup", id, on, kind] as const,
+  todos: (id: number) => ["meetingTodos", id] as const,
+  todoMeetings: (todoId: number) => ["todoMeetings", todoId] as const,
 };
 
 export interface OccurrenceParams {
@@ -80,7 +87,9 @@ export const useStandup = (id: number, on: string | null, kind: StandupKind | nu
 function invalidateMeetings(client: QueryClient): Promise<void> {
   return client.invalidateQueries({
     predicate: (query) =>
-      ["meetings", "occurrences", "standup", "meetingNotes"].includes(String(query.queryKey[0])),
+      ["meetings", "occurrences", "standup", "meetingNotes", "meetingTodos", "todoMeetings"].includes(
+        String(query.queryKey[0]),
+      ),
   });
 }
 
@@ -134,6 +143,52 @@ export const useUnlinkMeetingNote = () =>
   useMeetingMutation(({ id, on }: { id: number; on: string }) =>
     apiVoid(`/meetings/${id}/notes/${on}`, { method: "DELETE" }),
   );
+
+/** The todos added to a meeting by hand, with the day "Due at next meeting" sets. */
+export const useMeetingTodos = (id: number) =>
+  useQuery({
+    queryKey: meetingKeys.todos(id),
+    queryFn: () => api(MeetingTodos, `/meetings/${id}/todos`),
+    enabled: isId(id),
+  });
+
+/** The meetings a todo was added to, the next one first. */
+export const useTodoMeetings = (todoId: number) =>
+  useQuery({
+    queryKey: meetingKeys.todoMeetings(todoId),
+    queryFn: () => api(z.array(TodoMeeting), `/todos/${todoId}/meetings`),
+    enabled: isId(todoId),
+  });
+
+export interface MeetingTodoVars {
+  meetingId: number;
+  todoId: number;
+}
+
+/** Adds a todo to a meeting; it stays on every date until removed. Its due date stays. */
+export const useAddMeetingTodo = () =>
+  useMeetingMutation(({ meetingId, todoId }: MeetingTodoVars) =>
+    api(MeetingTodo, `/meetings/${meetingId}/todos`, { method: "POST", body: { todoId } }),
+  );
+
+/** Takes a todo off a meeting; the todo stays. */
+export const useRemoveMeetingTodo = () =>
+  useMeetingMutation(({ meetingId, todoId }: MeetingTodoVars) =>
+    apiVoid(`/meetings/${meetingId}/todos/${todoId}`, { method: "DELETE" }),
+  );
+
+/** "Due at next meeting": the todo's due date becomes the day of the meeting's next date. */
+export function useDueAtNextMeeting() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ meetingId, todoId }: MeetingTodoVars) =>
+      api(Todo, `/meetings/${meetingId}/todos/${todoId}/due`, { method: "POST" }),
+    onSuccess: async (todo) => {
+      client.setQueryData(keys.todo(todo.id), todo);
+      await Promise.all([invalidateTodoViews(client), invalidateMeetings(client)]);
+    },
+  });
+}
 
 export interface MarkVars {
   meetingId: number;

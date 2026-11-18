@@ -108,6 +108,11 @@ describe("accounts never see each other's data", () => {
       ["POST", `/api/v1/meetings/${ids.meeting}/notes`, { on: "2026-11-12" }],
       ["POST", `/api/v1/meetings/${ids.meeting}/notes`, { on: "2026-11-12", noteId: ids.note }],
       ["DELETE", `/api/v1/meetings/${ids.meeting}/notes/2026-11-12`],
+      ["GET", `/api/v1/meetings/${ids.meeting}/todos`],
+      ["POST", `/api/v1/meetings/${ids.meeting}/todos`, { todoId: ids.todo }],
+      ["DELETE", `/api/v1/meetings/${ids.meeting}/todos/${ids.todo}`],
+      ["POST", `/api/v1/meetings/${ids.meeting}/todos/${ids.todo}/due`],
+      ["GET", `/api/v1/todos/${ids.todo}/meetings`],
       ["DELETE", `/api/v1/meetings/${ids.meeting}`],
     ];
     const results: [string, number][] = [];

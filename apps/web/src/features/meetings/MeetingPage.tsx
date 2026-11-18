@@ -19,12 +19,16 @@ import {
 import { MeetingDialog, type MeetingDraft } from "./MeetingDialog.tsx";
 import { nextText } from "./MeetingsPage.tsx";
 import { MeetingNote } from "./MeetingNote.tsx";
+import { MeetingTodos } from "./MeetingTodos.tsx";
 import { StandupList } from "./StandupList.tsx";
 import styles from "./Meetings.module.css";
 
 const route = getRouteApi("/meetings/$id");
 
-/** One meeting, phone first: a date switcher, then what to say (standups), the note and the repeat. */
+/**
+ * One meeting, phone first: a date switcher, then what to say (standups), the todos added by hand,
+ * the note and the repeat.
+ */
 export function MeetingPage() {
   const { id } = route.useParams();
   const meetingId = Number(id);
@@ -133,6 +137,8 @@ function MeetingView({ meeting }: { meeting: Meeting }) {
           }
         />
       )}
+
+      <MeetingTodos meetingId={meeting.id} meetingName={meeting.name} />
 
       <MeetingNote meetingId={meeting.id} on={on} />
 

@@ -778,6 +778,15 @@ const standupOf = (items: StandupItem[], said: Standup["said"] = []): Standup =>
   dismissedCount: 0,
 });
 
+/** The answer of POST /meetings/:id/todos for a todo. */
+const added = (todoId: number) => ({
+  todo: { id: todoId, title: "x", status: "open" },
+  project: null,
+  parent: null,
+  dueOn: null,
+  addedAt: at,
+});
+
 describe("meeting tools", () => {
   it("list_meetings prints one line per meeting", async () => {
     const { call } = await connect(() => [
@@ -865,6 +874,81 @@ describe("meeting tools", () => {
       "GET /meetings/2/notes",
       "PATCH /notes/9",
     ]);
+  });
+
+  it("meeting_todos lists the todos added by hand with status, due date and the next date", async () => {
+    const list = {
+      meetingId: 2,
+      nextOn: "2026-11-12",
+      items: [
+        {
+          todo: { id: 5, title: "Budget", status: "in_progress" },
+          project: { id: 1, slug: "lab", name: "Lab", color: "#8B95A5" },
+          parent: null,
+          dueOn: "2026-11-12",
+          addedAt: at,
+        },
+        {
+          todo: { id: 7, title: "Cables", status: "open" },
+          project: null,
+          parent: { id: 3, title: "Rack", status: "open" },
+          dueOn: null,
+          addedAt: at,
+        },
+      ],
+    };
+    const { call, calls } = await connect(({ path }) => (path === "/meetings/2" ? meeting() : list));
+    expect((await call("meeting_todos", { meeting: 2 })).text.split("\n")).toEqual([
+      "Weekly Standup: 2 todos added by hand (next date 12.11.2026):",
+      "- #5 Budget [Lab] | in_progress | due 12.11.2026",
+      "- #7 Cables (part of #3 Rack) | open",
+    ]);
+    expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/meetings/2/todos" });
+    const empty = await connect(({ path }) =>
+      path === "/meetings/2" ? meeting() : { meetingId: 2, nextOn: null, items: [] },
+    );
+    expect((await empty.call("meeting_todos", { meeting: 2 })).text).toBe(
+      "Weekly Standup has no todos added by hand (no next date).",
+    );
+  });
+
+  it("add_to_meeting adds in order, sets the due date only when asked, and remove_from_meeting takes them off", async () => {
+    const { call, calls } = await connect(({ method, path, body }) => {
+      if (path === "/meetings/2") return meeting();
+      if (path.endsWith("/due")) return todo({ dueOn: "2026-11-12" });
+      if (method === "POST") return added((body as { todoId: number }).todoId);
+      return undefined;
+    });
+    expect((await call("add_to_meeting", { meeting: 2, todos: [5, 7, 5] })).text).toBe(
+      "Added #5, #7 to Weekly Standup.",
+    );
+    expect(calls.filter((c) => c.method === "POST").map((c) => [c.path, c.body])).toEqual([
+      ["/meetings/2/todos", { todoId: 5 }],
+      ["/meetings/2/todos", { todoId: 7 }],
+    ]);
+    calls.length = 0;
+    expect((await call("add_to_meeting", { meeting: 2, todos: [5], dueAtNext: true })).text).toBe(
+      "Added #5 to Weekly Standup, due 12.11.2026.",
+    );
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "GET /meetings/2",
+      "POST /meetings/2/todos",
+      "POST /meetings/2/todos/5/due",
+    ]);
+    calls.length = 0;
+    expect((await call("remove_from_meeting", { meeting: 2, todos: [5, 7] })).text).toBe(
+      "Removed #5, #7 from Weekly Standup.",
+    );
+    expect(calls.filter((c) => c.method === "DELETE").map((c) => c.path)).toEqual([
+      "/meetings/2/todos/5",
+      "/meetings/2/todos/7",
+    ]);
+    // Without a next date nothing is added when a due date is asked for.
+    const ended = await connect(() => meeting({ next: null }));
+    const refused = await ended.call("add_to_meeting", { meeting: 2, todos: [5], dueAtNext: true });
+    expect(refused).toMatchObject({ isError: true });
+    expect(refused.text).toContain("has no next date");
+    expect(ended.calls.some((c) => c.method === "POST")).toBe(false);
   });
 
   it("list_plan shows meeting dates between the blocks, and still works without them", async () => {

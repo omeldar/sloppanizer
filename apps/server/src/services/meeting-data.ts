@@ -1,6 +1,8 @@
 import {
+  type ExpandedOccurrence,
   formatDate,
   isCalendarDate,
+  nextSeriesOccurrence,
   isSeriesDate,
   type SeriesException,
   SeriesRule,
@@ -9,6 +11,7 @@ import {
   StandupFilter,
   TimeOfDay,
   Timestamp,
+  toLocalDate,
 } from "@organizer/shared";
 import { asc, eq, inArray } from "drizzle-orm";
 import { labels, meetings, projects, series, seriesExceptions } from "../db/schema.ts";
@@ -119,6 +122,42 @@ export function exceptionsOf(sc: Scoped, seriesIds: readonly number[]): SeriesEx
     }
   }
   return out;
+}
+
+/** The meeting's next date that has not ended at `at`: cancelled ones skipped, moved ones at their new time. */
+export function nextOf(
+  segments: readonly SeriesSpan[],
+  exceptions: readonly SeriesException[],
+  at: Date,
+  timeZone: string,
+): ExpandedOccurrence | null {
+  const own = new Set(segments.map((s) => s.id));
+  return nextSeriesOccurrence(
+    segments,
+    exceptions.filter((e) => own.has(e.seriesId)),
+    at,
+    timeZone,
+  );
+}
+
+/** The day (in the account's zone) of each meeting's next date, or null when it has none. */
+export function nextDays(
+  sc: Scoped,
+  meetingIds: readonly number[],
+  at: Date,
+  timeZone: string,
+): Map<number, string | null> {
+  const segments = segmentsOf(sc, meetingIds);
+  const exceptions = exceptionsOf(
+    sc,
+    [...segments.values()].flatMap((list) => list.map((s) => s.id)),
+  );
+  return new Map(
+    meetingIds.map((id) => {
+      const next = nextOf(segments.get(id) ?? [], exceptions, at, timeZone);
+      return [id, next === null ? null : toLocalDate(next.startAt, timeZone)];
+    }),
+  );
 }
 
 /** The segment that holds an original date of the meeting; 404 when the meeting has no such date. */
