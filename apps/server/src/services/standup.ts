@@ -494,7 +494,12 @@ export function markStandup(ctx: Ctx, id: number, input: MarkInput): Standup {
             standupMarks.todoId,
             standupMarks.occursOn,
           ],
-          set: { kind: mark.kind, coveredUntil, markedAt: at },
+          // Marking a date again never covers less than before (the list's cutoff is the newest mark).
+          set: {
+            kind: mark.kind,
+            coveredUntil: sql`max(${standupMarks.coveredUntil}, excluded.covered_until)`,
+            markedAt: at,
+          },
         })
         .run();
     }

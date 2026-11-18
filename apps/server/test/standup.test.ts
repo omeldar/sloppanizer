@@ -171,6 +171,28 @@ describe("the standup list", () => {
     expect(lines(await list(t, id))).toEqual(["blocked Certs"]);
   });
 
+  it("never covers less when a date is marked again with an older time", async () => {
+    const t = await makeApp();
+    const { id } = await createStandup(t);
+    const task = await todo(t, "Switch");
+    await setStatus(t, task.id, "in_progress");
+    const first = await list(t, id);
+    t.advance(60_000);
+    await comment(t, task.id, "Ordered");
+    const second = await list(t, id);
+    await say(t, id, second, ["Switch"]);
+    expect(lines(await list(t, id))).toEqual([]);
+    // An old list (from before the comment) dismisses it on the same date: the comment stays covered.
+    await say(t, id, first, ["Switch"], "dismissed");
+    const after = await list(t, id);
+    expect(lines(after)).toEqual([]);
+    expect(after.dismissedCount).toBe(1);
+    const row = t.deps.db.$client
+      .prepare("SELECT covered_until FROM standup_marks WHERE todo_id = ?")
+      .get(task.id) as { covered_until: string };
+    expect(row.covered_until).toBe(item(second, "Switch").at);
+  });
+
   it("dismisses an item without saying it; it comes back on new updates", async () => {
     const t = await makeApp();
     const { id } = await createStandup(t);
