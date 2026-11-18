@@ -51,6 +51,28 @@ function fillAccount(sqlite: Database.Database, account: number): void {
   `);
 }
 
+/** A standup with a series, a cancelled date, a note on a date and a said mark on todo #1 (needs fillAccount). */
+function fillMeetings(sqlite: Database.Database, account: number): void {
+  sqlite.exec(`
+    INSERT INTO meetings (account_id, id, name, type, since, created_at, updated_at)
+      VALUES (${account}, 1, 'Standup', 'standup', '${T}', '${T}', '${T}');
+    INSERT INTO series (account_id, id, owner_kind, meeting_id, rule, starts_on, start_time, duration_min, created_at, updated_at)
+      VALUES (${account}, 1, 'meeting', 1, '{"every":"week","interval":1,"weekdays":["thu"],"basis":"schedule"}',
+        '2026-11-05', '09:00', 15, '${T}', '${T}');
+    INSERT INTO series_exceptions (account_id, series_id, occurs_on, kind, created_at, updated_at)
+      VALUES (${account}, 1, '2026-11-12', 'cancelled', '${T}', '${T}');
+    INSERT INTO notes (account_id, id, title, created_by, created_at, updated_at)
+      VALUES (${account}, 1, 'Standup 05.11.2026', 'you', '${T}', '${T}');
+    INSERT INTO meeting_notes (account_id, meeting_id, occurs_on, note_id, created_at)
+      VALUES (${account}, 1, '2026-11-05', 1, '${T}');
+    INSERT INTO standup_marks (account_id, meeting_id, todo_id, occurs_on, kind, covered_until, marked_at)
+      VALUES (${account}, 1, 1, '2026-11-05', 'said', '${T}', '${T}');
+  `);
+}
+
+const countOf = (sqlite: Database.Database, table: string) =>
+  (sqlite.prepare(`SELECT count(*) AS n FROM "${table}"`).get() as { n: number }).n;
+
 /** Tables of the user data (every row belongs to an account). */
 function userTables(sqlite: Database.Database): string[] {
   const auth = new Set([
@@ -92,9 +114,9 @@ describe("baseline migration", () => {
   it("counts on from the single-user versions, so every single-user export (8 or lower) is older", () => {
     const { db } = freshDb();
     // The baseline (9), then one per migration: 0001 oauth, 0002 planner and links, 0003 calendar feed, 0004 ai
-    // settings, 0005 person languages.
-    expect(schemaVersion(db)).toBe(SCHEMA_BASE + 6);
-    expect(schemaVersion(db)).toBe(14);
+    // settings, 0005 person languages, 0006 meetings.
+    expect(schemaVersion(db)).toBe(SCHEMA_BASE + 7);
+    expect(schemaVersion(db)).toBe(15);
   });
 
   it("gives every user table an account_id and every id table the key (account_id, id)", () => {
@@ -130,10 +152,12 @@ describe("baseline migration", () => {
   it("refuses links between two accounts' rows in every reference", () => {
     const { sqlite } = freshDb();
     fillAccount(sqlite, 1);
-    // Account 2 has only todo #1 (no label, person, topic, tag or project of its own).
-    sqlite.exec(
-      `INSERT INTO todos (account_id, id, title, created_at, updated_at, last_activity_at) VALUES (2, 1, 'B', '${T}', '${T}', '${T}')`,
-    );
+    fillMeetings(sqlite, 1);
+    // Account 2 has only todo #1 and meeting #5 (no label, person, topic, tag, project or note of its own).
+    sqlite.exec(`
+      INSERT INTO todos (account_id, id, title, created_at, updated_at, last_activity_at) VALUES (2, 1, 'B', '${T}', '${T}', '${T}');
+      INSERT INTO meetings (account_id, id, name, since, created_at, updated_at) VALUES (2, 5, 'Mine', '${T}', '${T}', '${T}');
+    `);
     const mixed = [
       `INSERT INTO todo_labels (account_id, todo_id, label_id) VALUES (2, 1, 1)`,
       `INSERT INTO todo_people (account_id, todo_id, person_id, role, created_at) VALUES (2, 1, 1, 'requester', '${T}')`,
@@ -146,6 +170,11 @@ describe("baseline migration", () => {
       `UPDATE todos SET parent_id = 2 WHERE account_id = 2 AND id = 1`,
       `UPDATE todos SET recurrence_prev_id = 2 WHERE account_id = 2 AND id = 1`,
       `INSERT INTO notes (account_id, id, project_id, title, created_by, created_at, updated_at) VALUES (2, 1, 1, 'N', 'you', '${T}', '${T}')`,
+      `INSERT INTO series (account_id, id, owner_kind, meeting_id, rule, starts_on, start_time, duration_min, created_at, updated_at) VALUES (2, 1, 'meeting', 1, '{}', '2026-11-05', '09:00', 15, '${T}', '${T}')`,
+      `INSERT INTO series_exceptions (account_id, series_id, occurs_on, kind, created_at, updated_at) VALUES (2, 1, '2026-11-05', 'cancelled', '${T}', '${T}')`,
+      `INSERT INTO meeting_notes (account_id, meeting_id, occurs_on, note_id, created_at) VALUES (2, 5, '2026-11-05', 1, '${T}')`,
+      `INSERT INTO standup_marks (account_id, meeting_id, todo_id, occurs_on, kind, covered_until, marked_at) VALUES (2, 5, 2, '2026-11-05', 'said', '${T}', '${T}')`,
+      `INSERT INTO standup_marks (account_id, meeting_id, todo_id, occurs_on, kind, covered_until, marked_at) VALUES (2, 1, 1, '2026-11-05', 'said', '${T}', '${T}')`,
     ];
     const outcome = (statement: string) => {
       try {
@@ -178,15 +207,55 @@ describe("baseline migration", () => {
     expect(() =>
       sqlite.exec(`UPDATE todos SET recurrence = 'not json' WHERE account_id = 1 AND id = 1`),
     ).toThrow(/CHECK/);
+    fillMeetings(sqlite, 1);
+    expect(() => sqlite.exec(`UPDATE series SET rule = 'not json' WHERE account_id = 1`)).toThrow(/CHECK/);
+    expect(() => sqlite.exec(`UPDATE meetings SET filter = '{' WHERE account_id = 1`)).toThrow(/CHECK/);
+    expect(() => sqlite.exec(`UPDATE meetings SET type = 'retro' WHERE account_id = 1`)).toThrow(/CHECK/);
+    expect(() => sqlite.exec(`UPDATE series SET ends_on = '2026-11-01' WHERE account_id = 1`)).toThrow(
+      /CHECK/,
+    );
+    expect(() => sqlite.exec(`UPDATE series_exceptions SET kind = 'moved' WHERE account_id = 1`)).toThrow(
+      /CHECK/,
+    );
+    // A note belongs to one meeting date at most.
+    expect(() =>
+      sqlite.exec(
+        `INSERT INTO meeting_notes (account_id, meeting_id, occurs_on, note_id, created_at) VALUES (1, 1, '2026-11-19', 1, '${T}')`,
+      ),
+    ).toThrow(/UNIQUE/);
     // One next occurrence per todo and account.
     sqlite.exec(`UPDATE todos SET recurrence_prev_id = 1 WHERE account_id = 1 AND id = 2`);
     sqlite.exec(`UPDATE todos SET recurrence_prev_id = 1 WHERE account_id = 2 AND id = 2`);
+  });
+
+  it("deletes a meeting's series, dates, marks and note links with it, but keeps the note", () => {
+    const { sqlite } = freshDb();
+    fillAccount(sqlite, 1);
+    fillMeetings(sqlite, 1);
+    sqlite.exec("DELETE FROM notes WHERE account_id = 1 AND id = 1");
+    expect(countOf(sqlite, "meeting_notes")).toBe(0);
+    sqlite.exec("DELETE FROM todos WHERE account_id = 1 AND id = 1");
+    expect(countOf(sqlite, "standup_marks")).toBe(0);
+    sqlite.exec(`
+      INSERT INTO notes (account_id, id, title, created_by, created_at, updated_at) VALUES (1, 2, 'N', 'you', '${T}', '${T}');
+      INSERT INTO meeting_notes (account_id, meeting_id, occurs_on, note_id, created_at) VALUES (1, 1, '2026-11-19', 2, '${T}');
+      INSERT INTO standup_marks (account_id, meeting_id, todo_id, occurs_on, kind, covered_until, marked_at)
+        VALUES (1, 1, 2, '2026-11-19', 'dismissed', '${T}', '${T}');
+    `);
+    expect(countOf(sqlite, "series_exceptions")).toBe(1);
+    sqlite.exec("DELETE FROM meetings WHERE account_id = 1 AND id = 1");
+    const left = ["series", "series_exceptions", "meeting_notes", "standup_marks"].map((table) =>
+      countOf(sqlite, table),
+    );
+    expect(left).toEqual([0, 0, 0, 0]);
+    expect(countOf(sqlite, "notes")).toBe(1);
   });
 
   it("deletes every row of an account with it and leaves the other account alone", () => {
     const { sqlite } = freshDb();
     for (const account of [1, 2]) {
       fillAccount(sqlite, account);
+      fillMeetings(sqlite, account);
       sqlite.exec(`
         UPDATE todos SET parent_id = 1, project_id = 1 WHERE account_id = ${account} AND id = 2;
         INSERT INTO todo_people VALUES (${account}, 1, 1, 'requester', '${T}');
