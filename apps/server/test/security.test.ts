@@ -1,4 +1,5 @@
 import { statSync } from "node:fs";
+import { VERSION } from "../src/app.ts";
 import { describe, expect, it } from "vitest";
 import { apiTokens, events } from "../src/db/schema.ts";
 import { CORS_EXPOSE_HEADERS } from "../src/http/cors.ts";
@@ -110,7 +111,7 @@ describe("authentication", () => {
     const t = await makeApp();
     expect((await t.app.inject({ method: "GET", url: "/api/v1/health" })).json()).toEqual({
       ok: true,
-      version: "0.1.0",
+      version: VERSION,
     });
     const urls = ["/api/v1/me", "/api/v1/todos", "/api/v1/export.zip", "/api/v1/account"];
     const responses = await Promise.all(urls.map((url) => t.app.inject({ method: "GET", url })));

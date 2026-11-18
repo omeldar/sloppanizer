@@ -567,9 +567,10 @@ export const meetings = sqliteTable(
 
 /**
  * A segment of a repeat: a schedule rule (JSON RecurrenceRule, basis schedule, no until) anchored at
- * starts_on, up to ends_on, at a wall-clock time in the account's zone. Generic so recurring planner
- * blocks can own series too: owner_kind names the owner ('meeting' now) and has no SQL CHECK, so a new
- * kind needs no table rebuild (zod and the services check it). Segments of one owner never overlap.
+ * starts_on, up to ends_on, at a wall-clock time in the account's zone. Owned by a meeting
+ * (owner_kind 'meeting', meeting_id) or by a repeating todo's planned time (owner_kind 'todo', todo_id =
+ * the open occurrence of the repeat, moved along when the next occurrence is made). Segments of one
+ * owner never overlap.
  */
 export const series = sqliteTable(
   "series",
@@ -578,6 +579,7 @@ export const series = sqliteTable(
     id: integer("id").notNull(),
     ownerKind: text("owner_kind").notNull(),
     meetingId: integer("meeting_id"),
+    todoId: integer("todo_id"),
     rule: text("rule").notNull(),
     startsOn: text("starts_on").notNull(),
     endsOn: text("ends_on"),
@@ -594,10 +596,20 @@ export const series = sqliteTable(
       columns: [t.accountId, t.meetingId],
       foreignColumns: [meetings.accountId, meetings.id],
     }).onDelete("cascade"),
+    foreignKey({
+      name: "series_todo_fk",
+      columns: [t.accountId, t.todoId],
+      foreignColumns: [todos.accountId, todos.id],
+    }).onDelete("cascade"),
+    check(
+      "series_owner_check",
+      sql`(${t.ownerKind} = 'meeting' AND ${t.meetingId} IS NOT NULL AND ${t.todoId} IS NULL) OR (${t.ownerKind} = 'todo' AND ${t.todoId} IS NOT NULL AND ${t.meetingId} IS NULL)`,
+    ),
     check("series_rule_check", sql`json_valid(${t.rule})`),
     check("series_duration_check", sql`${t.durationMin} BETWEEN 5 AND 1440`),
     check("series_dates_check", sql`${t.endsOn} IS NULL OR ${t.endsOn} >= ${t.startsOn}`),
     index("series_meeting_idx").on(t.accountId, t.meetingId, t.startsOn),
+    index("series_todo_idx").on(t.accountId, t.todoId, t.startsOn),
   ],
 );
 

@@ -118,9 +118,9 @@ describe("baseline migration", () => {
   it("counts on from the single-user versions, so every single-user export (8 or lower) is older", () => {
     const { db } = freshDb();
     // The baseline (9), then one per migration: 0001 oauth, 0002 planner and links, 0003 calendar feed, 0004 ai
-    // settings, 0005 person languages, 0006 meetings, 0007 todos on meetings.
-    expect(schemaVersion(db)).toBe(SCHEMA_BASE + 8);
-    expect(schemaVersion(db)).toBe(16);
+    // settings, 0005 person languages, 0006 meetings, 0007 todos on meetings, 0008 todo series.
+    expect(schemaVersion(db)).toBe(SCHEMA_BASE + 9);
+    expect(schemaVersion(db)).toBe(17);
   });
 
   it("gives every user table an account_id and every id table the key (account_id, id)", () => {
@@ -365,6 +365,52 @@ describe("person languages migration", () => {
     // Links to the people survive too (the column is added in place, the table is not rebuilt).
     expect(sqlite.prepare("SELECT count(*) AS n FROM person_topics").get()).toEqual({ n: 1 });
     expect(sqlite.prepare("SELECT count(*) AS n FROM todo_people").get()).toEqual({ n: 1 });
+    sqlite.close();
+  });
+});
+
+const seriesRows = (db: Database.Database) =>
+  db.prepare("SELECT account_id, id, owner_kind, meeting_id, rule, starts_on FROM series").all();
+const exceptionRows = (db: Database.Database) =>
+  db.prepare("SELECT * FROM series_exceptions ORDER BY account_id, series_id, occurs_on").all();
+
+describe("todo series migration", () => {
+  it("keeps every meeting's repeat and its moved and cancelled dates while series gets todo owners", () => {
+    const file = tempFile();
+    const old = new Database(file);
+    old.pragma("foreign_keys = ON");
+    migrate(drizzle(old), { migrationsFolder: migrationsBefore("0008_todo_series") });
+    const add = old.prepare(
+      `INSERT INTO accounts (id, username, display_name, time_zone, status, webauthn_user_id, created_at, updated_at)
+       VALUES (?, ?, ?, 'UTC', 'active', ?, ?, ?)`,
+    );
+    add.run(1, "anna", "Anna", "w-anna", T, T);
+    add.run(2, "bo", "Bo", "w-bo", T, T);
+    for (const account of [1, 2]) {
+      fillAccount(old, account);
+      fillMeetings(old, account);
+    }
+    const series = seriesRows(old);
+    const exceptions = exceptionRows(old);
+    expect(exceptions).toHaveLength(2);
+    old.close();
+
+    const { $client: sqlite } = openDb(file);
+    expect(seriesRows(sqlite)).toEqual(series);
+    expect(exceptionRows(sqlite)).toEqual(exceptions);
+    expect(sqlite.prepare("SELECT DISTINCT todo_id FROM series").all()).toEqual([{ todo_id: null }]);
+    expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE name LIKE '__keep%'").all()).toEqual([]);
+    expect(sqlite.pragma("foreign_key_check")).toEqual([]);
+    // A todo owns a repeat now; a row with two owners or none is refused.
+    sqlite.exec(`INSERT INTO series (account_id, id, owner_kind, todo_id, rule, starts_on, start_time, duration_min, created_at, updated_at)
+      VALUES (1, 2, 'todo', 1, '{"every":"day","interval":1,"basis":"schedule"}', '2026-11-05', '08:00', 30, '${T}', '${T}')`);
+    expect(() =>
+      sqlite.exec(`INSERT INTO series (account_id, id, owner_kind, meeting_id, todo_id, rule, starts_on, start_time, duration_min, created_at, updated_at)
+        VALUES (1, 3, 'todo', 1, 1, '{}', '2026-11-05', '08:00', 30, '${T}', '${T}')`),
+    ).toThrow(/CHECK constraint failed: series_owner_check/);
+    // Deleting the todo deletes its repeat.
+    sqlite.exec("DELETE FROM todos WHERE account_id = 1 AND id = 1");
+    expect(countOf(sqlite, "series")).toBe(2);
     sqlite.close();
   });
 });

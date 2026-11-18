@@ -3,6 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Todo } from "@organizer/shared";
 import { strFromU8, unzipSync } from "fflate";
+import { VERSION } from "../src/app.ts";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import {
@@ -69,8 +70,8 @@ describe("GET /export.zip", () => {
       app: "sloppanizer",
       format: 7,
       exportedAt: "2026-11-14T13:04:05.000Z",
-      appVersion: "0.1.0",
-      schemaVersion: 16,
+      appVersion: VERSION,
+      schemaVersion: 17,
       account: { username: "anna" },
       attachments: { count: 0, bytes: 0, missing: [] },
     });

@@ -2,6 +2,7 @@ import type { Settings, Stats } from "@organizer/shared";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { Readable } from "node:stream";
+import { VERSION } from "../src/app.ts";
 import { describe, expect, it } from "vitest";
 import { writeFileAtomically } from "../src/services/files.ts";
 import { json, makeApp, type TestApp } from "./helpers.ts";
@@ -21,7 +22,7 @@ describe("GET /settings", () => {
     const t = await makeApp();
     expect(json<Settings>(await t.call("GET", "/api/v1/settings"))).toEqual({
       lastExportAt: null,
-      version: "0.1.0",
+      version: VERSION,
       filesBytes: 0,
       filesLimitBytes: 2048 * 1024 * 1024,
     });

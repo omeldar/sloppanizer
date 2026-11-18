@@ -11,7 +11,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildApp } from "../src/app.ts";
+import { buildApp, VERSION } from "../src/app.ts";
 import { attachmentFileName } from "../src/services/export.ts";
 import { setSetting } from "../src/services/settings.ts";
 import { fillEveryTable } from "./fixtures.ts";
@@ -69,8 +69,8 @@ describe("restore upload and preview", () => {
       source: "sloppanizer",
       format: 7,
       exportedAt: "2026-11-11T10:00:00.000Z",
-      appVersion: "0.1.0",
-      schemaVersion: 16,
+      appVersion: VERSION,
+      schemaVersion: 17,
       attachments: { count: 1, bytes: 11, missing: [] },
       warnings: [],
       expiresAt: "2026-11-11T11:00:00.000Z",
