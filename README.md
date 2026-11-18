@@ -15,6 +15,8 @@ they sat untouched, and tells you why each one is where it is.
 - Notes: Markdown pages, alone or in a project, pinned ones first.
 - Paste or drop images and files into any Markdown field; images show inline, other files are downloads.
 - Board (Open, In progress, Blocked, Done) and a week planner, both with drag and drop and keys.
+- Statistics: worked time (planned time that has already happened) per project, requester and week,
+  meetings, created vs done, when you work, done per day and how long todos took, as charts and tables.
 - Recurring: a view of every repeating todo with its next date and history. Time planned for a todo that
   repeats on a schedule repeats with it on every date; change one date, this and following, or all.
 - Planner: reserve time in a week calendar for a todo or with a title (click a free slot, drag a todo from To
@@ -103,6 +105,7 @@ Settings (environment of the service, all optional): `ORGANIZER_PORT` (4711), `O
 - Search: `GET /api/v1/search?q=...` over todos, notes, comments and people.
 - Web links: `POST /api/v1/todos/{id}/urls` (`{ urls: [{ url, label? }] }`), `PATCH`/`DELETE`
   `/api/v1/todos/{id}/urls/{urlId}`; `urls` on `POST /api/v1/todos` too.
+- Statistics: `GET /api/v1/stats/overview?from=YYYY-MM-DD&to=YYYY-MM-DD` (at most a year).
 - Repeating todos: `GET /api/v1/todos/recurring`; planned time that repeats with one:
   `POST`/`GET`/`DELETE /api/v1/todos/{id}/plan`, `PATCH /api/v1/todos/{id}/plan/{date}` (this, following or
   all), `GET /api/v1/blocks/series?from=&to=` for its dates.
@@ -158,7 +161,7 @@ Tools:
 - Web links: `create_todo` takes `links`; `add_web_link`, `remove_web_link`.
 - Planner (local time): `list_plan` (blocks, planned dates of repeating todos, meetings), `plan_time` (a
   todo or a title, a day, start and end or minutes; `repeat` for a repeating todo), `move_block`,
-  `delete_block`, `list_recurring`.
+  `delete_block`, `list_recurring`, `work_stats` (time per project, requester and week).
 
 Restore, settings and tokens are not offered as tools.
 
@@ -236,7 +239,7 @@ Off while typing in a field; the status bar then shows `insert`. Press `?` in th
 | `1` to `4` | Priority critical, high, medium, low |
 | `g n` / `g i` / `g l` / `g p` / `g s` | Go to Next up, Inbox, Labels, People, Settings |
 | `g b` / `g w` / `g o` | Go to Board, Week, Notes |
-| `g t` / `g m` / `g r` | Go to Planner, Meetings, Recurring |
+| `g t` / `g m` / `g r` / `g c` | Go to Planner, Meetings, Recurring, Statistics |
 | `n` | New note |
 | `/` | Search page |
 | `o` / `m` | On a todo: contacts / write a comment (`ctrl+Enter` sends) |

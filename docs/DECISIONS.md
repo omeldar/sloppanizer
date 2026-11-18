@@ -125,3 +125,27 @@ rows; a todo's Markdown lists its planned time. All of it is scoped per account 
 foreign_keys=OFF` in a generated table rebuild does nothing and the drop cascades. 0008 keeps
 series_exceptions aside during the rebuild; check any future generated rebuild for the same.
 
+## 2026-11-18 Planned time plans the day (Week view in sync)
+
+The Week view lists todos by their planned day; planner blocks did not set it, so planned time never
+showed there. Creating a block for an open todo, moving it to another day or giving it to another todo
+now sets that todo's planned day (a date change in its history, by whoever planned it). Deleting a block
+leaves the planned day. Planned time that repeats with a todo (#12) does not move the todo's date: that
+would shift the repeat itself. Blocks made before this change keep their todos' planned days as they were.
+
+## 2026-11-18 Statistics (#18)
+
+**Worked time is planned time that has already happened.** There is no timer, so the honest measure is
+time blocks and planned dates of repeating todos whose end has passed, cut to the period. The page says
+so. A block counts for its todo's project (Inbox without one, "Own title" for blocks without a todo) and
+fully for each requester of its todo. Meetings are counted apart, never as worked time.
+
+**Charts without a library.** Small SVG and HTML charts in features/stats/charts.tsx, nothing from a CDN.
+Every bar list names and values each bar in text, so bars use one color (the validated blue) with the
+project's own swatch beside the name; the user-picked project colors fail a chart palette check (too
+light, too close for colorblind readers) and are kept as identity only. Two-series charts use the
+validated blue and orange (checked against both app surfaces) with a legend; heatmaps use one blue ramp
+in five steps, selected separately for dark and light. No stacked "hours per project per week" chart: it
+would need more distinguishable colors than projects can have; the week's tooltip and table list its
+projects instead. Every chart has a Table view with all its numbers.
+
