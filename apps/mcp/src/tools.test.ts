@@ -1,7 +1,17 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { Activity, Comment, Note, Person, Project, Todo } from "@organizer/shared";
+import type {
+  Activity,
+  Comment,
+  Meeting,
+  Note,
+  Person,
+  Project,
+  Standup,
+  StandupItem,
+  Todo,
+} from "@organizer/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Api, ApiError } from "./api.ts";
 import { registerTools } from "./tools.ts";
@@ -699,5 +709,189 @@ describe("step 3 tools", () => {
       "Anna Meier | Platform | requested 14, open 3, done 11, median took 2d 4h | contact 5",
       "Max Muster | requested 0, open 0, done 0 | contact 2",
     ]);
+  });
+});
+
+// ---------- meetings ----------
+
+const series = {
+  id: 1,
+  rule: { every: "week" as const, interval: 1, weekdays: ["thu" as const], basis: "schedule" as const },
+  startsOn: "2026-11-12",
+  endsOn: null,
+  startTime: "09:00",
+  durationMinutes: 15,
+  text: "every week on Thu, 09:00–09:15",
+};
+
+function meeting(overrides: Partial<Meeting> = {}): Meeting {
+  return {
+    id: 2,
+    name: "Weekly Standup",
+    type: "standup",
+    filter: { projectIds: [], inbox: false, labelIds: [] },
+    since: "2026-11-05T08:00:00.000Z",
+    schedule: series,
+    segments: [series],
+    next: {
+      meetingId: 2,
+      seriesId: 1,
+      name: "Weekly Standup",
+      type: "standup",
+      occursOn: "2026-11-12",
+      startAt: "2026-11-12T08:00:00.000Z",
+      endAt: "2026-11-12T08:15:00.000Z",
+      status: "scheduled",
+      noteId: null,
+    },
+    openCount: 2,
+    createdAt: at,
+    updatedAt: at,
+    ...overrides,
+  };
+}
+
+const standupItem = (id: number, title: string, kind: StandupItem["kind"], when: string): StandupItem => ({
+  todo: { id, title, status: kind === "done" ? "done" : kind === "blocked" ? "blocked" : "in_progress" },
+  project: null,
+  parent: null,
+  kind,
+  at: when,
+  changes: [],
+  newCommentCount: 0,
+  lastComment: null,
+  again: false,
+});
+
+const standupOf = (items: StandupItem[], said: Standup["said"] = []): Standup => ({
+  meetingId: 2,
+  on: "2026-11-12",
+  since: "2026-11-05T08:00:00.000Z",
+  items,
+  counts: {
+    done: items.filter((i) => i.kind === "done").length,
+    started: items.filter((i) => i.kind === "started").length,
+    updated: items.filter((i) => i.kind === "updated").length,
+    blocked: items.filter((i) => i.kind === "blocked").length,
+  },
+  said,
+  dismissedCount: 0,
+});
+
+describe("meeting tools", () => {
+  it("list_meetings prints one line per meeting", async () => {
+    const { call } = await connect(() => [
+      meeting(),
+      meeting({ id: 3, name: "Retro", type: "other", openCount: null, next: null }),
+    ]);
+    expect((await call("list_meetings")).text.split("\n")).toEqual([
+      "meeting 2 | Weekly Standup | standup | every week on Thu, 09:00–09:15 | next 12.11.2026 09:00 | 2 to say",
+      "meeting 3 | Retro | other | every week on Thu, 09:00–09:15 | no next date",
+    ]);
+  });
+
+  it("standup_list finds the meeting by name and asks for the kinds", async () => {
+    const list = standupOf([standupItem(12, "Shipped", "done", "2026-11-10T10:00:00.000Z")]);
+    const { call, calls } = await connect(({ path }) => (path === "/meetings" ? [meeting()] : list));
+    const { text } = await call("standup_list", { meeting: "weekly standup", kinds: ["done", "blocked"] });
+    expect(calls.at(-1)).toEqual({
+      method: "GET",
+      path: "/meetings/2/standup",
+      query: { on: undefined, kind: "done,blocked" },
+    });
+    expect(text).toContain("Done:\n- #12 Shipped");
+    const unknown = await call("standup_list", { meeting: "Retro" });
+    expect(unknown).toMatchObject({ isError: true });
+    expect(unknown.text).toContain('No meeting named "Retro". The meetings:\n- 2 Weekly Standup');
+  });
+
+  it("mark_said covers each todo up to the time the list showed it and refuses todos not on it", async () => {
+    const shown = standupOf([
+      standupItem(12, "Shipped", "done", "2026-11-10T10:00:00.000Z"),
+      standupItem(14, "Backup", "updated", "2026-11-11T08:30:00.000Z"),
+    ]);
+    const { call, calls } = await connect(({ method, path }) => {
+      if (path === "/meetings/2") return meeting();
+      if (method === "POST") return standupOf([shown.items[1] as StandupItem]);
+      return shown;
+    });
+    const missing = await call("mark_said", { meeting: 2, todos: [12, 99] });
+    expect(missing).toMatchObject({ isError: true });
+    expect(missing.text).toContain("Not on the list of Weekly Standup: #99");
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+    const { text } = await call("mark_said", { meeting: 2, todos: [12, 12], on: "2026-11-12" });
+    expect(calls.at(-1)).toEqual({
+      method: "POST",
+      path: "/meetings/2/standup/marks",
+      body: {
+        on: "2026-11-12",
+        marks: [{ todoId: 12, kind: "said", coveredUntil: "2026-11-10T10:00:00.000Z" }],
+      },
+    });
+    expect(text).toBe("Said #12 at Weekly Standup on 12.11.2026. 1 left to say.");
+    await call("mark_said", { meeting: 2, todos: [14], dismiss: true });
+    expect(calls.at(-1)?.body).toMatchObject({ marks: [{ todoId: 14, kind: "dismissed" }] });
+    const retro = await connect(() => meeting({ type: "other" }));
+    expect((await retro.call("mark_said", { meeting: 2, todos: [1] })).text).toContain("is not a standup");
+  });
+
+  it("meeting_note writes into the date's note, creating it when the date has none", async () => {
+    const { call, calls } = await connect(({ method, path }) => {
+      if (path === "/meetings/2") return meeting();
+      if (path === "/meetings/2/notes" && method === "GET") return [];
+      if (path === "/meetings/2/notes")
+        return { meetingId: 2, on: "2026-11-12", note: { ...note({ id: 7 }), excerpt: "" } };
+      return note({ id: 7, title: "Weekly Standup 12.11.2026" });
+    });
+    const { text } = await call("meeting_note", { meeting: 2, text: "Asked about the budget." });
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "GET /meetings/2",
+      "GET /meetings/2/notes",
+      "POST /meetings/2/notes",
+      "PATCH /notes/7",
+    ]);
+    expect(calls.at(-1)?.body).toEqual({ appendMd: "Asked about the budget." });
+    expect(text).toBe('Added to note 7 "Weekly Standup 12.11.2026" of Weekly Standup on 12.11.2026.');
+
+    const existing = await connect(({ path }) => {
+      if (path === "/meetings/2") return meeting();
+      if (path === "/meetings/2/notes")
+        return [{ meetingId: 2, on: "2026-11-19", note: { ...note({ id: 9 }), excerpt: "" } }];
+      return note({ id: 9 });
+    });
+    await existing.call("meeting_note", { meeting: 2, on: "2026-11-19", text: "More" });
+    expect(existing.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "GET /meetings/2",
+      "GET /meetings/2/notes",
+      "PATCH /notes/9",
+    ]);
+  });
+
+  it("list_plan shows meeting dates between the blocks, and still works without them", async () => {
+    const block = {
+      id: 5,
+      todoId: null,
+      title: "Gym",
+      startAt: "2026-11-12T17:00:00.000Z",
+      endAt: "2026-11-12T18:00:00.000Z",
+      todo: null,
+      project: null,
+      createdBy: "you",
+      createdAt: at,
+      updatedAt: at,
+    };
+    const { call } = await connect(({ path }) => (path === "/blocks" ? [block] : [meeting().next]));
+    expect((await call("list_plan", { from: "2026-11-12", to: "2026-11-12" })).text.split("\n")).toEqual([
+      "Plan 12.11.2026 to 12.11.2026:",
+      "meeting 2 | 12.11.2026 09:00-09:15 | Weekly Standup",
+      "block 5 | 12.11.2026 18:00-19:00 | Gym",
+    ]);
+    const older = await connect(({ path }) => {
+      if (path === "/blocks") return [];
+      throw new ApiError(404, "not_found", "Not found");
+    });
+    expect((await older.call("list_plan", { from: "2026-11-12", to: "2026-11-12" })).text).toContain(
+      "Nothing planned.",
+    );
   });
 });

@@ -185,6 +185,10 @@ describe("MCP server against the real API", () => {
         "remove_web_link",
         "list_plan",
         "plan_time",
+        "list_meetings",
+        "standup_list",
+        "mark_said",
+        "meeting_note",
         "move_block",
         "delete_block",
         "bulk_update",
@@ -752,5 +756,38 @@ describe("step 3 tools against the real API", () => {
     // overview shows what is planned for today.
     await ok("plan_time", { title: "Standup", date: today, start: "23:00", minutes: 15 });
     expect(await ok("overview")).toMatch(/Planned today[^\n]*\n.*Standup/);
+  });
+});
+
+describe("meeting tools against the real API", () => {
+  it("lists a standup, ticks what was said, writes the date's note and shows the date in the plan", async () => {
+    // Meetings are created in the web app; here through the API as the browser session.
+    const created = await rest("session", "POST", "/meetings", {
+      name: "MCP Standup",
+      schedule: { rule: { every: "week" }, startsOn: today, startTime: "23:50", durationMinutes: 10 },
+    });
+    expect(created.status).toBe(201);
+    const meetingId = Number(created.json?.id);
+    const todoId = idOf(await ok("create_todo", { title: "Patch the router" }));
+    await ok("mark_done", { ids: [todoId] });
+
+    expect(await ok("list_meetings")).toMatch(
+      new RegExp(`meeting ${meetingId} \\| MCP Standup \\| standup \\|.*\\| \\d+ to say`),
+    );
+    const list = await ok("standup_list", { meeting: "mcp standup", kinds: ["done"] });
+    expect(list).toContain(`Done:\n- #${todoId} Patch the router`);
+    expect(await ok("mark_said", { meeting: meetingId, todos: [todoId] })).toMatch(
+      new RegExp(`^Said #${todoId} at MCP Standup on ${formatDate(today).replaceAll(".", "\\.")}\\.`),
+    );
+    expect(await ok("standup_list", { meeting: meetingId })).toContain(
+      `Said on ${formatDate(today)}: #${todoId} Patch the router`,
+    );
+
+    const noted = await ok("meeting_note", { meeting: meetingId, text: "Router is patched." });
+    const noteId = Number(/note (\d+)/.exec(noted)?.[1]);
+    expect(await ok("get_note", { id: noteId })).toContain("Router is patched.");
+    expect(await ok("list_plan", { from: today, to: today })).toContain(
+      `meeting ${meetingId} | ${formatDate(today)} 23:50-${formatDate(addDays(today, 1))} 00:00 | MCP Standup | note ${noteId}`,
+    );
   });
 });
