@@ -1,0 +1,275 @@
+/* Meetings: one column, read on a phone during the meeting, so big rows and thumb-sized buttons. */
+.page {
+  max-width: 720px;
+}
+
+.quiet {
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.linkButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--amber-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.linkButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.sectionTitle {
+  margin: 0 0 8px;
+  font-size: var(--fs-h2);
+  font-weight: 600;
+}
+
+/* ---------- list of meetings ---------- */
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 72px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+  box-shadow: var(--shadow-1);
+  color: inherit;
+  text-decoration: none;
+}
+
+.card:hover {
+  border-color: var(--line-strong);
+  background: var(--raised-2);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cardName {
+  font-size: var(--fs-h2);
+  font-weight: 600;
+}
+
+.cardSchedule {
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.cardFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--fs-small);
+}
+
+.cardNext {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-2);
+}
+
+.toSay {
+  padding: 2px 8px;
+  border-radius: var(--radius-round);
+  background: var(--amber-tint);
+  color: var(--amber-text);
+  font-weight: 600;
+}
+
+.toSay[data-none] {
+  background: transparent;
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.typePill {
+  padding: 1px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-2);
+  font-size: var(--fs-pill);
+}
+
+.typePill[data-type="standup"] {
+  border-color: var(--amber-line);
+  color: var(--amber-text);
+}
+
+/* ---------- dialog ---------- */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 16px 16px;
+}
+
+.label {
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.fieldHint {
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.typeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.typeChoice {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-round);
+  background: var(--raised);
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.typeChoice[aria-checked="true"] {
+  border-color: var(--amber-line);
+  background: var(--amber-tint);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.typeHint {
+  flex-basis: 100%;
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.timeRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.repeatRow,
+.filter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.error {
+  margin: 0;
+  color: var(--red);
+  font-size: var(--fs-small);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* ---------- one meeting ---------- */
+
+.dates {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.dateStep {
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+  color: var(--text);
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.dateStep:disabled {
+  color: var(--text-3);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.dateNow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.dateLabel {
+  font-family: var(--font-mono);
+  font-size: var(--fs-h2);
+  font-weight: 600;
+}
+
+.dateState {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.dateState[data-status="cancelled"] {
+  color: var(--red);
+}
+
+.schedule {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.segments {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.segmentFrom {
+  color: var(--text-3);
+}
+
+.scheduleActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}

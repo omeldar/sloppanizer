@@ -12,6 +12,7 @@ import { QuickAdd } from "../features/quickadd/QuickAdd.tsx";
 import { type KeyBinding, useActiveBindings, useKeyHold, useKeys } from "../keyboard/KeyboardProvider.tsx";
 import { useProjects, useStats, useTodo } from "../lib/queries.ts";
 import { useSignups } from "../lib/adminQueries.ts";
+import { useMeeting } from "../lib/meetings.ts";
 import { useCurrentAccount } from "./account.tsx";
 import { AccountSwitcher } from "./AccountSwitcher.tsx";
 import { useCommands } from "./commands.tsx";
@@ -58,6 +59,7 @@ export function Layout() {
     { keys: "g b", run: go("/board"), label: "Go to Board", group: "Go to" },
     { keys: "g w", run: go("/week"), label: "Go to Week", group: "Go to" },
     { keys: "g t", run: go("/planner"), label: "Go to Planner", group: "Go to" },
+    { keys: "g m", run: go("/meetings"), label: "Go to Meetings", group: "Go to" },
     { keys: "g o", run: go("/notes"), label: "Go to Notes", group: "Go to" },
     { keys: "g l", run: go("/labels"), label: "Go to Labels", group: "Go to" },
     { keys: "g p", run: go("/people"), label: "Go to People", group: "Go to" },
@@ -150,6 +152,7 @@ function Sidebar({ open }: { open: boolean }) {
         <NavItem to="/inbox" icon="inbox" label="Inbox" count={stats.data?.inbox} keys="g i" />
         <NavItem to="/board" icon="board" label="Board" keys="g b" />
         <NavItem to="/planner" icon="planner" label="Planner" keys="g t" />
+        <NavItem to="/meetings" icon="meetings" label="Meetings" keys="g m" />
         <NavItem to="/week" icon="week" label="Week" keys="g w" />
         <NavItem to="/notes" icon="notes" label="Notes" keys="g o" />
       </ul>
@@ -279,6 +282,9 @@ function Breadcrumb() {
   const projects = useProjects();
   const todoId = Number(/^\/todos\/(\d+)/.exec(pathname)?.[1] ?? Number.NaN);
   const todo = useTodo(todoId);
+  const meetingId = Number(/^\/meetings\/(\d+)/.exec(pathname)?.[1] ?? Number.NaN);
+  // Phones show no page title, so the trail names the meeting.
+  const meeting = useMeeting(meetingId);
 
   let trail: { label: string; to?: string; mono?: boolean }[] = [];
   if (pathname === "/") trail = [{ label: "Next up" }];
@@ -287,6 +293,9 @@ function Breadcrumb() {
   else if (pathname === "/board") trail = [{ label: "Board" }];
   else if (pathname === "/week") trail = [{ label: "Week" }];
   else if (pathname === "/planner") trail = [{ label: "Planner" }];
+  else if (pathname === "/meetings") trail = [{ label: "Meetings" }];
+  else if (pathname.startsWith("/meetings/"))
+    trail = [{ label: "Meetings", to: "/meetings" }, { label: meeting.data?.name ?? "Meeting" }];
   else if (pathname === "/search") trail = [{ label: "Search" }];
   else if (pathname === "/notes") trail = [{ label: "Notes" }];
   else if (pathname.startsWith("/notes/")) trail = [{ label: "Notes", to: "/notes" }, { label: "Note" }];
