@@ -87,6 +87,7 @@ const MATRIX: [method: string, path: string, access: Access][] = [
   ["POST", "/meetings/1/todos/2/due", "write"],
   ["GET", "/todos/1/meetings", "read"],
   ["GET", "/todos/recurring", "read"],
+  ["GET", "/stats/overview?from=2026-11-01&to=2026-11-30", "read"],
   ["GET", "/blocks/series?from=2026-11-01&to=2026-11-02", "read"],
   ["GET", "/todos/1/plan", "read"],
   ["POST", "/todos/1/plan", "write"],
