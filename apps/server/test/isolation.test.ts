@@ -20,6 +20,11 @@ async function twoAccounts() {
   const label = json<{ id: number; name: string }[]>(await t.call("GET", "/api/v1/labels")).find(
     (l) => l.name === "homelab",
   );
+  const meeting = await t.create<{ id: number }>("/api/v1/meetings", {
+    name: "Secret standup",
+    schedule: { rule: { every: "week" }, startsOn: "2026-11-12", startTime: "09:00", durationMinutes: 15 },
+    filter: { projectIds: [filled.project.id], labelIds: [label?.id ?? 0] },
+  });
   const bobby = await t.asAccount({ username: "bobby" });
   return {
     t,
@@ -34,6 +39,7 @@ async function twoAccounts() {
       tag: tag?.id ?? 0,
       topic: topic?.id ?? 0,
       label: label?.id ?? 0,
+      meeting: meeting.id,
     },
   };
 }
@@ -84,6 +90,16 @@ describe("accounts never see each other's data", () => {
       ["DELETE", `/api/v1/labels/${ids.label}`],
       ["GET", `/api/v1/attachments/${ids.file}`],
       ["GET", `/api/v1/attachments/${ids.file}/meta`],
+      ["GET", `/api/v1/meetings/${ids.meeting}`],
+      ["PATCH", `/api/v1/meetings/${ids.meeting}`, { name: "taken" }],
+      [
+        "PATCH",
+        `/api/v1/meetings/${ids.meeting}/schedule`,
+        { scope: "all", from: "2026-11-12", startTime: "10:00" },
+      ],
+      ["PATCH", `/api/v1/meetings/${ids.meeting}/occurrences/2026-11-19`, { scope: "this", cancelled: true }],
+      ["GET", `/api/v1/meetings/occurrences?from=2026-11-09&to=2026-11-22&meetingId=${ids.meeting}`],
+      ["DELETE", `/api/v1/meetings/${ids.meeting}`],
     ];
     const results: [string, number][] = [];
     for (const [method, url, body] of calls) {
@@ -107,6 +123,16 @@ describe("accounts never see each other's data", () => {
         links: [{ kind: "blocks", todoId: ids.todo + 1 }],
       }),
       await status(bobby, "POST", "/api/v1/notes", { title: "x", projectId: ids.project }),
+      await status(bobby, "POST", "/api/v1/meetings", {
+        name: "x",
+        schedule: { rule: { every: "day" }, startsOn: "2026-11-12", startTime: "09:00", durationMinutes: 15 },
+        filter: { projectIds: [ids.project] },
+      }),
+      await status(bobby, "POST", "/api/v1/meetings", {
+        name: "x",
+        schedule: { rule: { every: "day" }, startsOn: "2026-11-12", startTime: "09:00", durationMinutes: 15 },
+        filter: { labelIds: [ids.label] },
+      }),
     ];
     expect(refused.filter((code) => code !== 404 && code !== 422)).toEqual([]);
     expect(await annaExport(t)).toEqual(before);
@@ -119,6 +145,10 @@ describe("accounts never see each other's data", () => {
     expect(json<{ items: unknown[] }>(await bobby.call("GET", "/api/v1/notes")).items).toEqual([]);
     expect(json<unknown[]>(await bobby.call("GET", "/api/v1/topics"))).toEqual([]);
     expect(json<unknown[]>(await bobby.call("GET", "/api/v1/person-tags"))).toEqual([]);
+    expect(json<unknown[]>(await bobby.call("GET", "/api/v1/meetings"))).toEqual([]);
+    expect(
+      json<unknown[]>(await bobby.call("GET", "/api/v1/meetings/occurrences?from=2026-11-09&to=2026-11-22")),
+    ).toEqual([]);
     const search = (await bobby.call("GET", "/api/v1/search?q=Rack")).json() as {
       counts: Record<string, number>;
     };
@@ -129,7 +159,7 @@ describe("accounts never see each other's data", () => {
     const everything = Object.values(zip)
       .map((bytes) => strFromU8(bytes))
       .join("\n");
-    for (const secret of ["Rack", "Müller", "Prefers chat", "shot.png", "Lab"]) {
+    for (const secret of ["Rack", "Müller", "Prefers chat", "shot.png", "Lab", "Secret standup"]) {
       expect(everything).not.toContain(secret);
     }
   });

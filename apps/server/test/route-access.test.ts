@@ -66,6 +66,14 @@ const MATRIX: [method: string, path: string, access: Access][] = [
   ["GET", "/todos/1/activity", "read"],
   ["PATCH", "/comments/1", "write"],
   ["DELETE", "/comments/1", "write"],
+  ["GET", "/meetings", "read"],
+  ["POST", "/meetings", "write"],
+  ["GET", "/meetings/occurrences?from=2026-11-01&to=2026-11-02", "read"],
+  ["GET", "/meetings/1", "read"],
+  ["PATCH", "/meetings/1", "write"],
+  ["DELETE", "/meetings/1", "write"],
+  ["PATCH", "/meetings/1/schedule", "write"],
+  ["PATCH", "/meetings/1/occurrences/2026-11-19", "write"],
   ["GET", "/notes", "read"],
   ["POST", "/notes", "write"],
   ["GET", "/notes/1", "read"],
@@ -118,7 +126,8 @@ const shape = (path: string) =>
     .replace(/\/\d+(?=\/|$)/g, "/:id")
     .replace(/\/[a-f0-9]{32}(?=\/|$)/, "/:uploadId")
     .replace(/(?<=^\/attachments\/:id\/)(?!meta$)[^/]+$/, ":name")
-    .replace(/(?<=^\/restore\/backups\/)[^/]+$/, ":fileName");
+    .replace(/(?<=^\/restore\/backups\/)[^/]+$/, ":fileName")
+    .replace(/\/\d{4}-\d{2}-\d{2}(?=\/|$)/g, "/:on");
 
 /** Status of every matrix route for one caller, as "METHOD path -> status" lines. */
 const statuses = async (call: (method: string, url: string) => Promise<{ statusCode: number }>) =>
