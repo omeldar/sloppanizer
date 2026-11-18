@@ -565,3 +565,56 @@ a.seg:hover {
   font-size: 11px;
   color: var(--text-2);
 }
+
+/* A project row: the link plus its menu button, which takes the count's place on hover. */
+.projectItem {
+  position: relative;
+}
+
+.navMore {
+  position: absolute;
+  top: 5px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.navMore:hover,
+.navMore[data-state="open"] {
+  background: var(--sunken);
+  color: var(--text);
+}
+
+.projectItem:hover .navMore,
+.projectItem:focus-within .navMore,
+.navMore[data-state="open"] {
+  opacity: 1;
+}
+
+.projectItem:hover .count,
+.projectItem:focus-within .count {
+  visibility: hidden;
+}
+
+/* Touch screens have no hover: the button stays, the count moves aside for it. */
+@media (hover: none) {
+  .navMore {
+    opacity: 1;
+  }
+
+  .projectItem .navLink {
+    padding-right: 32px;
+  }
+
+  .projectItem:focus-within .count {
+    visibility: visible;
+  }
+}

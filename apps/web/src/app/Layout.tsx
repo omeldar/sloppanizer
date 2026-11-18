@@ -1,5 +1,7 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { type CSSProperties, useState } from "react";
+import type { Project } from "@organizer/shared";
+import { Menu } from "../components/Menu.tsx";
 import { Kbd } from "../components/ui.tsx";
 import { BrandMark } from "./BrandMark.tsx";
 import { Icon, type IconName } from "./icons.tsx";
@@ -7,6 +9,7 @@ import { HelpOverlay } from "../features/help/HelpOverlay.tsx";
 import { Palette } from "../features/palette/Palette.tsx";
 import { NewNoteDialog } from "../features/notes/NewNoteDialog.tsx";
 import { NewPersonDialog } from "../features/people/NewPersonDialog.tsx";
+import { EditProjectDialog } from "../features/projects/EditProjectDialog.tsx";
 import { NewProjectDialog } from "../features/projects/NewProjectDialog.tsx";
 import { QuickAdd } from "../features/quickadd/QuickAdd.tsx";
 import { type KeyBinding, useActiveBindings, useKeyHold, useKeys } from "../keyboard/KeyboardProvider.tsx";
@@ -139,6 +142,8 @@ function Sidebar({ open }: { open: boolean }) {
   const projects = useProjects();
   const stats = useStats();
   const [newProject, setNewProject] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const setEditing = (project: Project) => setEditingId(project.id);
   const active = (projects.data ?? []).filter((p) => p.archivedAt === null);
 
   return (
@@ -172,7 +177,7 @@ function Sidebar({ open }: { open: boolean }) {
       </div>
       <ul className={styles.nav}>
         {active.map((project) => (
-          <li key={project.id}>
+          <li key={project.id} className={styles.projectItem}>
             <Link
               to="/projects/$slug"
               params={{ slug: project.slug }}
@@ -183,6 +188,24 @@ function Sidebar({ open }: { open: boolean }) {
               <span className={styles.navLabel}>{project.name}</span>
               <span className={styles.count}>{project.openCount}</span>
             </Link>
+            <Menu
+              label={`${project.name} menu`}
+              items={[{ label: "Edit project", run: () => setEditing(project) }]}
+              trigger={
+                <button
+                  type="button"
+                  className={styles.navMore}
+                  aria-label={`More for ${project.name}`}
+                  title="More"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                    <circle cx="2" cy="6" r="1.2" fill="currentColor" />
+                    <circle cx="6" cy="6" r="1.2" fill="currentColor" />
+                    <circle cx="10" cy="6" r="1.2" fill="currentColor" />
+                  </svg>
+                </button>
+              }
+            />
           </li>
         ))}
         {projects.isSuccess && active.length === 0 && (
@@ -199,6 +222,10 @@ function Sidebar({ open }: { open: boolean }) {
       </ul>
       <AccountSwitcher />
       <NewProjectDialog open={newProject} onOpenChange={setNewProject} />
+      <EditProjectDialog
+        project={projects.data?.find((p) => p.id === editingId) ?? null}
+        onOpenChange={(on) => !on && setEditingId(null)}
+      />
     </nav>
   );
 }

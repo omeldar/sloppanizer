@@ -1,10 +1,10 @@
-import { PROJECT_COLORS } from "@organizer/shared";
+import { PROJECT_COLORS, type Project } from "@organizer/shared";
 import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { Dialog, DialogBody, DialogActions } from "../../components/Dialog.tsx";
 import { Button, Field, TextInput } from "../../components/ui.tsx";
 import { errorMessage } from "../../lib/api.ts";
-import { useCreateProject } from "../../lib/queries.ts";
+import { useCreateProject, useProjects } from "../../lib/queries.ts";
 import styles from "./Projects.module.css";
 
 export function NewProjectDialog({
@@ -24,8 +24,11 @@ export function NewProjectDialog({
 function NewProjectForm({ onDone }: { onDone: () => void }) {
   const create = useCreateProject();
   const navigate = useNavigate();
+  const projects = useProjects();
   const [name, setName] = useState("");
-  const [color, setColor] = useState<string>(PROJECT_COLORS[1]);
+  const [picked, setPicked] = useState<string | null>(null);
+  // Until a color is picked, follow the list as it loads.
+  const color = picked ?? freeProjectColor(projects.data ?? []);
   const [error, setError] = useState<string | null>(null);
 
   const submit = async (event: FormEvent) => {
@@ -52,7 +55,7 @@ function NewProjectForm({ onDone }: { onDone: () => void }) {
           maxLength={100}
         />
       </Field>
-      <ColorChoice value={color} onChange={setColor} />
+      <ColorChoice value={color} onChange={setPicked} />
       {error && (
         <p className={styles.error} role="alert">
           {error}
@@ -65,6 +68,16 @@ function NewProjectForm({ onDone }: { onDone: () => void }) {
       </DialogActions>
     </DialogBody>
   );
+}
+
+/**
+ * The first color no project uses yet (archived ones count too, they can come back), so two projects do
+ * not end up the same by accident. Grey (the first) is last choice; when every color is taken, blue.
+ */
+export function freeProjectColor(projects: readonly Pick<Project, "color">[]): string {
+  const used = new Set(projects.map((p) => p.color.toLowerCase()));
+  const order = [...PROJECT_COLORS.slice(1), PROJECT_COLORS[0]];
+  return order.find((c) => !used.has(c.toLowerCase())) ?? PROJECT_COLORS[1];
 }
 
 export function ColorChoice({ value, onChange }: { value: string; onChange: (color: string) => void }) {

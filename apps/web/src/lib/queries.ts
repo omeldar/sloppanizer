@@ -408,7 +408,9 @@ export function useUpdateProject() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: number; patch: UpdateProject }) =>
       api(Project, `/projects/${id}`, { method: "PATCH", body: patch }),
-    onSuccess: () => invalidateTodoViews(client),
+    // Planner blocks carry their project's color.
+    onSuccess: () =>
+      Promise.all([invalidateTodoViews(client), client.invalidateQueries({ queryKey: ["blocks"] })]),
   });
 }
 
