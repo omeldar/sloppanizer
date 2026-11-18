@@ -61,7 +61,11 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
   await app.listen({ port: config.port, host: config.host });
-  app.log.info(`Sloppanizer ${deps.version}: data in ${config.dataDir}, backups in ${config.backupDir}`);
+  const commit = (process.env.SLOPPANIZER_COMMIT ?? "").slice(0, 12);
+  const build = commit && commit !== "unknown" ? ` (${commit})` : "";
+  app.log.info(
+    `Sloppanizer ${deps.version}${build}: data in ${config.dataDir}, backups in ${config.backupDir}`,
+  );
 }
 
 await main();
