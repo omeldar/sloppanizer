@@ -21,6 +21,14 @@ app shows "Sloppanizer is updating".
   one is done. Move, resize or remove one date, this and following, or all, like a calendar. The calendar
   feed, MCP (`list_plan`, `plan_time` with `repeat`, `list_recurring`) and exports include it (#12).
 
+- Planning time for a todo in the Planner also plans it for that day, so it shows in the Week view.
+- Settings, Calendar feed says that calendar apps pick up changes only every 8 to 12 hours, some once a
+  day.
+- Statistics (`g c`): worked time per project, per requester and per week, focus next to meetings,
+  created vs done, when you work (weekday × hour), done per day and time to done, for this week, 4
+  weeks, 3 months, this year or any dates; every chart also as a table. Worked time is planned time
+  that has already happened. MCP tool `work_stats` (#18).
+
 ## 0.1.0
 
 Everything before numbered releases: todos, notes, people, the planner, meetings, accounts, the hosted

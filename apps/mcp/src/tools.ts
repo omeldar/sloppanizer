@@ -2,6 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import {
   type Activity,
+  formatDuration,
+  type WorkStats,
   type BlockOccurrence,
   type BlockSeries,
   type RecurringTodo,
@@ -71,7 +73,9 @@ import {
   nextUpText,
   noteDetail,
   occurrenceLine,
+  hoursText,
   plannedLine,
+  statsGroupText,
   recurringLine,
   noteLine,
   peopleStatsText,
@@ -1595,6 +1599,59 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           ? "No repeating todos."
           : data.map((r) => recurringLine(r, deps.timeZone)).join("\n"),
       );
+    },
+  );
+
+  tool(
+    "work_stats",
+    {
+      title: "Work statistics",
+      description:
+        "How much the user worked in a period, per project, per requester and per week, with meeting time " +
+        "and todos created and done. Worked time is planned time that has already happened (there is no " +
+        "timer). Default: the last 4 weeks.",
+      inputSchema: {
+        from: PlanDate.optional().describe("First day YYYY-MM-DD (default 27 days before to)."),
+        to: PlanDate.optional().describe("Last day YYYY-MM-DD (default today)."),
+        format,
+      },
+      annotations: READ,
+    },
+    async (args) => {
+      const to = args.to ?? ctx().today;
+      const from = args.from ?? addLocalDays(to, -27);
+      const stats = await api.get<WorkStats>("/stats/overview", { from, to });
+      return out(args.format, stats, (s) => {
+        const median =
+          s.totals.medianDoneMs === null ? "" : `, median ${formatDuration(s.totals.medianDoneMs)} to done`;
+        const lines = [
+          `${formatDate(s.from)} to ${formatDate(s.to)}: worked ${hoursText(s.totals.workedMinutes)}, meetings ` +
+            `${hoursText(s.totals.meetingMinutes)}, ${s.totals.done} done${median}, ${s.totals.created} created.`,
+          "",
+          "Projects:",
+          ...(s.projects.length === 0
+            ? ["- nothing"]
+            : s.projects.map((g) => `- ${statsGroupText(g)}: ${hoursText(g.minutes)}, ${g.done} done`)),
+          "",
+          "Requesters (a todo counts for each of its requesters):",
+          ...(s.requesters.length === 0
+            ? ["- nobody"]
+            : s.requesters.map((r) => `- ${r.person.name}: ${hoursText(r.minutes)}, ${r.done} done`)),
+          ...(s.otherRequesters
+            ? [
+                `- ${s.otherRequesters.people} others: ${hoursText(s.otherRequesters.minutes)}, ${s.otherRequesters.done} done`,
+              ]
+            : []),
+          "",
+          "Weeks:",
+          ...s.weeks.map(
+            (w) =>
+              `- ${formatDate(w.start)}: worked ${hoursText(w.workedMinutes)}, meetings ${hoursText(w.meetingMinutes)}, ` +
+              `${w.created} created, ${w.done} done`,
+          ),
+        ];
+        return lines.join("\n");
+      });
     },
   );
 
