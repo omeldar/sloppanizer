@@ -1,10 +1,12 @@
-import type { Meeting, MeetingOccurrence, Project } from "@organizer/shared";
+import { addDays, type Meeting, type MeetingOccurrence, type Project } from "@organizer/shared";
 import { describe, expect, it } from "vitest";
 import { json, makeApp, type TestApp } from "./helpers.ts";
 
 // The test clock starts on Wednesday 11.11.2026 at 11:00 in Zurich (10:00 UTC).
 
 const weekly = (weekdays: string[] = ["thu"]) => ({ every: "week", weekdays });
+
+const SCHEDULE = { rule: weekly(), startsOn: "2026-11-12", startTime: "09:00", durationMinutes: 15 };
 
 /** "Weekly Standup", Thursdays 09:00 to 09:15 from 12.11.2026. */
 const standup = (t: TestApp, more: Record<string, unknown> = {}) =>
@@ -548,5 +550,94 @@ describe("changes on the first date and on a split series", () => {
       "2026-11-26 11-26T08:00 scheduled",
       "2026-12-10 12-10T08:00 scheduled",
     ]);
+  });
+});
+
+describe("limits", () => {
+  const T = "2026-11-11T10:00:00.000Z";
+
+  it("keeps an account at 100 meetings", async () => {
+    const t = await makeApp();
+    const sqlite = t.deps.db.$client;
+    const add = sqlite.prepare(
+      "INSERT INTO meetings (account_id, id, name, type, since, created_at, updated_at) VALUES (?, ?, ?, 'other', ?, ?, ?)",
+    );
+    for (let id = 1; id <= 99; id += 1) add.run(t.account.id, id, `Meeting ${id}`, T, T, T);
+    expect(
+      (await t.call("POST", "/api/v1/meetings", { name: "The 100th", schedule: SCHEDULE })).statusCode,
+    ).toBe(201);
+    const over = await t.call("POST", "/api/v1/meetings", { name: "One more", schedule: SCHEDULE });
+    expect(over.statusCode).toBe(422);
+    expect(over.json().error.message).toBe(
+      "An account can have at most 100 meetings. Delete one you no longer need first.",
+    );
+    // Another account has its own limit.
+    const bobby = await t.asAccount({ username: "bobby" });
+    expect(
+      (await bobby.call("POST", "/api/v1/meetings", { name: "Mine", schedule: SCHEDULE })).statusCode,
+    ).toBe(201);
+  });
+
+  it("keeps a repeat at 50 parts and 500 changed dates per part", async () => {
+    const t = await makeApp();
+    const { id } = await standup(t, { schedule: { ...SCHEDULE, endsOn: "2026-12-31" } });
+    const sqlite = t.deps.db.$client;
+    const segment = sqlite.prepare(
+      `INSERT INTO series (account_id, id, owner_kind, meeting_id, rule, starts_on, ends_on, start_time, duration_min, created_at, updated_at)
+       VALUES (?, ?, 'meeting', ?, '{"every":"week","interval":1,"weekdays":["thu"],"basis":"schedule"}', ?, ?, '09:00', 15, ?, ?)`,
+    );
+    // 49 more one-week parts in 2027 and later.
+    for (let k = 0; k < 49; k += 1) {
+      const startsOn = addDays("2027-01-07", 7 * k);
+      segment.run(t.account.id, 100 + k, id, startsOn, addDays(startsOn, 6), T, T);
+    }
+    const split = await t.call("PATCH", `/api/v1/meetings/${id}/schedule`, {
+      scope: "following",
+      from: "2026-11-26",
+      startTime: "10:00",
+    });
+    expect(split.statusCode).toBe(422);
+    expect(split.json().error.message).toMatch(/at most 50 parts/);
+
+    const first = json<Meeting>(await t.call("GET", `/api/v1/meetings/${id}`)).segments[0]?.id as number;
+    const exception = sqlite.prepare(
+      "INSERT INTO series_exceptions (account_id, series_id, occurs_on, kind, created_at, updated_at) VALUES (?, ?, ?, 'cancelled', ?, ?)",
+    );
+    for (let k = 0; k < 500; k += 1) exception.run(t.account.id, first, addDays("2000-01-01", k), T, T);
+    const over = await change(t, id, "2026-11-19", { scope: "this", cancelled: true });
+    expect(over.statusCode).toBe(422);
+    expect(over.json().error.message).toMatch(/at most 500 moved or cancelled dates/);
+    // Changing a date that is changed already still works.
+    sqlite.prepare("DELETE FROM series_exceptions WHERE occurs_on = '2000-01-01'").run();
+    expect((await change(t, id, "2026-11-19", { scope: "this", cancelled: true })).statusCode).toBe(200);
+    expect(
+      (
+        await change(t, id, "2026-11-19", {
+          scope: "this",
+          startAt: "2026-11-19T12:00:00.000Z",
+          endAt: "2026-11-19T12:15:00.000Z",
+        })
+      ).statusCode,
+    ).toBe(200);
+  });
+
+  it("counts each standup's open items with its own window, filter and marks in one list", async () => {
+    const t = await makeApp();
+    const lab = await t.create<Project>("/api/v1/projects", { name: "Lab" });
+    const a = await t.create<{ id: number }>("/api/v1/todos", { title: "In the lab", projectId: lab.id });
+    const b = await t.create<{ id: number }>("/api/v1/todos", { title: "In the inbox" });
+    await Promise.all([a, b].map((todo) => t.call("PATCH", `/api/v1/todos/${todo.id}`, { status: "done" })));
+    const all = await standup(t);
+    await standup(t, { name: "Lab standup", filter: { projectIds: [lab.id] } });
+    const later = await standup(t, { name: "Late standup", countFrom: "2026-11-12" });
+    await t.call("POST", `/api/v1/meetings/${all.id}/standup/marks`, {
+      on: "2026-11-12",
+      marks: [{ todoId: a.id, kind: "said", coveredUntil: T }],
+    });
+    const counts = Object.fromEntries(
+      json<Meeting[]>(await t.call("GET", "/api/v1/meetings")).map((m) => [m.name, m.openCount]),
+    );
+    expect(counts).toEqual({ "Weekly Standup": 1, "Lab standup": 1, "Late standup": 0 });
+    expect(later.openCount).toBe(0);
   });
 });

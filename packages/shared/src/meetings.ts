@@ -37,6 +37,13 @@ export const SeriesRule = RecurrenceRule.refine((rule) => rule.basis === "schedu
   path: ["basis"],
 });
 
+/** Limits per account and meeting, so one account cannot make the server slow for everyone. */
+export const MAX_MEETINGS = 100;
+/** Parts of one meeting's repeat (each "this and following" change adds one). */
+export const MAX_SEGMENTS = 50;
+/** Moved or cancelled dates of one part of a repeat. */
+export const MAX_EXCEPTIONS = 500;
+
 export const MIN_MEETING_MINUTES = 5;
 export const MAX_MEETING_MINUTES = 1440;
 

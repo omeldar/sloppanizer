@@ -10,6 +10,7 @@ import {
   STANDUP_KINDS,
   STANDUP_UPDATE_KINDS,
   type StandupCounts,
+  type StandupFilter,
   type StandupItem,
   type StandupKind,
   type StandupQuery,
@@ -17,7 +18,7 @@ import {
   toLocalDate,
   type TodoRef,
 } from "@organizer/shared";
-import { and, desc, eq, gt, inArray, isNull, or, type SQL, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import { comments, events, meetingNotes, standupMarks, todoLabels, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { normalizeEvents } from "./activity.ts";
@@ -74,33 +75,16 @@ function onlyStandups(meeting: MeetingRow): void {
     throw new ApiError("conflict", "Only standups have a list. Change the meeting's type to Standup first.");
 }
 
-/** Todos that can be on the list: in progress, or blocked or done with activity in the window. */
-function candidates(sc: Scoped, meeting: MeetingRow): Candidate[] {
-  const filter = parseFilter(meeting.filter);
-  const conditions: (SQL | undefined)[] = [
-    or(
-      eq(todos.status, "in_progress"),
-      and(inArray(todos.status, ["blocked", "done"]), gt(todos.lastActivityAt, meeting.since)),
-    ),
-  ];
-  if (filter.projectIds.length > 0 || filter.inbox) {
-    conditions.push(
-      or(
-        filter.projectIds.length > 0 ? inArray(todos.projectId, filter.projectIds) : undefined,
-        filter.inbox ? isNull(todos.projectId) : undefined,
-      ),
-    );
-  }
-  if (filter.labelIds.length > 0) {
-    conditions.push(
-      sql`EXISTS (SELECT 1 FROM ${todoLabels} tl WHERE tl.account_id = "todos"."account_id"
-        AND tl.todo_id = "todos"."id" AND tl.label_id IN (${sql.join(
-          filter.labelIds.map((id) => sql`${id}`),
-          sql`, `,
-        )}))`,
-    );
-  }
-  return sc.db
+interface Listed extends Candidate {
+  labelIds: ReadonlySet<number>;
+}
+
+/**
+ * Todos that can be on a list: in progress, or blocked or done with activity after `since` (the
+ * earliest window of the lists asked for), with their label ids when a filter needs them.
+ */
+function candidates(sc: Scoped, since: string, withLabels: boolean): Listed[] {
+  const rows = sc.db
     .select({
       id: todos.id,
       title: todos.title,
@@ -111,23 +95,67 @@ function candidates(sc: Scoped, meeting: MeetingRow): Candidate[] {
       lastActivityAt: todos.lastActivityAt,
     })
     .from(todos)
-    .where(owned(sc, todos, ...conditions))
+    .where(
+      owned(
+        sc,
+        todos,
+        or(
+          eq(todos.status, "in_progress"),
+          and(inArray(todos.status, ["blocked", "done"]), gt(todos.lastActivityAt, since)),
+        ),
+      ),
+    )
     .all();
+  const labels = new Map<number, Set<number>>();
+  if (withLabels) {
+    for (const part of chunks(rows.map((r) => r.id))) {
+      for (const link of sc.db
+        .select({ todoId: todoLabels.todoId, labelId: todoLabels.labelId })
+        .from(todoLabels)
+        .where(owned(sc, todoLabels, inArray(todoLabels.todoId, part)))
+        .all()) {
+        const set = labels.get(link.todoId) ?? new Set<number>();
+        set.add(link.labelId);
+        labels.set(link.todoId, set);
+      }
+    }
+  }
+  return rows.map((r) => Object.assign(r, { labelIds: labels.get(r.id) ?? new Set<number>() }));
 }
 
-/** The newest covered time per todo of this standup's marks. */
-function marksOf(sc: Scoped, meetingId: number, todoIds: readonly number[]): Map<number, Mark> {
-  const out = new Map<number, Mark>();
+/** In one of the projects (or the Inbox when asked) and with any one of the labels; empty lists = no limit. */
+function inFilter(todo: Listed, filter: StandupFilter): boolean {
+  if (filter.projectIds.length > 0 || filter.inbox) {
+    const inProject = todo.projectId !== null && filter.projectIds.includes(todo.projectId);
+    if (!inProject && !(filter.inbox && todo.projectId === null)) return false;
+  }
+  return filter.labelIds.length === 0 || filter.labelIds.some((id) => todo.labelIds.has(id));
+}
+
+const markKey = (meetingId: number, todoId: number) => `${meetingId}|${todoId}`;
+
+/** The newest covered time per standup and todo. */
+function marksOf(sc: Scoped, meetingIds: readonly number[], todoIds: readonly number[]): Map<string, Mark> {
+  const out = new Map<string, Mark>();
   for (const part of chunks(todoIds)) {
     for (const row of sc.db
-      .select({ todoId: standupMarks.todoId, coveredUntil: sql<string>`max(${standupMarks.coveredUntil})` })
+      .select({
+        meetingId: standupMarks.meetingId,
+        todoId: standupMarks.todoId,
+        coveredUntil: sql<string>`max(${standupMarks.coveredUntil})`,
+      })
       .from(standupMarks)
       .where(
-        owned(sc, standupMarks, eq(standupMarks.meetingId, meetingId), inArray(standupMarks.todoId, part)),
+        owned(
+          sc,
+          standupMarks,
+          inArray(standupMarks.meetingId, [...meetingIds]),
+          inArray(standupMarks.todoId, part),
+        ),
       )
-      .groupBy(standupMarks.todoId)
+      .groupBy(standupMarks.meetingId, standupMarks.todoId)
       .all()) {
-      out.set(row.todoId, { coveredUntil: row.coveredUntil });
+      out.set(markKey(row.meetingId, row.todoId), { coveredUntil: row.coveredUntil });
     }
   }
   return out;
@@ -171,23 +199,12 @@ const order = (kind: StandupKind): number => STANDUP_KINDS.indexOf(kind);
 
 const isStart = (data: Record<string, unknown>): boolean => data.to === "in_progress";
 
-/** Every item of the standup's list, by group and newest first. */
-export function standupItems(sc: Scoped, meeting: MeetingRow): StandupItem[] {
-  const since = meeting.since;
-  const all = candidates(sc, meeting);
-  const marks = marksOf(
-    sc,
-    meeting.id,
-    all.map((t) => t.id),
-  );
-  const cutoff = (id: number) => later(since, marks.get(id)?.coveredUntil);
-  // Only todos with something after their cutoff (or never marked and in progress) need their history.
-  const open = all.filter(
-    (t) => t.lastActivityAt > cutoff(t.id) || (t.status === "in_progress" && !marks.has(t.id)),
-  );
-  const ids = open.map((t) => t.id);
+type CommentRow = { todoId: number; actor: string; bodyMd: string; createdAt: string; id: number };
+
+/** Events (update kinds only) and comments of the todos after `since`, newest first. */
+function activityOf(sc: Scoped, ids: readonly number[], since: string) {
   const eventRows: (typeof events.$inferSelect)[] = [];
-  const commentRows: { todoId: number; actor: string; bodyMd: string; createdAt: string; id: number }[] = [];
+  const commentRows: CommentRow[] = [];
   for (const part of chunks(ids)) {
     eventRows.push(
       ...sc.db
@@ -220,83 +237,150 @@ export function standupItems(sc: Scoped, meeting: MeetingRow): StandupItem[] {
         .all(),
     );
   }
-  const eventsByTodo = groupBy(normalizeEvents(eventRows, sc));
-  const commentsByTodo = groupBy(commentRows);
-  const starts = lastStarts(
-    sc,
-    open.filter((t) => t.status === "in_progress" && !marks.has(t.id)).map((t) => t.id),
-  );
+  return { events: groupBy(normalizeEvents(eventRows, sc)), comments: groupBy(commentRows) };
+}
 
-  const found: {
-    todo: Candidate;
-    kind: StandupKind;
-    at: string;
-    changes: string[];
-    comments: typeof commentRows;
-  }[] = [];
-  for (const todo of open) {
-    const from = cutoff(todo.id);
-    const evs = (eventsByTodo.get(todo.id) ?? []).filter((e) => e.createdAt > from);
-    const cms = (commentsByTodo.get(todo.id) ?? []).filter((c) => c.createdAt > from);
-    const newest = later(evs[0]?.createdAt ?? "", cms[0]?.createdAt);
-    let kind: StandupKind | null = null;
-    let at = newest;
-    if (todo.status === "done") {
-      if (todo.doneAt !== null && todo.doneAt > from) {
-        kind = "done";
-        at = todo.doneAt;
+interface Found {
+  todo: Candidate;
+  kind: StandupKind;
+  at: string;
+  changes: string[];
+  comments: CommentRow[];
+  again: boolean;
+}
+
+/**
+ * The lists of several standups at once (the meetings list counts all of them): the todos, their marks,
+ * history and comments are read once for all, then each standup takes its window, filter and marks.
+ * Every item by group and newest first.
+ */
+export function standupLists(sc: Scoped, meetings: readonly MeetingRow[]): Map<number, StandupItem[]> {
+  const out = new Map<number, StandupItem[]>();
+  if (meetings.length === 0) return out;
+  const filters = new Map(meetings.map((m) => [m.id, parseFilter(m.filter)]));
+  const earliest = meetings.reduce((min, m) => (m.since < min ? m.since : min), meetings[0]?.since ?? "");
+  const all = candidates(
+    sc,
+    earliest,
+    [...filters.values()].some((f) => f.labelIds.length > 0),
+  );
+  const marks = marksOf(
+    sc,
+    meetings.map((m) => m.id),
+    all.map((t) => t.id),
+  );
+  const cutoffOf = (meeting: MeetingRow, id: number) =>
+    later(meeting.since, marks.get(markKey(meeting.id, id))?.coveredUntil);
+  // Per standup, the todos with something after their cutoff (or never marked and in progress).
+  const open = new Map(
+    meetings.map((meeting) => {
+      const filter = filters.get(meeting.id) as StandupFilter;
+      return [
+        meeting.id,
+        all.filter(
+          (t) =>
+            inFilter(t, filter) &&
+            (t.lastActivityAt > cutoffOf(meeting, t.id) ||
+              (t.status === "in_progress" && !marks.has(markKey(meeting.id, t.id)))),
+        ),
+      ];
+    }),
+  );
+  const openIds = [...new Set([...open.values()].flatMap((list) => list.map((t) => t.id)))];
+  const activity = activityOf(sc, openIds, earliest);
+  const starts = lastStarts(sc, [
+    ...new Set(
+      meetings.flatMap((m) =>
+        (open.get(m.id) ?? [])
+          .filter((t) => t.status === "in_progress" && !marks.has(markKey(m.id, t.id)))
+          .map((t) => t.id),
+      ),
+    ),
+  ]);
+
+  const found = new Map<number, Found[]>();
+  for (const meeting of meetings) {
+    const list: Found[] = [];
+    for (const todo of open.get(meeting.id) ?? []) {
+      const from = cutoffOf(meeting, todo.id);
+      const marked = marks.has(markKey(meeting.id, todo.id));
+      const evs = (activity.events.get(todo.id) ?? []).filter((e) => e.createdAt > from);
+      const cms = (activity.comments.get(todo.id) ?? []).filter((c) => c.createdAt > from);
+      const newest = later(evs[0]?.createdAt ?? "", cms[0]?.createdAt);
+      let kind: StandupKind | null = null;
+      let at = newest;
+      if (todo.status === "done") {
+        if (todo.doneAt !== null && todo.doneAt > from) {
+          kind = "done";
+          at = todo.doneAt;
+        }
+      } else if (todo.status === "blocked") {
+        if (newest !== "") kind = "blocked";
+      } else if (todo.status === "in_progress") {
+        if (evs.some((e) => e.kind === "status_changed" && isStart(e.data))) kind = "started";
+        else if (newest !== "") kind = "updated";
+        else if (!marked) {
+          kind = "started";
+          at = starts.get(todo.id) ?? todo.lastActivityAt;
+        }
       }
-    } else if (todo.status === "blocked") {
-      if (newest !== "") kind = "blocked";
-    } else if (todo.status === "in_progress") {
-      if (evs.some((e) => e.kind === "status_changed" && isStart(e.data))) kind = "started";
-      else if (newest !== "") kind = "updated";
-      else if (!marks.has(todo.id)) {
-        kind = "started";
-        at = starts.get(todo.id) ?? todo.lastActivityAt;
-      }
+      if (kind === null) continue;
+      list.push({
+        todo,
+        kind,
+        at,
+        changes: evs.slice(0, MAX_CHANGES).map((e) => describeEvent(e)),
+        comments: cms,
+        again: marked,
+      });
     }
-    if (kind === null) continue;
-    found.push({
-      todo,
-      kind,
-      at,
-      changes: evs.slice(0, MAX_CHANGES).map((e) => describeEvent(e)),
-      comments: cms,
-    });
+    found.set(meeting.id, list);
   }
 
+  const every = [...found.values()].flat();
   const projects = projectRefs(
     sc,
-    found.map((f) => f.todo.projectId),
+    every.map((f) => f.todo.projectId),
   );
   const parents = todoBriefs(
     sc,
-    found.flatMap((f) => (f.todo.parentId === null ? [] : [f.todo.parentId])),
+    every.flatMap((f) => (f.todo.parentId === null ? [] : [f.todo.parentId])),
   );
-  return found
-    .toSorted((a, b) => order(a.kind) - order(b.kind) || b.at.localeCompare(a.at) || b.todo.id - a.todo.id)
-    .map(({ todo, kind, at, changes, comments: cms }) => {
-      const last = cms[0];
-      return {
-        todo: { id: todo.id, title: todo.title, status: todo.status },
-        project: todo.projectId === null ? null : (projects.get(todo.projectId) ?? null),
-        parent: todo.parentId === null ? null : (parents.get(todo.parentId)?.ref ?? null),
-        kind,
-        at,
-        changes,
-        newCommentCount: cms.length,
-        lastComment: last
-          ? {
-              actor: last.actor,
-              excerpt: plainText(last.bodyMd).slice(0, EXCERPT),
-              createdAt: last.createdAt,
-            }
-          : null,
-        again: marks.has(todo.id),
-      };
-    });
+  for (const [meetingId, list] of found) {
+    out.set(
+      meetingId,
+      list
+        .toSorted(
+          (a, b) => order(a.kind) - order(b.kind) || b.at.localeCompare(a.at) || b.todo.id - a.todo.id,
+        )
+        .map(({ todo, kind, at, changes, comments: cms, again }) => {
+          const last = cms[0];
+          return {
+            todo: { id: todo.id, title: todo.title, status: todo.status },
+            project: todo.projectId === null ? null : (projects.get(todo.projectId) ?? null),
+            parent: todo.parentId === null ? null : (parents.get(todo.parentId)?.ref ?? null),
+            kind,
+            at,
+            changes,
+            newCommentCount: cms.length,
+            lastComment: last
+              ? {
+                  actor: last.actor,
+                  excerpt: plainText(last.bodyMd).slice(0, EXCERPT),
+                  createdAt: last.createdAt,
+                }
+              : null,
+            again,
+          };
+        }),
+    );
+  }
+  return out;
 }
+
+/** Every item of one standup's list. */
+export const standupItems = (sc: Scoped, meeting: MeetingRow): StandupItem[] =>
+  standupLists(sc, [meeting]).get(meeting.id) ?? [];
 
 /** The account's todos with these ids as refs, with their project. */
 function todoBriefs(
@@ -316,8 +400,11 @@ function todoBriefs(
   return out;
 }
 
-/** Items still to say, for the meetings list. */
-export const openStandupCount = (sc: Scoped, meeting: MeetingRow): number => standupItems(sc, meeting).length;
+/** Items still to say per standup, for the meetings list. */
+export function openStandupCounts(sc: Scoped, meetings: readonly MeetingRow[]): Map<number, number> {
+  const standups = meetings.filter((m) => m.type === "standup");
+  return new Map([...standupLists(sc, standups)].map(([id, items]) => [id, items.length]));
+}
 
 /** The next meeting date on or after today (cancelled ones skipped), else today. */
 function defaultDate(ctx: Ctx, sc: Scoped, meeting: MeetingRow): string {

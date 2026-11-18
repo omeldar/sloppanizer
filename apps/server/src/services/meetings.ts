@@ -29,8 +29,11 @@ import {
   toLocalDate,
   toLocalTime,
   type UpdateMeeting,
+  MAX_EXCEPTIONS,
+  MAX_MEETINGS,
+  MAX_SEGMENTS,
 } from "@organizer/shared";
-import { asc, eq, gte, inArray } from "drizzle-orm";
+import { asc, eq, gte, inArray, ne, sql } from "drizzle-orm";
 import { meetingNotes, meetings, series, seriesExceptions } from "../db/schema.ts";
 import { ApiError } from "../http/errors.ts";
 import { type Ctx, inTx, now, type Scoped } from "./context.ts";
@@ -45,7 +48,7 @@ import {
 } from "./meeting-data.ts";
 import { insertOwnedRow, owned } from "./owned.ts";
 import { chunks } from "./sql.ts";
-import { openStandupCount } from "./standup.ts";
+import { openStandupCounts } from "./standup.ts";
 
 /**
  * Meetings and their repeat. A repeat is one or more series segments that never overlap; a change
@@ -105,6 +108,7 @@ function hydrate(ctx: Ctx, sc: Scoped, rows: readonly MeetingRow[]): Meeting[] {
     [...segments.values()].flatMap((list) => list.map((s) => s.id)),
   );
   const notes = noteLinks(sc, ids);
+  const open = openStandupCounts(sc, rows);
   const at = ctx.clock();
   const today = toLocalDate(at, ctx.timeZone);
   return rows.map((row) => {
@@ -125,7 +129,7 @@ function hydrate(ctx: Ctx, sc: Scoped, rows: readonly MeetingRow[]): Meeting[] {
       schedule: toSeries(currentSegment(list, today)),
       segments: list.map(toSeries),
       next: next === null ? null : toOccurrence(row, next, notes),
-      openCount: row.type === "standup" ? openStandupCount(sc, row) : null,
+      openCount: row.type === "standup" ? (open.get(row.id) ?? 0) : null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -179,7 +183,17 @@ const seriesValues = (span: Omit<SeriesSpan, "id">) => ({
   durationMin: span.durationMinutes,
 });
 
+const countOf = (
+  sc: Scoped,
+  table: typeof meetings | typeof series | typeof seriesExceptions,
+  where: ReturnType<typeof owned>,
+) => sc.db.get<{ n: number }>(sql`SELECT count(*) AS n FROM ${table} WHERE ${where}`).n;
+
 function insertSegment(sc: Scoped, meetingId: number, span: Omit<SeriesSpan, "id">, at: string): number {
+  if (countOf(sc, series, owned(sc, series, eq(series.meetingId, meetingId))) >= MAX_SEGMENTS)
+    throw invalid(
+      `A meeting's repeat can have at most ${MAX_SEGMENTS} parts. Change all dates instead of this and following.`,
+    );
   return insertOwnedRow(sc, series, {
     ownerKind: "meeting",
     meetingId,
@@ -247,6 +261,16 @@ function replaceExceptions(sc: Scoped, seriesId: number, list: readonly SeriesEx
 }
 
 function upsertException(sc: Scoped, e: SeriesException, at: string): void {
+  const others = owned(
+    sc,
+    seriesExceptions,
+    eq(seriesExceptions.seriesId, e.seriesId),
+    ne(seriesExceptions.occursOn, e.occursOn),
+  );
+  if (countOf(sc, seriesExceptions, others) >= MAX_EXCEPTIONS)
+    throw invalid(
+      `A repeat can have at most ${MAX_EXCEPTIONS} moved or cancelled dates. Change the repeat itself instead.`,
+    );
   sc.db
     .insert(seriesExceptions)
     .values({ accountId: sc.accountId, ...e, createdAt: at, updatedAt: at })
@@ -277,6 +301,10 @@ export function createMeeting(ctx: Ctx, input: CreateMeeting): Meeting {
       durationMinutes: schedule.durationMinutes,
     };
     checkHasDates(span);
+    if (countOf(sc, meetings, owned(sc, meetings)) >= MAX_MEETINGS)
+      throw invalid(
+        `An account can have at most ${MAX_MEETINGS} meetings. Delete one you no longer need first.`,
+      );
     const filter = checkedFilter(sc, input.filter ?? StandupFilter.parse({}));
     const at = now(ctx);
     const since =
