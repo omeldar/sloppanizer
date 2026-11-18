@@ -691,6 +691,23 @@ function applyChange(
   else if (set.status !== undefined && current.status === "done") removeUntouchedNext(sc, at, current.id);
 }
 
+/**
+ * Time planned for a todo in the planner also plans the todo for that day (the Week view and the
+ * planner's Day row read the planned day), recorded as a normal date change. Done todos stay as they are.
+ */
+export function planTodoOn(
+  sc: Scoped,
+  at: string,
+  actor: string,
+  id: number,
+  day: string,
+  timeZone: string,
+): void {
+  const current = getTodo(sc, id);
+  if (current.status === "done" || current.plannedOn === day) return;
+  applyChange(sc, at, actor, current, { plannedOn: day }, timeZone);
+}
+
 export function updateTodo(ctx: Ctx, actor: string, id: number, change: UpdateTodo): Todo {
   return ctx.db.transaction((tx) => {
     const sc = inTx(ctx, tx);
