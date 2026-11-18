@@ -79,16 +79,19 @@ const MEETING_TABLES: ReadonlySet<string> = new Set([
   "standup_marks",
 ]);
 
+/** The tables of formats 2 to 5, which came before meetings. */
+const BEFORE_MEETINGS = EXPORT_TABLES.filter((t) => !MEETING_TABLES.has(t));
+
 /** Tables of each export format. Formats 1 to 3 come from the single-user organizer, 4 on from Sloppanizer. */
 const FORMAT_TABLES: Record<number, readonly string[]> = {
   1: ["projects", "labels", "people", "todos", "todo_labels", "todo_people", "events", "settings"],
-  2: EXPORT_TABLES.filter((t) => !["todo_links", "todo_urls", "time_blocks"].includes(t)),
+  2: BEFORE_MEETINGS.filter((t) => !["todo_links", "todo_urls", "time_blocks"].includes(t)),
   // Format 3 adds todo_links (and manifest.sequences).
-  3: EXPORT_TABLES.filter((t) => t !== "todo_urls" && t !== "time_blocks"),
+  3: BEFORE_MEETINGS.filter((t) => t !== "todo_urls" && t !== "time_blocks"),
   // Format 4: one account, sequences of every id table, the account in the manifest.
-  4: EXPORT_TABLES.filter((t) => t !== "todo_urls" && t !== "time_blocks"),
+  4: BEFORE_MEETINGS.filter((t) => t !== "todo_urls" && t !== "time_blocks"),
   // Format 5 adds web links of todos and the planner's time blocks.
-  5: EXPORT_TABLES.filter((t) => !MEETING_TABLES.has(t)),
+  5: BEFORE_MEETINGS,
   // Format 6 adds meetings: their repeat, single date changes, note links and standup marks.
   6: EXPORT_TABLES,
 };

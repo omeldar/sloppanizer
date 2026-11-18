@@ -486,6 +486,35 @@ describe("restore apply", () => {
     expect(problems(missing)).toContain('data.json misses the table "standup_marks".');
   });
 
+  it("restores a format 4 export, which has no web links, time blocks or meetings", async () => {
+    const t = await makeApp();
+    await fillEveryTable(t);
+    const zip = await exportZip(t);
+    const format4 = rework(zip, (m, d) => {
+      m.format = 4;
+      m.schemaVersion = 12;
+      for (const table of [
+        "todo_urls",
+        "time_blocks",
+        "meetings",
+        "series",
+        "series_exceptions",
+        "meeting_notes",
+        "standup_marks",
+      ]) {
+        delete d[table];
+        delete m.counts[table];
+      }
+      for (const sequence of ["todo_urls", "time_blocks", "meetings", "series"]) delete m.sequences[sequence];
+    });
+    const preview = json<RestorePreview>(await upload(t, format4));
+    expect(preview).toMatchObject({ format: 4, source: "sloppanizer", warnings: [] });
+    const applied = await t.call("POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" });
+    expect(applied.statusCode).toBe(200);
+    expect(json<unknown[]>(await t.call("GET", "/api/v1/meetings"))).toEqual([]);
+    expect(json<{ total: number }>(await t.call("GET", "/api/v1/todos?status=all")).total).toBe(4);
+  });
+
   it("refuses meeting rows the services could not read, and more meetings than an account may have", async () => {
     const t = await makeApp();
     await fillEveryTable(t);
@@ -547,6 +576,8 @@ describe("restore apply", () => {
       delete d.todo_links;
       delete d.todo_urls;
       delete d.time_blocks;
+      for (const table of ["meetings", "series", "series_exceptions", "meeting_notes", "standup_marks"])
+        delete d[table];
       for (const row of d.todos) {
         delete row.recurrence;
         delete row.recurrence_prev_id;
