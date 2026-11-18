@@ -99,6 +99,20 @@ describe("accounts never see each other's data", () => {
       ],
       ["PATCH", `/api/v1/meetings/${ids.meeting}/occurrences/2026-11-19`, { scope: "this", cancelled: true }],
       ["GET", `/api/v1/meetings/occurrences?from=2026-11-09&to=2026-11-22&meetingId=${ids.meeting}`],
+      ["GET", `/api/v1/meetings/${ids.meeting}/standup`],
+      [
+        "POST",
+        `/api/v1/meetings/${ids.meeting}/standup/marks`,
+        {
+          on: "2026-11-12",
+          marks: [{ todoId: ids.todo, kind: "said", coveredUntil: "2026-11-11T10:00:00.000Z" }],
+        },
+      ],
+      ["DELETE", `/api/v1/meetings/${ids.meeting}/standup/marks/2026-11-12/${ids.todo}`],
+      ["GET", `/api/v1/meetings/${ids.meeting}/notes`],
+      ["POST", `/api/v1/meetings/${ids.meeting}/notes`, { on: "2026-11-12" }],
+      ["POST", `/api/v1/meetings/${ids.meeting}/notes`, { on: "2026-11-12", noteId: ids.note }],
+      ["DELETE", `/api/v1/meetings/${ids.meeting}/notes/2026-11-12`],
       ["DELETE", `/api/v1/meetings/${ids.meeting}`],
     ];
     const results: [string, number][] = [];

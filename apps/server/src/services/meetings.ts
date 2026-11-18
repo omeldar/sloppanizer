@@ -45,6 +45,7 @@ import {
 } from "./meeting-data.ts";
 import { insertOwnedRow, owned } from "./owned.ts";
 import { chunks } from "./sql.ts";
+import { openStandupCount } from "./standup.ts";
 
 /**
  * Meetings and their repeat. A repeat is one or more series segments that never overlap; a change
@@ -124,7 +125,7 @@ function hydrate(ctx: Ctx, sc: Scoped, rows: readonly MeetingRow[]): Meeting[] {
       schedule: toSeries(currentSegment(list, today)),
       segments: list.map(toSeries),
       next: next === null ? null : toOccurrence(row, next, notes),
-      openCount: null,
+      openCount: row.type === "standup" ? openStandupCount(sc, row) : null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

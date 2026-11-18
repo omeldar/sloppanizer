@@ -42,7 +42,7 @@ describe("meetings", () => {
         status: "scheduled",
         noteId: null,
       },
-      openCount: null,
+      openCount: 0,
     });
     expect(meeting.schedule.text).toBe("every week on Thu, 09:00–09:15");
     expect(json<Meeting[]>(await t.call("GET", "/api/v1/meetings")).map((m) => m.id)).toEqual([meeting.id]);
