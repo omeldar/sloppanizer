@@ -20,11 +20,6 @@ async function twoAccounts() {
   const label = json<{ id: number; name: string }[]>(await t.call("GET", "/api/v1/labels")).find(
     (l) => l.name === "homelab",
   );
-  const meeting = await t.create<{ id: number }>("/api/v1/meetings", {
-    name: "Secret standup",
-    schedule: { rule: { every: "week" }, startsOn: "2026-11-12", startTime: "09:00", durationMinutes: 15 },
-    filter: { projectIds: [filled.project.id], labelIds: [label?.id ?? 0] },
-  });
   const bobby = await t.asAccount({ username: "bobby" });
   return {
     t,
@@ -39,7 +34,7 @@ async function twoAccounts() {
       tag: tag?.id ?? 0,
       topic: topic?.id ?? 0,
       label: label?.id ?? 0,
-      meeting: meeting.id,
+      meeting: filled.meeting.id,
     },
   };
 }
@@ -173,7 +168,7 @@ describe("accounts never see each other's data", () => {
     const everything = Object.values(zip)
       .map((bytes) => strFromU8(bytes))
       .join("\n");
-    for (const secret of ["Rack", "Müller", "Prefers chat", "shot.png", "Lab", "Secret standup"]) {
+    for (const secret of ["Rack", "Müller", "Prefers chat", "shot.png", "Lab", "Team standup"]) {
       expect(everything).not.toContain(secret);
     }
   });

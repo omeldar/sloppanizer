@@ -3,12 +3,16 @@ import { join } from "node:path";
 import type { Readable } from "node:stream";
 import {
   describeRecurrence,
+  describeSeries,
   EXPORT_FORMAT,
   type ExportManifest,
+  formatDate,
   formatDateTime,
   formatDuration,
   INLINE_IMAGE_TYPES,
   languageNames,
+  RecurrenceRule,
+  StandupFilter,
   toLocalDate,
   todoDurationMs,
 } from "@organizer/shared";
@@ -47,6 +51,11 @@ export const EXPORT_TABLES = [
   "todo_urls",
   "time_blocks",
   "notes",
+  "meetings",
+  "series",
+  "series_exceptions",
+  "meeting_notes",
+  "standup_marks",
   "comments",
   "attachments",
   "events",
@@ -97,6 +106,10 @@ the server's settings are left out). Export format ${EXPORT_FORMAT}.
 - notes/: one Markdown file per note (NNNN-title.md): front matter, then the note.
 - people/: one Markdown file per person (NNNN-first-last.md): team, email, languages, topics,
   tags, the todos they requested or are a contact for, then the notes about them.
+- meetings/: one Markdown file per meeting (NNNN-name.md): type, repeat (one line per part),
+  cancelled and moved dates, the standup filter (project slugs and label names) and where the
+  standup list counts from, then the notes of its dates (linked into notes/) and the todos said at
+  each date.
 
 In the Markdown files, links to uploaded files point into attachments/, so images show up in any
 Markdown viewer. The Markdown files are for reading and searching; a restore does not need them.
@@ -184,6 +197,41 @@ export function commentsSection(comments: readonly ExportComment[], timeZone: st
 
 // ---------- rows as stored (data.json column names) ----------
 
+interface MeetingRow {
+  id: number;
+  name: string;
+  type: string;
+  filter: string;
+  since: string;
+  created_at: string;
+}
+interface SeriesRow {
+  id: number;
+  meeting_id: number | null;
+  rule: string;
+  starts_on: string;
+  ends_on: string | null;
+  start_time: string;
+  duration_min: number;
+}
+interface ExceptionRow {
+  series_id: number;
+  occurs_on: string;
+  kind: string;
+  start_at: string | null;
+}
+interface MeetingNoteRow {
+  meeting_id: number;
+  occurs_on: string;
+  note_id: number;
+}
+interface MarkRow {
+  meeting_id: number;
+  todo_id: number;
+  occurs_on: string;
+  kind: string;
+}
+
 interface PersonRow {
   id: number;
   first_name: string;
@@ -236,6 +284,110 @@ function groupBy<T, K>(rows: readonly T[], key: (row: T) => K): Map<K, T[]> {
   return map;
 }
 
+type Rows = <T>(table: ExportTable) => T[];
+
+/** One segment's repeat in words, "from 12.11.2026: every week on Thu, 09:00–09:15". */
+function segmentText(s: SeriesRow): string {
+  const rule = RecurrenceRule.safeParse(JSON.parse(s.rule));
+  const text = rule.success
+    ? describeSeries({
+        rule: rule.data,
+        startsOn: s.starts_on,
+        endsOn: s.ends_on,
+        startTime: s.start_time,
+        durationMinutes: s.duration_min,
+      })
+    : `${s.start_time}, ${s.duration_min} minutes`;
+  return `from ${formatDate(s.starts_on)}: ${text}`;
+}
+
+const filterOf = (json: string): { projectIds: number[]; inbox: boolean; labelIds: number[] } => {
+  const parsed = StandupFilter.safeParse(JSON.parse(json));
+  return parsed.success ? parsed.data : { projectIds: [], inbox: false, labelIds: [] };
+};
+
+/**
+ * meetings/NNNN-name.md: type, repeat per segment, cancelled and moved dates, the filter by project slug
+ * and label name, the window start; then the notes of its dates and the todos said per date.
+ */
+function meetingFiles(
+  rows: Rows,
+  text: (path: string, content: string) => void,
+  names: {
+    timeZone: string;
+    todoTitles: ReadonlyMap<number, string>;
+    projectSlugs: ReadonlyMap<number, string>;
+  },
+): void {
+  const labelNames = new Map(rows<NamedRow>("labels").map((l) => [l.id, l.name]));
+  const notes = new Map(rows<NoteRow>("notes").map((n) => [n.id, n]));
+  const segmentsOf = groupBy(rows<SeriesRow>("series"), (s) => s.meeting_id);
+  const exceptionsOf = groupBy(rows<ExceptionRow>("series_exceptions"), (e) => e.series_id);
+  const notesOf = groupBy(rows<MeetingNoteRow>("meeting_notes"), (n) => n.meeting_id);
+  const saidOf = groupBy(
+    rows<MarkRow>("standup_marks").filter((m) => m.kind === "said"),
+    (m) => m.meeting_id,
+  );
+  for (const meeting of rows<MeetingRow>("meetings")) {
+    const segments = (segmentsOf.get(meeting.id) ?? []).toSorted((a, b) =>
+      a.starts_on.localeCompare(b.starts_on),
+    );
+    const exceptions = segments
+      .flatMap((s) => exceptionsOf.get(s.id) ?? [])
+      .toSorted((a, b) => a.occurs_on.localeCompare(b.occurs_on));
+    const filter = filterOf(meeting.filter);
+    const noteLines = (notesOf.get(meeting.id) ?? [])
+      .toSorted((a, b) => a.occurs_on.localeCompare(b.occurs_on))
+      .flatMap((link) => {
+        const note = notes.get(link.note_id);
+        if (!note) return [];
+        const path = markdownPath("notes", note.id, note.title, "note");
+        return [`- ${formatDate(link.occurs_on)}: [${note.title}](../${path})`];
+      });
+    const said = groupBy(
+      (saidOf.get(meeting.id) ?? []).toSorted(
+        (a, b) => a.occurs_on.localeCompare(b.occurs_on) || a.todo_id - b.todo_id,
+      ),
+      (m) => m.occurs_on,
+    );
+    const saidBlocks = [...said].map(
+      ([date, marks]) =>
+        `### ${formatDate(date)}\n\n${marks
+          .map((m) => `- #${m.todo_id} ${names.todoTitles.get(m.todo_id) ?? ""}`.trimEnd())
+          .join("\n")}`,
+    );
+    const body = [
+      noteLines.length > 0 ? `## Notes\n\n${noteLines.join("\n")}` : "",
+      saidBlocks.length > 0 ? `## Said\n\n${saidBlocks.join("\n\n")}` : "",
+    ]
+      .filter((x) => x !== "")
+      .join("\n\n");
+    text(
+      markdownPath("meetings", meeting.id, meeting.name, "meeting"),
+      markdownDocument(
+        {
+          id: meeting.id,
+          name: meeting.name,
+          type: meeting.type,
+          schedule: segments.map(segmentText),
+          cancelled: exceptions.filter((e) => e.kind === "cancelled").map((e) => e.occurs_on),
+          moved: exceptions
+            .filter((e) => e.kind === "moved" && e.start_at !== null)
+            .map((e) => ({ date: e.occurs_on, to: formatDateTime(e.start_at as string, names.timeZone) })),
+          filter: {
+            projects: filter.projectIds.flatMap((id) => names.projectSlugs.get(id) ?? []),
+            inbox: filter.inbox,
+            labels: filter.labelIds.flatMap((id) => labelNames.get(id) ?? []),
+          },
+          since: meeting.since,
+          created: meeting.created_at,
+        },
+        body,
+      ),
+    );
+  }
+}
+
 export interface ExportOptions {
   /** The account's files folder (<files dir>/<account id>). */
   filesDir: string;
@@ -273,7 +425,7 @@ function sequences(ctx: Ctx): Record<string, number> {
 }
 
 /**
- * Builds the export of the context's account (format 5) and stores its lastExportAt. The database is read in one
+ * Builds the export of the context's account (format 6) and stores its lastExportAt. The database is read in one
  * snapshot right away; the zip is streamed, and uploaded files are read from disk while it streams,
  * so memory stays small even with many files.
  */
@@ -446,6 +598,12 @@ export function buildExport(ctx: Ctx, options: ExportOptions): ExportResult {
       ),
     );
   }
+
+  meetingFiles(rows, text, {
+    timeZone: tz,
+    todoTitles: new Map(allTodos.map((t) => [t.id, t.title])),
+    projectSlugs,
+  });
 
   const manifest: ExportManifest = {
     app: "sloppanizer",

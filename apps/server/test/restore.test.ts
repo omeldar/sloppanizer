@@ -59,7 +59,7 @@ describe("restore upload and preview", () => {
     expect(preview).toMatchObject({
       fileName: "sloppanizer-export-20261111.zip",
       source: "sloppanizer",
-      format: 5,
+      format: 6,
       exportedAt: "2026-11-11T10:00:00.000Z",
       appVersion: "0.1.0",
       schemaVersion: 15,
@@ -446,6 +446,63 @@ describe("restore apply", () => {
     const kept = json<BackupFile[]>(await t.call("GET", "/api/v1/restore/backups")).map((b) => b.fileName);
     expect(kept).toEqual(names.slice(1).toReversed());
     expect(readdirSync(backupsOf(t)).toSorted()).toEqual(names.slice(1).toSorted());
+  });
+
+  it("restores a format 5 export, which has no meetings, and refuses meeting tables in it", async () => {
+    const t = await makeApp();
+    await fillEveryTable(t);
+    const zip = await exportZip(t);
+    const meetingTables = ["meetings", "series", "series_exceptions", "meeting_notes", "standup_marks"];
+    const format5 = rework(zip, (m, d) => {
+      m.format = 5;
+      m.schemaVersion = 14;
+      for (const table of meetingTables) {
+        delete d[table];
+        delete m.counts[table];
+      }
+      delete m.sequences.meetings;
+      delete m.sequences.series;
+    });
+    const preview = json<RestorePreview>(await upload(t, format5));
+    expect(preview).toMatchObject({ format: 5, source: "sloppanizer", warnings: [] });
+    expect(Object.keys(preview.inFile)).not.toContain("meetings");
+    const applied = await t.call("POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" });
+    expect(applied.statusCode).toBe(200);
+    expect(json<unknown[]>(await t.call("GET", "/api/v1/meetings"))).toEqual([]);
+    expect(json<{ total: number }>(await t.call("GET", "/api/v1/todos?status=all")).total).toBe(4);
+
+    const withMeetings = rework(zip, (m) => {
+      m.format = 5;
+    });
+    const refused = await upload(t, withMeetings);
+    expect(refused.statusCode).toBe(422);
+    expect(problems(refused)).toContain('data.json has a table "meetings" that format 5 does not have.');
+    const missing = await upload(
+      t,
+      rework(zip, (_m, d) => {
+        delete d.standup_marks;
+      }),
+    );
+    expect(problems(missing)).toContain('data.json misses the table "standup_marks".');
+  });
+
+  it("restores meetings with their dates, marks and note links", async () => {
+    const t = await makeApp();
+    const { meeting } = await fillEveryTable(t);
+    const before = {
+      meeting: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}`)),
+      standup: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}/standup?on=2026-11-12`)),
+      notes: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}/notes`)),
+    };
+    const zip = await exportZip(t);
+    await t.call("DELETE", `/api/v1/meetings/${meeting.id}`);
+    const preview = json<RestorePreview>(await upload(t, zip));
+    await t.call("POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" });
+    expect({
+      meeting: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}`)),
+      standup: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}/standup?on=2026-11-12`)),
+      notes: json<unknown>(await t.call("GET", `/api/v1/meetings/${meeting.id}/notes`)),
+    }).toEqual(before);
   });
 
   it("restores format 1 and 2 archives with defaults for newer columns and repairs scope labels", async () => {

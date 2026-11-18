@@ -479,7 +479,7 @@ export type BackupFile = z.infer<typeof BackupFile>;
 export const RestorePreview = z.strictObject({
   uploadId: z.string(),
   fileName: z.string(),
-  /** "organizer" = an export of the single-user version (formats 1 to 3), "sloppanizer" = format 4. */
+  /** "organizer" = an export of the single-user version (formats 1 to 3), "sloppanizer" = format 4 on. */
   source: z.enum(["organizer", "sloppanizer"]),
   format: z.number().int().positive(),
   exportedAt: Timestamp,
@@ -505,8 +505,11 @@ export type RestoreResult = z.infer<typeof RestoreResult>;
 export const RestoreProblemDetails = z.strictObject({ problems: z.array(z.string()) });
 export type RestoreProblemDetails = z.infer<typeof RestoreProblemDetails>;
 
-/** Export format written by this version (manifest.json `format`). Formats 1 to 3 come from the single-user app. */
-export const EXPORT_FORMAT = 5;
+/**
+ * Export format written by this version (manifest.json `format`). Formats 1 to 3 come from the single-user
+ * app; 5 added web links and time blocks, 6 meetings.
+ */
+export const EXPORT_FORMAT = 6;
 
 /** manifest.json of an export zip (format 4). data.json rows carry no account id: any export fits any account. */
 export const ExportManifest = z.strictObject({
