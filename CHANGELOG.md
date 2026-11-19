@@ -8,6 +8,8 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+## 1.0.0 (2026-11-19)
+
 - Projects: edit a project's name, description and color from the project page or its menu in the
   sidebar. New projects start with a color no other project uses yet (#17).
 - Releases have real versions (this changelog, `pnpm release`, git tags `v<version>`); the web app and
