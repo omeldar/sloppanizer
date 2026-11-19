@@ -15,6 +15,10 @@ they sat untouched, and tells you why each one is where it is.
 - Notes: Markdown pages, alone or in a project, pinned ones first.
 - Paste or drop images and files into any Markdown field; images show inline, other files are downloads.
 - Board (Open, In progress, Blocked, Done) and a week planner, both with drag and drop and keys.
+- Statistics: worked time (planned time that has already happened) per project, requester and week,
+  meetings, created vs done, when you work, done per day and how long todos took, as charts and tables.
+- Recurring: a view of every repeating todo with its next date and history. Time planned for a todo that
+  repeats on a schedule repeats with it on every date; change one date, this and following, or all.
 - Planner: reserve time in a week calendar for a todo or with a title (click a free slot, drag a todo from To
   plan or the Day row onto a day, drag a block to move or resize it); todos planned for a day without a time wait in a row above it. Phones show one day at a time.
   Settings, Calendar feed gives a secret link to subscribe to in Google Calendar, Apple Calendar or Outlook.
@@ -101,6 +105,10 @@ Settings (environment of the service, all optional): `ORGANIZER_PORT` (4711), `O
 - Search: `GET /api/v1/search?q=...` over todos, notes, comments and people.
 - Web links: `POST /api/v1/todos/{id}/urls` (`{ urls: [{ url, label? }] }`), `PATCH`/`DELETE`
   `/api/v1/todos/{id}/urls/{urlId}`; `urls` on `POST /api/v1/todos` too.
+- Statistics: `GET /api/v1/stats/overview?from=YYYY-MM-DD&to=YYYY-MM-DD` (at most a year).
+- Repeating todos: `GET /api/v1/todos/recurring`; planned time that repeats with one:
+  `POST`/`GET`/`DELETE /api/v1/todos/{id}/plan`, `PATCH /api/v1/todos/{id}/plan/{date}` (this, following or
+  all), `GET /api/v1/blocks/series?from=&to=` for its dates.
 - Planner: `GET /api/v1/blocks?from=YYYY-MM-DD&to=YYYY-MM-DD[&todoId=]` (days in the account's time zone, at
   most 62), `POST /api/v1/blocks` (`{ todoId? , title?, startAt, endAt }`, ISO instants), `PATCH`/`DELETE`
   `/api/v1/blocks/{id}`.
@@ -151,8 +159,9 @@ Tools:
   contact count), `export_to_folder` (writes an export zip to the export folder).
 - Setup: `list_projects`, `create_project`, `list_labels`, `create_label`.
 - Web links: `create_todo` takes `links`; `add_web_link`, `remove_web_link`.
-- Planner (local time): `list_plan`, `plan_time` (a todo or a title, a day, start and end or minutes),
-  `move_block`, `delete_block`.
+- Planner (local time): `list_plan` (blocks, planned dates of repeating todos, meetings), `plan_time` (a
+  todo or a title, a day, start and end or minutes; `repeat` for a repeating todo), `move_block`,
+  `delete_block`, `list_recurring`, `work_stats` (time per project, requester and week).
 
 Restore, settings and tokens are not offered as tools.
 
@@ -230,6 +239,7 @@ Off while typing in a field; the status bar then shows `insert`. Press `?` in th
 | `1` to `4` | Priority critical, high, medium, low |
 | `g n` / `g i` / `g l` / `g p` / `g s` | Go to Next up, Inbox, Labels, People, Settings |
 | `g b` / `g w` / `g o` | Go to Board, Week, Notes |
+| `g t` / `g m` / `g r` / `g c` | Go to Planner, Meetings, Recurring, Statistics |
 | `n` | New note |
 | `/` | Search page |
 | `o` / `m` | On a todo: contacts / write a comment (`ctrl+Enter` sends) |
@@ -267,6 +277,28 @@ to that server. Use a port other than 4711 and a separate data dir so the instal
 Layout: `packages/shared` (API contract as zod schemas, Next up scoring), `apps/server` (Fastify, SQLite with
 Drizzle migrations), `apps/web` (React, Vite), `apps/mcp` (MCP server), `deploy/` (service template, install).
 Commits follow Conventional Commits (checked on commit).
+
+## Releases
+
+Every release has a version `major.minor.patch`, set once for the whole repo and listed in
+[CHANGELOG.md](CHANGELOG.md). New entries go under "Unreleased" with each change. To cut a release on `dev`:
+
+```sh
+pnpm release 1.4.0          # changelog, every package.json, commit "chore(release): v1.4.0", tag v1.4.0
+git push --follow-tags
+```
+
+Merging `dev` into `main` then ships it: CI builds the server image with the version and commit
+(`ghcr.io/omeldar/sloppanizer:1.4.0`, `:latest` and `:<commit>`), and the web build carries the same version
+(status bar; hover shows the commit). `GET /api/v1/health` answers `{ ok, version }` and nothing more.
+
+The web app compares its version with the server's (at start, on returning to the tab, every minute while they
+differ, otherwise every 15 minutes). While the server runs an older minor release than the web app (Watchtower
+has not pulled the new image yet), a banner says "Sloppanizer is updating" and errors of new features read "in
+a few minutes"; it goes away by itself. When the server is newer than an open tab, the banner offers Reload.
+Bump the minor version when the web app needs something new from the server, the patch version for fixes; if a
+fix release of the web app needs that same fix on the server, set `MIN_SERVER_VERSION` in
+`apps/web/src/lib/serverVersion.ts`.
 
 ## Troubleshooting
 

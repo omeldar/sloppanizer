@@ -1,11 +1,18 @@
-import { type TimeBlock, toLocalDate, toLocalTime } from "@organizer/shared";
+import {
+  canRepeatPlan,
+  describeRecurrence,
+  type TimeBlock,
+  toLocalDate,
+  toLocalTime,
+} from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { Dialog } from "../../components/Dialog.tsx";
 import { Button, Field, TextInput } from "../../components/ui.tsx";
 import { errorMessage } from "../../lib/api.ts";
 import { timeZone } from "../../lib/format.ts";
-import { useCreateBlock, useDeleteBlock, useUpdateBlock } from "../../lib/queries.ts";
+import { useCreateRepeatPlan, useRepeatPlan } from "../../lib/plans.ts";
+import { useCreateBlock, useDeleteBlock, useTodo, useUpdateBlock } from "../../lib/queries.ts";
 import { TodoSearchPicker } from "../todos/relations/TodoSearchPicker.tsx";
 import styles from "./Planner.module.css";
 import { blockSpan, lengthMinutes, minutesToTime, timeToMinutes } from "./planner.ts";
@@ -19,7 +26,10 @@ export interface BlockDraft {
   todo?: { id: number; title: string } | null;
 }
 
-/** Creates or edits one time block: for a todo (search) or with a title, a day, start and end. */
+/**
+ * Creates or edits one time block: for a todo (search) or with a title, a day, start and end. New time
+ * for a todo that repeats on a schedule repeats with it by default (every date of its repeat).
+ */
 export function BlockDialog({ draft, onClose }: { draft: BlockDraft | null; onClose: () => void }) {
   return (
     <Dialog
@@ -41,14 +51,23 @@ function BlockForm({ draft, onClose }: { draft: BlockDraft; onClose: () => void 
   const create = useCreateBlock();
   const update = useUpdateBlock();
   const remove = useDeleteBlock();
+  const createRepeat = useCreateRepeatPlan();
   const [todo, setTodo] = useState(draft.todo ?? null);
+  // Only new time can repeat; the picker knows id and title, so the todo's repeat is looked up.
+  const full = useTodo(draft.block ? 0 : (todo?.id ?? 0));
+  const rule = full.data?.id === todo?.id ? (full.data?.recurrence ?? null) : null;
+  const repeatable = canRepeatPlan(rule);
+  const existing = useRepeatPlan(todo?.id ?? 0, repeatable);
+  const hasPlan = existing.data != null;
+  const [repeatChoice, setRepeatChoice] = useState<boolean | null>(null);
+  const repeat = repeatable && !hasPlan && (repeatChoice ?? true);
   const [title, setTitle] = useState(draft.block?.title ?? "");
   const [day, setDay] = useState(draft.day);
   const [start, setStart] = useState(draft.start);
   // A time field cannot show 24:00: midnight at the end is 00:00, which blockSpan reads as the next day.
   const [end, setEnd] = useState(draft.end === "24:00" ? "00:00" : draft.end);
   const [error, setError] = useState<string | null>(null);
-  const busy = create.isPending || update.isPending || remove.isPending;
+  const busy = create.isPending || update.isPending || remove.isPending || createRepeat.isPending;
 
   // Late blocks may run past midnight into the next day.
   const setLength = (minutes: number) => setEnd(minutesToTime((timeToMinutes(start) + minutes) % (24 * 60)));
@@ -62,7 +81,8 @@ function BlockForm({ draft, onClose }: { draft: BlockDraft; onClose: () => void 
     const span = blockSpan(day, start, end, timeZone);
     const body = { todoId: todo?.id ?? null, title: todo ? "" : title.trim(), ...span };
     const done = { onSuccess: onClose, onError: (failure: unknown) => setError(errorMessage(failure)) };
-    if (draft.block) update.mutate({ id: draft.block.id, patch: body }, done);
+    if (repeat && todo) createRepeat.mutate({ todoId: todo.id, span }, done);
+    else if (draft.block) update.mutate({ id: draft.block.id, patch: body }, done);
     else create.mutate(body, done);
   };
 
@@ -135,6 +155,28 @@ function BlockForm({ draft, onClose }: { draft: BlockDraft; onClose: () => void 
           </button>
         ))}
       </div>
+      {repeatable && rule && (
+        <div className={styles.repeatChoice}>
+          {hasPlan ? (
+            <p className={styles.repeatText}>
+              Its planned time repeats already ({existing.data?.schedule.text}). This block is for this day
+              only.
+            </p>
+          ) : (
+            <label className={styles.repeatLabel}>
+              <input
+                type="checkbox"
+                checked={repeat}
+                onChange={(event) => setRepeatChoice(event.target.checked)}
+              />
+              <span>
+                Repeat with the todo ({describeRecurrence(rule)}): the time comes back on every date, also
+                after one is done.
+              </span>
+            </label>
+          )}
+        </div>
+      )}
       {error && (
         <p className={styles.error} role="alert">
           {error}

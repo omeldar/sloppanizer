@@ -1,5 +1,7 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { type CSSProperties, useState } from "react";
+import type { Project } from "@organizer/shared";
+import { Menu } from "../components/Menu.tsx";
 import { Kbd } from "../components/ui.tsx";
 import { BrandMark } from "./BrandMark.tsx";
 import { Icon, type IconName } from "./icons.tsx";
@@ -7,6 +9,7 @@ import { HelpOverlay } from "../features/help/HelpOverlay.tsx";
 import { Palette } from "../features/palette/Palette.tsx";
 import { NewNoteDialog } from "../features/notes/NewNoteDialog.tsx";
 import { NewPersonDialog } from "../features/people/NewPersonDialog.tsx";
+import { EditProjectDialog } from "../features/projects/EditProjectDialog.tsx";
 import { NewProjectDialog } from "../features/projects/NewProjectDialog.tsx";
 import { QuickAdd } from "../features/quickadd/QuickAdd.tsx";
 import { type KeyBinding, useActiveBindings, useKeyHold, useKeys } from "../keyboard/KeyboardProvider.tsx";
@@ -18,6 +21,7 @@ import { AccountSwitcher } from "./AccountSwitcher.tsx";
 import { useCommands } from "./commands.tsx";
 import styles from "./Layout.module.css";
 import { StatusBar } from "./StatusBar.tsx";
+import { UpdateBanner } from "./UpdateBanner.tsx";
 
 export function Layout() {
   const navigate = useNavigate();
@@ -60,6 +64,8 @@ export function Layout() {
     { keys: "g w", run: go("/week"), label: "Go to Week", group: "Go to" },
     { keys: "g t", run: go("/planner"), label: "Go to Planner", group: "Go to" },
     { keys: "g m", run: go("/meetings"), label: "Go to Meetings", group: "Go to" },
+    { keys: "g r", run: go("/recurring"), label: "Go to Recurring", group: "Go to" },
+    { keys: "g c", run: go("/stats"), label: "Go to Statistics", group: "Go to" },
     { keys: "g o", run: go("/notes"), label: "Go to Notes", group: "Go to" },
     { keys: "g l", run: go("/labels"), label: "Go to Labels", group: "Go to" },
     { keys: "g p", run: go("/people"), label: "Go to People", group: "Go to" },
@@ -98,6 +104,7 @@ export function Layout() {
         aria-hidden="true"
       />
       <TopBar onMenu={() => setDrawer(true)} />
+      <UpdateBanner />
       <main className={styles.main} id="main">
         <Outlet />
       </main>
@@ -139,6 +146,8 @@ function Sidebar({ open }: { open: boolean }) {
   const projects = useProjects();
   const stats = useStats();
   const [newProject, setNewProject] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const setEditing = (project: Project) => setEditingId(project.id);
   const active = (projects.data ?? []).filter((p) => p.archivedAt === null);
 
   return (
@@ -153,8 +162,10 @@ function Sidebar({ open }: { open: boolean }) {
         <NavItem to="/board" icon="board" label="Board" keys="g b" />
         <NavItem to="/planner" icon="planner" label="Planner" keys="g t" />
         <NavItem to="/meetings" icon="meetings" label="Meetings" keys="g m" />
+        <NavItem to="/recurring" icon="recurring" label="Recurring" keys="g r" />
         <NavItem to="/week" icon="week" label="Week" keys="g w" />
         <NavItem to="/notes" icon="notes" label="Notes" keys="g o" />
+        <NavItem to="/stats" icon="stats" label="Statistics" keys="g c" />
       </ul>
       <div className={styles.sectionHead}>
         <span>Projects</span>
@@ -172,7 +183,7 @@ function Sidebar({ open }: { open: boolean }) {
       </div>
       <ul className={styles.nav}>
         {active.map((project) => (
-          <li key={project.id}>
+          <li key={project.id} className={styles.projectItem}>
             <Link
               to="/projects/$slug"
               params={{ slug: project.slug }}
@@ -183,6 +194,24 @@ function Sidebar({ open }: { open: boolean }) {
               <span className={styles.navLabel}>{project.name}</span>
               <span className={styles.count}>{project.openCount}</span>
             </Link>
+            <Menu
+              label={`${project.name} menu`}
+              items={[{ label: "Edit project", run: () => setEditing(project) }]}
+              trigger={
+                <button
+                  type="button"
+                  className={styles.navMore}
+                  aria-label={`More for ${project.name}`}
+                  title="More"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                    <circle cx="2" cy="6" r="1.2" fill="currentColor" />
+                    <circle cx="6" cy="6" r="1.2" fill="currentColor" />
+                    <circle cx="10" cy="6" r="1.2" fill="currentColor" />
+                  </svg>
+                </button>
+              }
+            />
           </li>
         ))}
         {projects.isSuccess && active.length === 0 && (
@@ -199,6 +228,10 @@ function Sidebar({ open }: { open: boolean }) {
       </ul>
       <AccountSwitcher />
       <NewProjectDialog open={newProject} onOpenChange={setNewProject} />
+      <EditProjectDialog
+        project={projects.data?.find((p) => p.id === editingId) ?? null}
+        onOpenChange={(on) => !on && setEditingId(null)}
+      />
     </nav>
   );
 }
@@ -294,6 +327,8 @@ function Breadcrumb() {
   else if (pathname === "/week") trail = [{ label: "Week" }];
   else if (pathname === "/planner") trail = [{ label: "Planner" }];
   else if (pathname === "/meetings") trail = [{ label: "Meetings" }];
+  else if (pathname === "/recurring") trail = [{ label: "Recurring" }];
+  else if (pathname === "/stats") trail = [{ label: "Statistics" }];
   else if (pathname.startsWith("/meetings/"))
     trail = [{ label: "Meetings", to: "/meetings" }, { label: meeting.data?.name ?? "Meeting" }];
   else if (pathname === "/search") trail = [{ label: "Search" }];

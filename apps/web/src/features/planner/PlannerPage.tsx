@@ -1,11 +1,17 @@
-import { addDays, type MeetingOccurrence, type SeriesScope, toLocalTime, weekDays } from "@organizer/shared";
+import {
+  addDays,
+  type BlockOccurrence,
+  canRepeatPlan,
+  type MeetingOccurrence,
+  type SeriesScope,
+  type Todo,
+  toLocalTime,
+  weekDays,
+} from "@organizer/shared";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import {
   type CSSProperties,
   type MouseEvent,
-  type PointerEvent,
-  type RefObject,
-  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -19,8 +25,17 @@ import { useBlocks, useCreateBlock, useNext, useTodos, useUpdateBlock } from "..
 import { useChangeOccurrence, useDeleteMeeting, useMeetings, useOccurrences } from "../../lib/meetings.ts";
 import { SeriesScopeDialog } from "../../components/SeriesScopeDialog.tsx";
 import { OccurrenceDialog } from "./OccurrenceDialog.tsx";
+import { PlannedDateDialog } from "./PlannedDateDialog.tsx";
+import {
+  useChangeRepeatDate,
+  useCreateRepeatPlan,
+  useDeleteRepeatPlan,
+  useRepeatOccurrences,
+  useRepeatPlan,
+} from "../../lib/plans.ts";
 import { useEdgeScroll } from "./useEdgeScroll.ts";
 import { useTodoDrag } from "./useTodoDrag.ts";
+import { BlockCard } from "./BlockCard.tsx";
 import { planDay, useAiSettings } from "../../lib/ai.ts";
 import type { CheckedBlock } from "@organizer/shared";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
@@ -31,17 +46,18 @@ import {
   blockItem,
   blockSpan,
   blockTitle,
+  HOUR_PX,
   MEETING_CANCEL_SCOPES,
+  REPEAT_CANCEL_SCOPES,
+  repeatItem,
   meetingItem,
-  meetingMoveScopes,
+  seriesMoveScopes,
   minutesToTime,
   movedSpan,
   nextQuarter,
-  type Placed,
   placeItems,
   scrollStartMinutes,
   snap,
-  spanText,
   timeToMinutes,
 } from "./planner.ts";
 
@@ -58,10 +74,13 @@ interface Proposal {
 type MeetingChange =
   | { action: "move"; occurrence: MeetingOccurrence; startAt: string; endAt: string }
   | { action: "cancel"; occurrence: MeetingOccurrence };
+/** A change of a repeating todo's planned date, waiting for "this one, following or all". */
+type RepeatChange =
+  | { action: "move"; occurrence: BlockOccurrence; startAt: string; endAt: string }
+  | { action: "cancel"; occurrence: BlockOccurrence };
 
 /** The grid always shows the whole day; it scrolls inside itself. */
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
-const HOUR_PX = 52;
 
 /** Today and the minutes after local midnight now. */
 function readNow(): { day: string; minutes: number } {
@@ -103,6 +122,14 @@ export function PlannerPage() {
   const [changeError, setChangeError] = useState<string | null>(null);
   const changeOccurrence = useChangeOccurrence();
   const deleteMeeting = useDeleteMeeting();
+  const repeats = useRepeatOccurrences(first, last);
+  const [openRepeat, setOpenRepeat] = useState<BlockOccurrence | null>(null);
+  const [repeatChange, setRepeatChange] = useState<RepeatChange | null>(null);
+  const [repeatError, setRepeatError] = useState<string | null>(null);
+  const changeRepeat = useChangeRepeatDate();
+  const deleteRepeat = useDeleteRepeatPlan();
+  const createRepeat = useCreateRepeatPlan();
+  const changingPlan = useRepeatPlan(repeatChange?.occurrence.ownerTodoId ?? 0, repeatChange !== null);
   const plannedTodos = useTodos({
     plannedFrom: first,
     plannedTo: last,
@@ -139,9 +166,18 @@ export function PlannerPage() {
             ? meetingItem(o, meetingChange)
             : meetingItem(o),
         ),
+      ...(repeats.data ?? [])
+        .filter((o) => o.status !== "cancelled")
+        .map((o) =>
+          repeatChange?.action === "move" &&
+          repeatChange.occurrence.seriesId === o.seriesId &&
+          repeatChange.occurrence.occursOn === o.occursOn
+            ? repeatItem(o, repeatChange)
+            : repeatItem(o),
+        ),
     ];
     return new Map(days.map((day) => [day, placeItems(items, day, timeZone)]));
-  }, [blocks.data, occurrences.data, meetingChange, days]);
+  }, [blocks.data, occurrences.data, meetingChange, repeats.data, repeatChange, days]);
   // The grid scrolls inside itself; it opens near now on this week, at the start of the day on others.
   const body = useRef<HTMLDivElement>(null);
   const [openAt] = useState(() => scrollStartMinutes(days.includes(now.day), now.minutes));
@@ -164,23 +200,29 @@ export function PlannerPage() {
   };
 
   const create = useCreateBlock();
+  const toastError = (failure: unknown) => toast.show({ tone: "error", message: errorMessage(failure) });
   const { drag, bind, retarget } = useTodoDrag({
     hourPx: HOUR_PX,
     onClick: (todo) => planTodo(todo),
-    // A dropped todo gets an hour from where it landed; move or resize the block after.
-    onDrop: (todo, day, startMin) =>
-      create.mutate(
-        {
-          todoId: todo.id,
-          ...blockSpan(
-            day,
-            minutesToTime(startMin),
-            minutesToTime(Math.min(24 * 60, startMin + 60)),
-            timeZone,
-          ),
-        },
-        { onError: (failure) => toast.show({ tone: "error", message: errorMessage(failure) }) },
-      ),
+    // A dropped todo gets an hour from where it landed; move or resize the block after. A todo that
+    // repeats on a schedule gets time on every date of its repeat, unless it has planned time already.
+    onDrop: (todo, day, startMin) => {
+      const span = blockSpan(
+        day,
+        minutesToTime(startMin),
+        minutesToTime(Math.min(24 * 60, startMin + 60)),
+        timeZone,
+      );
+      if (canRepeatPlan(knownTodos.get(todo.id)?.recurrence ?? null) && !plannedRepeats.has(todo.id))
+        createRepeat.mutate(
+          { todoId: todo.id, span },
+          {
+            onSuccess: (plan) => toast.show({ message: `Planned ${todo.title}: ${plan.schedule.text}` }),
+            onError: toastError,
+          },
+        );
+      else create.mutate({ todoId: todo.id, ...span }, { onError: toastError });
+    },
   });
   useEdgeScroll(body, drag?.active ? drag : null);
 
@@ -249,7 +291,62 @@ export function PlannerPage() {
     );
   };
 
-  const planned = new Set((blocks.data ?? []).flatMap((b) => (b.todoId === null ? [] : [b.todoId])));
+  const applyRepeatChange = (pending: RepeatChange, scope: SeriesScope) => {
+    const { occurrence } = pending;
+    const todoId = occurrence.ownerTodoId;
+    const settled = {
+      onError: (failure: unknown) => setRepeatError(errorMessage(failure)),
+    };
+    if (pending.action === "cancel" && scope === "all") {
+      deleteRepeat.mutate(todoId, {
+        ...settled,
+        onSuccess: () => {
+          setRepeatChange(null);
+          toast.show({ message: `Removed the planned time of ${occurrence.todo.title}` });
+        },
+      });
+      return;
+    }
+    const change =
+      pending.action === "move"
+        ? { scope, startAt: pending.startAt, endAt: pending.endAt }
+        : { scope: scope === "this" ? ("this" as const) : ("following" as const), cancelled: true as const };
+    changeRepeat.mutate(
+      { todoId, on: occurrence.occursOn, change },
+      {
+        ...settled,
+        onSuccess: () => {
+          setRepeatChange(null);
+          if (pending.action === "cancel" && scope === "this")
+            toast.show({
+              message: `Removed ${occurrence.todo.title} on ${dayLabel(occurrence.occursOn)}`,
+              action: {
+                label: "Undo",
+                run: () =>
+                  changeRepeat.mutate({
+                    todoId,
+                    on: occurrence.occursOn,
+                    change: { scope: "this", cancelled: false },
+                  }),
+              },
+            });
+        },
+      },
+    );
+  };
+
+  /** Todos the page knows in full (for their repeat), and those whose repeat has planned time. */
+  const knownTodos = new Map<number, Todo>(
+    [...(next.data?.items ?? []).map((item) => item.todo), ...(plannedTodos.data?.items ?? [])].map((t) => [
+      t.id,
+      t,
+    ]),
+  );
+  const plannedRepeats = new Set((repeats.data ?? []).flatMap((o) => [o.todo.id, o.ownerTodoId]));
+  const planned = new Set([
+    ...(blocks.data ?? []).flatMap((b) => (b.todoId === null ? [] : [b.todoId])),
+    ...plannedRepeats,
+  ]);
   const toPlan = (next.data?.items ?? [])
     .map((item) => item.todo)
     .filter((todo) => !planned.has(todo.id))
@@ -259,7 +356,11 @@ export function PlannerPage() {
     (plannedTodos.data?.items ?? []).filter(
       (todo) =>
         todo.plannedOn === day &&
-        !(placedByDay.get(day) ?? []).some((p) => p.item.kind === "block" && p.item.block.todoId === todo.id),
+        !(placedByDay.get(day) ?? []).some(
+          (p) =>
+            (p.item.kind === "block" && p.item.block.todoId === todo.id) ||
+            (p.item.kind === "repeat" && p.item.occurrence.todo.id === todo.id),
+        ),
     );
 
   return (
@@ -489,6 +590,29 @@ export function PlannerPage() {
                       />
                     );
                   }
+                  if (item.kind === "repeat") {
+                    const { occurrence } = item;
+                    return (
+                      <BlockCard
+                        key={`${item.key}-${day}`}
+                        {...shared}
+                        title={occurrence.todo.title}
+                        color={occurrence.project?.color}
+                        done={occurrence.todo.status === "done"}
+                        repeats
+                        onOpen={() => setOpenRepeat(occurrence)}
+                        // A planned date of a repeat asks which dates the move is for; Cancel puts it back.
+                        onDrop={(deltaMin, dayOffset, mode) => {
+                          setRepeatError(null);
+                          setRepeatChange({
+                            action: "move",
+                            occurrence,
+                            ...movedSpan(item, deltaMin, dayOffset, mode, timeZone),
+                          });
+                        }}
+                      />
+                    );
+                  }
                   const { block } = item;
                   return (
                     <BlockCard
@@ -560,6 +684,44 @@ export function PlannerPage() {
           setMeetingChange({ action: "cancel", occurrence });
         }}
       />
+      <PlannedDateDialog
+        occurrence={openRepeat}
+        onClose={() => setOpenRepeat(null)}
+        onMove={(occurrence, span) => {
+          setOpenRepeat(null);
+          setRepeatError(null);
+          setRepeatChange({ action: "move", occurrence, ...span });
+        }}
+        onCancel={(occurrence) => {
+          setOpenRepeat(null);
+          setRepeatError(null);
+          setRepeatChange({ action: "cancel", occurrence });
+        }}
+      />
+      <SeriesScopeDialog
+        open={repeatChange !== null}
+        title={
+          repeatChange?.action === "cancel"
+            ? `Remove ${repeatChange.occurrence.todo.title} on ${dayLabel(repeatChange.occurrence.occursOn)}`
+            : `Move ${repeatChange?.occurrence.todo.title ?? "the planned time"}`
+        }
+        options={
+          repeatChange?.action === "move"
+            ? seriesMoveScopes(
+                changingPlan.data?.segments ?? [],
+                repeatChange.occurrence,
+                repeatChange.startAt,
+                timeZone,
+              )
+            : REPEAT_CANCEL_SCOPES
+        }
+        confirmLabel={repeatChange?.action === "cancel" ? "Remove" : "Move"}
+        danger={repeatChange?.action === "cancel"}
+        busy={changeRepeat.isPending || deleteRepeat.isPending}
+        error={repeatError}
+        onPick={(scope) => repeatChange && applyRepeatChange(repeatChange, scope)}
+        onCancel={() => setRepeatChange(null)}
+      />
       <SeriesScopeDialog
         open={meetingChange !== null}
         title={
@@ -569,7 +731,7 @@ export function PlannerPage() {
         }
         options={
           meetingChange?.action === "move"
-            ? meetingMoveScopes(
+            ? seriesMoveScopes(
                 meetings.data?.find((m) => m.id === meetingChange.occurrence.meetingId)?.segments ?? [],
                 meetingChange.occurrence,
                 meetingChange.startAt,
@@ -587,285 +749,3 @@ export function PlannerPage() {
     </div>
   );
 }
-
-interface Drag {
-  mode: "move" | "resize";
-  /** Where the pointer went down, and the grid's scroll position then. */
-  x: number;
-  y: number;
-  scrollTop: number;
-  /** Where the pointer is now. */
-  atX: number;
-  atY: number;
-  /** Width of a day column, for moving across days (0: it stays on its day). */
-  colWidth: number;
-  /** The day offsets within the shown week. */
-  minOffset: number;
-  maxOffset: number;
-  moved: boolean;
-  deltaMin: number;
-  dayOffset: number;
-}
-
-/**
- * The drag with the pointer at (atX, atY) and the grid scrolled to scrollTop: scrolling the grid under
- * a held block moves it as far as moving the pointer would.
- */
-function dragTo(drag: Drag, atX: number, atY: number, scrollTop: number): Drag {
-  const dx = atX - drag.x;
-  const dy = atY - drag.y + scrollTop - drag.scrollTop;
-  const offset = drag.mode === "move" && drag.colWidth > 0 ? Math.round(dx / drag.colWidth) : 0;
-  return {
-    ...drag,
-    atX,
-    atY,
-    moved: drag.moved || Math.abs(dx) > 4 || Math.abs(dy) > 4,
-    deltaMin: snap((dy / HOUR_PX) * 60),
-    dayOffset: Math.max(drag.minOffset, Math.min(drag.maxOffset, offset)),
-  };
-}
-
-/**
- * One block. With a mouse it can be dragged: the body moves it (also to another day), the bottom edge
- * resizes it, both in 15 minute steps; a click without moving opens it. On touch screens a long press
- * picks it up (move, or resize near the bottom edge) and a tap opens it. Near the grid's top or bottom
- * edge a held block scrolls the grid, so it reaches every hour of the day.
- */
-function BlockCard({
-  placed,
-  title,
-  color,
-  done = false,
-  meeting = false,
-  area,
-  dayIndex,
-  dayCount,
-  onOpen,
-  onDrop,
-}: {
-  placed: Placed;
-  title: string;
-  /** The project's colour; amber without one. */
-  color?: string | undefined;
-  done?: boolean;
-  /** A meeting date: its own look, and a drop asks which dates it is for. */
-  meeting?: boolean;
-  /** The grid's scroll area. */
-  area: RefObject<HTMLDivElement | null>;
-  dayIndex: number;
-  dayCount: number;
-  onOpen: () => void;
-  onDrop: (deltaMin: number, dayOffset: number, mode: "move" | "resize") => void;
-}) {
-  const { item } = placed;
-  // The drag lives in a ref too, for the native touch and scroll listeners.
-  const current = useRef<Drag | null>(null);
-  const [drag, setDragState] = useState<Drag | null>(null);
-  const setDrag = useCallback((next: Drag | null) => {
-    current.current = next;
-    setDragState(next);
-  }, []);
-  const baseTop = (placed.startMin / 60) * HOUR_PX;
-  const baseHeight = Math.max(22, ((placed.endMin - placed.startMin) / 60) * HOUR_PX - 2);
-  const deltaPx = drag ? (drag.deltaMin / 60) * HOUR_PX : 0;
-  const top = drag?.mode === "move" ? baseTop + deltaPx : baseTop;
-  const height = drag?.mode === "resize" ? Math.max(HOUR_PX / 4 - 2, baseHeight + deltaPx) : baseHeight;
-
-  const start = (event: PointerEvent<HTMLElement>, mode: Drag["mode"]) => {
-    if (event.pointerType !== "mouse" || event.button !== 0) return;
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const column = (event.currentTarget.closest("[data-day]") as HTMLElement | null)?.offsetWidth ?? 0;
-    setDrag({
-      mode,
-      x: event.clientX,
-      y: event.clientY,
-      scrollTop: area.current?.scrollTop ?? 0,
-      atX: event.clientX,
-      atY: event.clientY,
-      colWidth: column,
-      minOffset: -dayIndex,
-      maxOffset: dayCount - 1 - dayIndex,
-      moved: false,
-      deltaMin: 0,
-      dayOffset: 0,
-    });
-  };
-  // Touch drags run on the native touch listeners below.
-  const move = (event: PointerEvent<HTMLElement>) => {
-    const held = current.current;
-    if (!held || event.pointerType !== "mouse") return;
-    setDrag(dragTo(held, event.clientX, event.clientY, area.current?.scrollTop ?? held.scrollTop));
-  };
-  const end = (event: PointerEvent<HTMLElement>) => {
-    const held = current.current;
-    if (!held || event.pointerType !== "mouse") return;
-    setDrag(null);
-    if (!held.moved) {
-      if (held.mode === "move") onOpen();
-      return;
-    }
-    if (held.deltaMin !== 0 || held.dayOffset !== 0) onDrop(held.deltaMin, held.dayOffset, held.mode);
-  };
-
-  // A held block follows the grid when it scrolls (by the edge or the mouse wheel).
-  const holding = drag !== null;
-  useEffect(() => {
-    const el = area.current;
-    if (!holding || !el) return undefined;
-    const follow = () => {
-      const held = current.current;
-      if (held) setDrag(dragTo(held, held.atX, held.atY, el.scrollTop));
-    };
-    el.addEventListener("scroll", follow, { passive: true });
-    return () => el.removeEventListener("scroll", follow);
-  }, [holding, area, setDrag]);
-  useEdgeScroll(area, drag?.moved ? { x: drag.atX, y: drag.atY } : null);
-
-  // Touch: a long press picks the block up (near the bottom edge of a tall one: resizes it), then it
-  // follows the finger in 15 minute steps; a quick swipe still scrolls and a tap opens it. Native
-  // listeners, because only a non-passive touchmove can stop the grid from scrolling once the drag has
-  // started.
-  const ref = useRef<HTMLButtonElement>(null);
-  const dropRef = useRef(onDrop);
-  useEffect(() => {
-    dropRef.current = onDrop;
-  }, [onDrop]);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return undefined;
-    let timer: number | undefined;
-    let origin: { x: number; y: number } | null = null;
-    const onStart = (event: TouchEvent) => {
-      const touch = event.touches[0];
-      if (event.touches.length !== 1 || !touch) return;
-      origin = { x: touch.clientX, y: touch.clientY };
-      // A short card (a 15 minute meeting) has no room for both: a long press there moves it.
-      const rect = el.getBoundingClientRect();
-      const mode = rect.height >= 40 && touch.clientY > rect.bottom - 16 ? "resize" : "move";
-      timer = window.setTimeout(() => {
-        if (!origin) return;
-        navigator.vibrate?.(10);
-        setDrag({
-          mode,
-          x: origin.x,
-          y: origin.y,
-          scrollTop: area.current?.scrollTop ?? 0,
-          atX: origin.x,
-          atY: origin.y,
-          colWidth: 0,
-          minOffset: 0,
-          maxOffset: 0,
-          moved: true,
-          deltaMin: 0,
-          dayOffset: 0,
-        });
-      }, 350);
-    };
-    const onMove = (event: TouchEvent) => {
-      const touch = event.touches[0];
-      if (!touch || !origin) return;
-      const held = current.current;
-      if (!held) {
-        if (Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) > 8) {
-          window.clearTimeout(timer);
-          origin = null;
-        }
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      setDrag(dragTo(held, touch.clientX, touch.clientY, area.current?.scrollTop ?? held.scrollTop));
-    };
-    const onEnd = (event: TouchEvent) => {
-      window.clearTimeout(timer);
-      origin = null;
-      const dropped = current.current;
-      if (!dropped) return;
-      // Neither a click (opening the block) nor the day swipe of the calendar.
-      event.preventDefault();
-      event.stopPropagation();
-      setDrag(null);
-      if (dropped.deltaMin !== 0) dropRef.current(dropped.deltaMin, 0, dropped.mode);
-    };
-    el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchmove", onMove, { passive: false });
-    el.addEventListener("touchend", onEnd);
-    el.addEventListener("touchcancel", onEnd);
-    return () => {
-      window.clearTimeout(timer);
-      el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchmove", onMove);
-      el.removeEventListener("touchend", onEnd);
-      el.removeEventListener("touchcancel", onEnd);
-    };
-  }, [area, setDrag]);
-
-  const style = {
-    top,
-    height,
-    transform: drag?.dayOffset ? `translateX(${drag.dayOffset * drag.colWidth}px)` : undefined,
-    // Overlaps cascade like a calendar: each later lane is indented and drawn on top, so every block
-    // keeps most of the column's width.
-    left: `calc(${placed.lane * Math.min(28, 60 / placed.lanes)}% + 2px)`,
-    right: "2px",
-    zIndex: 1 + placed.lane,
-    "--block": color ?? (meeting ? "var(--meeting)" : "var(--amber)"),
-  } as CSSProperties;
-  const time = spanText(item, timeZone);
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className={styles.block}
-      style={style}
-      data-done={done || undefined}
-      data-meeting={meeting || undefined}
-      data-short={height < 40 || undefined}
-      data-dragging={drag?.moved || undefined}
-      onPointerDown={(event) => start(event, "move")}
-      onPointerMove={move}
-      onPointerUp={end}
-      onPointerCancel={(event) => event.pointerType === "mouse" && setDrag(null)}
-      // Keyboard and touch: a click opens the block (a mouse click is handled on pointer up).
-      onClick={(event) => {
-        if (event.detail === 0 || !matchesMouse(event)) onOpen();
-      }}
-      title={`${title}, ${time}${meeting ? ", meeting" : ""}`}
-    >
-      <span className={styles.blockTitle}>
-        {meeting && <MeetingMark />}
-        {title}
-      </span>
-      <span className={styles.blockTime}>{time}</span>
-      {!placed.continuesAfter && (
-        <span
-          className={styles.resize}
-          aria-hidden="true"
-          onPointerDown={(event) => start(event, "resize")}
-          onPointerMove={move}
-          onPointerUp={end}
-        />
-      )}
-    </button>
-  );
-}
-
-/** The small speech bubbles that mark a meeting card. */
-function MeetingMark() {
-  return (
-    <svg className={styles.meetingMark} width="11" height="11" viewBox="0 0 20 20" aria-hidden="true">
-      <path
-        d="M3 4h10v7H8l-3 2.5V11H3zM13 7.5h4v7h-2V17l-3-2.5H9V11"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** Whether a click came from a mouse (pointer events already handled it). */
-const matchesMouse = (event: MouseEvent<HTMLElement>): boolean =>
-  (event.nativeEvent as globalThis.PointerEvent).pointerType === "mouse";

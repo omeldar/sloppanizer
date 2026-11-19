@@ -1,0 +1,517 @@
+/* Chart tokens. Dark is the app's default; light is selected under data-theme="light". The two series
+   slots and the blue ramp come from the validated reference palette, checked against both surfaces. */
+.page {
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --heat-1: #104281;
+  --heat-2: #184f95;
+  --heat-3: #256abf;
+  --heat-4: #3987e5;
+  --heat-5: #6da7ec;
+  max-width: 1180px;
+}
+
+:global(:root[data-theme="light"]) .page {
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --heat-1: #cde2fb;
+  --heat-2: #9ec5f4;
+  --heat-3: #6da7ec;
+  --heat-4: #2a78d6;
+  --heat-5: #1c5cab;
+}
+
+/* ---------- filters ---------- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+}
+
+.presets {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.preset {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.preset:first-child {
+  border-left: 0;
+}
+
+.preset[aria-pressed="true"] {
+  background: var(--amber-tint);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.range {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.range input {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-small);
+}
+
+.note {
+  margin: 0 0 16px;
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.loading {
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+/* ---------- tiles ---------- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+}
+
+.tileLabel {
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.tileValue {
+  color: var(--text);
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tileSub {
+  color: var(--text-3);
+  font-size: var(--fs-pill);
+}
+
+/* ---------- cards ---------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+}
+
+.card[data-wide] {
+  grid-column: 1 / -1;
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cardTitle {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-h2);
+  font-weight: 600;
+}
+
+.cardSub {
+  margin: 2px 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.tableToggle {
+  flex-shrink: 0;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-pill);
+  cursor: pointer;
+}
+
+.tableToggle:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  list-style: none;
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legendKey,
+.tipKey {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--key);
+}
+
+.legendKey[data-kind="line"],
+.tipKey[data-kind="line"] {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.plot {
+  position: relative;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.plot svg {
+  display: block;
+}
+
+.empty {
+  margin: 0;
+  padding: 24px 0;
+  color: var(--text-3);
+  font-size: var(--fs-small);
+  text-align: center;
+}
+
+/* ---------- svg marks ---------- */
+
+.gridline {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.baseline {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.axisText {
+  fill: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.capLabel,
+.endLabel {
+  fill: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.mark {
+  transition: opacity 0.1s;
+}
+
+.crosshair {
+  stroke: var(--text-3);
+  stroke-width: 1;
+}
+
+/* A dot keeps a 2px ring in the surface color, so it stays readable on a line. */
+.dot {
+  stroke: var(--raised);
+  stroke-width: 2;
+}
+
+.hit {
+  fill: transparent;
+  cursor: default;
+  outline: none;
+}
+
+.hit:hover,
+.hit:focus-visible {
+  fill: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.cell {
+  fill: var(--sunken);
+  outline: none;
+}
+
+.cell[data-step="1"] {
+  fill: var(--heat-1);
+}
+.cell[data-step="2"] {
+  fill: var(--heat-2);
+}
+.cell[data-step="3"] {
+  fill: var(--heat-3);
+}
+.cell[data-step="4"] {
+  fill: var(--heat-4);
+}
+.cell[data-step="5"] {
+  fill: var(--heat-5);
+}
+
+.cell:hover {
+  stroke: var(--text);
+  stroke-width: 1.5;
+}
+
+.scale {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: var(--fs-pill);
+}
+
+.scale > span:first-child {
+  margin-right: 4px;
+}
+
+.scale > span:last-child {
+  margin-left: 4px;
+}
+
+.scaleCell {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--sunken);
+}
+
+.scaleCell[data-step="1"] {
+  background: var(--heat-1);
+}
+.scaleCell[data-step="2"] {
+  background: var(--heat-2);
+}
+.scaleCell[data-step="3"] {
+  background: var(--heat-3);
+}
+.scaleCell[data-step="4"] {
+  background: var(--heat-4);
+}
+.scaleCell[data-step="5"] {
+  background: var(--heat-5);
+}
+
+/* ---------- horizontal bars ---------- */
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: minmax(90px, 32%) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+  border-radius: 6px;
+}
+
+.barRow:hover {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.barLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--fs-small);
+  text-decoration: none;
+}
+
+a.barLabel:hover .barName {
+  text-decoration: underline;
+}
+
+.barName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.swatch {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: var(--radius-round);
+  background: var(--swatch);
+}
+
+/* The bar grows in its own room; the value always has its space at the end. */
+.barTrack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.barRoom {
+  min-width: 0;
+}
+
+.bar {
+  display: block;
+  height: 14px;
+  border-radius: 0 4px 4px 0;
+  background: var(--viz-1);
+}
+
+.barValue {
+  flex-shrink: 0;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  white-space: nowrap;
+}
+
+/* ---------- tooltip & table ---------- */
+
+.tip {
+  position: absolute;
+  z-index: 5;
+  min-width: 150px;
+  max-width: 240px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: var(--raised-2, var(--raised));
+  box-shadow: var(--shadow-2, var(--shadow-1));
+  color: var(--text);
+  font-size: var(--fs-small);
+  pointer-events: none;
+}
+
+.tipTitle {
+  margin-bottom: 4px;
+  color: var(--text-2);
+  font-size: var(--fs-pill);
+}
+
+.tipRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tipRow strong {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.tipLabel {
+  overflow: hidden;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tableWrap {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-small);
+}
+
+.table th,
+.table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table th {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.table td {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -1,9 +1,11 @@
 .shell {
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-  grid-template-rows: var(--topbar-h) minmax(0, 1fr) var(--statusbar-h);
+  /* The banner row is empty (0 high) unless the update banner shows. */
+  grid-template-rows: var(--topbar-h) auto minmax(0, 1fr) var(--statusbar-h);
   grid-template-areas:
     "side top"
+    "side banner"
     "side main"
     "status status";
   height: 100vh;
@@ -285,6 +287,56 @@
   padding-bottom: 0;
 }
 
+/* Update banner: one line between the top bar and the page, in the grid so it never covers anything. */
+.banner {
+  grid-area: banner;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 7px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--text);
+  font-size: var(--fs-small);
+}
+
+.banner[data-tone="amber"] {
+  background: var(--amber-tint);
+}
+
+.bannerDot {
+  display: inline-block;
+  margin: 0 8px 1px 0;
+  vertical-align: middle;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-round);
+  background: var(--amber);
+}
+
+.bannerAction {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bannerAction:hover {
+  border-color: var(--amber-line);
+}
+
+@media (max-width: 900px) {
+  .banner {
+    padding: 6px 16px;
+  }
+}
+
 /* Status bar */
 .statusbar {
   grid-area: status;
@@ -367,11 +419,12 @@ a.seg:hover {
 @media (max-width: 900px) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: calc(var(--topbar-h) + env(safe-area-inset-top)) minmax(0, 1fr) calc(
+    grid-template-rows: calc(var(--topbar-h) + env(safe-area-inset-top)) auto minmax(0, 1fr) calc(
         var(--tabbar-h) + env(safe-area-inset-bottom)
       );
     grid-template-areas:
       "top"
+      "banner"
       "main"
       "tabs";
     height: 100dvh;
@@ -564,4 +617,57 @@ a.seg:hover {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-2);
+}
+
+/* A project row: the link plus its menu button, which takes the count's place on hover. */
+.projectItem {
+  position: relative;
+}
+
+.navMore {
+  position: absolute;
+  top: 5px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.navMore:hover,
+.navMore[data-state="open"] {
+  background: var(--sunken);
+  color: var(--text);
+}
+
+.projectItem:hover .navMore,
+.projectItem:focus-within .navMore,
+.navMore[data-state="open"] {
+  opacity: 1;
+}
+
+.projectItem:hover .count,
+.projectItem:focus-within .count {
+  visibility: hidden;
+}
+
+/* Touch screens have no hover: the button stays, the count moves aside for it. */
+@media (hover: none) {
+  .navMore {
+    opacity: 1;
+  }
+
+  .projectItem .navLink {
+    padding-right: 32px;
+  }
+
+  .projectItem:focus-within .count {
+    visibility: visible;
+  }
 }

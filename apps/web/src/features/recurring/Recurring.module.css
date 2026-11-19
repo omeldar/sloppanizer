@@ -1,0 +1,139 @@
+.page {
+  max-width: 760px;
+}
+
+.sectionTitle {
+  margin: 28px 0 10px;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+  box-shadow: var(--shadow-1);
+}
+
+.card[data-ended] {
+  box-shadow: none;
+  background: transparent;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.swatch {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-round);
+  background: var(--swatch);
+}
+
+.title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-h2);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.title:hover {
+  text-decoration: underline;
+}
+
+.id {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--text-3);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.rule {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 4px 24px;
+  margin: 4px 0 0;
+  font-size: var(--fs-small);
+}
+
+.facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.facts dt {
+  color: var(--text-3);
+  font-size: var(--fs-pill);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  color: var(--text);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.quiet {
+  color: var(--text-3);
+}
+
+.planLink {
+  color: var(--amber-text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+@media (max-width: 640px) {
+  .facts {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .facts > div:last-child {
+    grid-column: 1 / -1;
+  }
+}

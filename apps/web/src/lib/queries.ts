@@ -276,6 +276,11 @@ export function invalidateTodoViews(client: QueryClient): Promise<void> {
         "standup",
         // Todos on a meeting show their title, status and due date.
         "meetingTodos",
+        // Planner blocks show a todo's title and whether it is done; a done repeating todo hands its
+        // planned time to the next one.
+        "blocks",
+        "plan",
+        "recurring",
       ].includes(String(query.queryKey[0])),
   });
 }
@@ -408,7 +413,9 @@ export function useUpdateProject() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: number; patch: UpdateProject }) =>
       api(Project, `/projects/${id}`, { method: "PATCH", body: patch }),
-    onSuccess: () => invalidateTodoViews(client),
+    // Planner blocks carry their project's color.
+    onSuccess: () =>
+      Promise.all([invalidateTodoViews(client), client.invalidateQueries({ queryKey: ["blocks"] })]),
   });
 }
 
@@ -617,7 +624,8 @@ export const useBlocks = (from: string, to: string, todoId?: number) =>
     placeholderData: (previous) => previous,
   });
 
-const invalidateBlocks = (client: QueryClient) => client.invalidateQueries({ queryKey: ["blocks"] });
+/** Planning time for a todo plans it for that day too (the Week view), so todo views refresh with blocks. */
+const invalidateBlocks = (client: QueryClient) => invalidateTodoViews(client);
 
 export function useCreateBlock() {
   const client = useQueryClient();

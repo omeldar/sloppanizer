@@ -50,6 +50,16 @@ export async function fillEveryTable(t: Pick<TestApp, "call" | "create" | "accou
     recurrence: { every: "week" },
   });
   await t.call("PATCH", `/api/v1/todos/${weekly.id}`, { status: "done" });
+  // Planned time that repeats with it, one date moved; it belongs to the open todo of the repeat.
+  await t.create(`/api/v1/todos/${weekly.id}/plan`, {
+    startAt: "2026-11-18T08:00:00.000Z",
+    endAt: "2026-11-18T09:00:00.000Z",
+  });
+  await t.call("PATCH", `/api/v1/todos/${weekly.id}/plan/2026-11-25`, {
+    scope: "this",
+    startAt: "2026-11-25T14:00:00.000Z",
+    endAt: "2026-11-25T15:00:00.000Z",
+  });
   await t.create<Note>("/api/v1/notes", {
     title: "Plan",
     bodyMd: "Notes",
@@ -83,7 +93,7 @@ export async function fillEveryTable(t: Pick<TestApp, "call" | "create" | "accou
   t.ctx()
     .db.$client.prepare("DELETE FROM attachments WHERE account_id = ? AND id = ?")
     .run(t.account.id, goneFile.id);
-  return { project, anna, todo, file, meeting };
+  return { project, anna, todo, file, meeting, weekly };
 }
 
 const json = (res: { json: () => unknown }) => res.json() as { id: number };

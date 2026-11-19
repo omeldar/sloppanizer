@@ -3,6 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Todo } from "@organizer/shared";
 import { strFromU8, unzipSync } from "fflate";
+import { VERSION } from "../src/app.ts";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import {
@@ -67,10 +68,10 @@ describe("GET /export.zip", () => {
     const manifest = JSON.parse(strFromU8(files["manifest.json"] as Uint8Array));
     expect(manifest).toMatchObject({
       app: "sloppanizer",
-      format: 7,
+      format: 8,
       exportedAt: "2026-11-14T13:04:05.000Z",
-      appVersion: "0.1.0",
-      schemaVersion: 16,
+      appVersion: VERSION,
+      schemaVersion: 17,
       account: { username: "anna" },
       attachments: { count: 0, bytes: 0, missing: [] },
     });
@@ -120,6 +121,7 @@ describe("GET /export.zip", () => {
       blocked_by: [],
       relates_to: [],
       repeat: null,
+      planned_time: null,
       previous: null,
       next: null,
     });
@@ -156,7 +158,7 @@ const frontMatter = (md: string) => {
   return { meta: parse(match?.[1] ?? "") as Record<string, unknown>, body: match?.[2] ?? "" };
 };
 
-describe("export format 7", () => {
+describe("export format 8", () => {
   it("holds the new tables, the uploaded files and Markdown for notes and people", async () => {
     const t = await makeApp({ now: "2026-11-11T13:04:05.000Z", timeZone: "Europe/Zurich" });
     const sqlite = t.deps.db.$client;
@@ -273,7 +275,7 @@ describe("export format 7", () => {
     expect(methods["attachments/2-net.txt"]).toBe(8);
 
     const manifest = JSON.parse(text("manifest.json"));
-    expect(manifest.format).toBe(7);
+    expect(manifest.format).toBe(8);
     expect(manifest.attachments).toEqual({ count: 2, bytes: png.length + txt.length, missing: [3] });
     const data = JSON.parse(text("data.json"));
     expect(Object.keys(data)).toEqual([...EXPORT_TABLES]);
@@ -366,7 +368,7 @@ describe("export format 7", () => {
       requested: [],
       contact_for: [todo.id],
     });
-    expect(text("README.md")).toContain("Export format 7.");
+    expect(text("README.md")).toContain("Export format 8.");
   });
 });
 
@@ -513,5 +515,41 @@ describe("export Markdown helpers", () => {
     ).toBe(
       "## Comments\n\n### you, 12.11.2026 14:03\n\nFirst **one**\n\n### planner, 29.03.2026 03:30\n\nSecond",
     );
+  });
+});
+
+describe("planned time in the export", () => {
+  it("writes a repeating todo's planned time on its open todo, one line per part", async () => {
+    const t = await makeApp();
+    const todo = await t.create<Todo>("/api/v1/todos", {
+      title: "Team report",
+      dueOn: "2026-11-16",
+      recurrence: { every: "week", weekdays: ["mon"] },
+    });
+    await t.create(`/api/v1/todos/${todo.id}/plan`, {
+      startAt: "2026-11-16T08:00:00.000Z",
+      endAt: "2026-11-16T09:00:00.000Z",
+    });
+    await t.call("PATCH", `/api/v1/todos/${todo.id}/plan/2026-11-30`, {
+      scope: "following",
+      startAt: "2026-11-30T12:00:00.000Z",
+      endAt: "2026-11-30T12:30:00.000Z",
+    });
+    const files = unzipSync((await t.call("GET", "/api/v1/export.zip")).rawPayload);
+    const { meta } = frontMatter(strFromU8(files["todos/0001-team-report.md"] as Uint8Array));
+    expect(meta).toMatchObject({
+      repeat: "every week on Mon",
+      planned_time: [
+        "from 16.11.2026: every week on Mon until 29.11.2026, 09:00–10:00",
+        "from 30.11.2026: every week on Mon, 13:00–13:30",
+      ],
+    });
+    const data = JSON.parse(strFromU8(files["data.json"] as Uint8Array));
+    expect(
+      data.series.map((s: { owner_kind: string; todo_id: number }) => [s.owner_kind, s.todo_id]),
+    ).toEqual([
+      ["todo", todo.id],
+      ["todo", todo.id],
+    ]);
   });
 });

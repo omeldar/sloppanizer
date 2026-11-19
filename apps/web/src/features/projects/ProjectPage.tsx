@@ -1,12 +1,13 @@
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
-import type { CSSProperties } from "react";
-import { EmptyState, ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
+import { type CSSProperties, useState } from "react";
+import { Button, EmptyState, ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
 import { useProjects } from "../../lib/queries.ts";
 import { BoardFilterBar } from "../board/BoardFilterBar.tsx";
 import { BoardView } from "../board/BoardView.tsx";
 import styles from "../lists/Lists.module.css";
 import { TodoListView } from "../lists/TodoListView.tsx";
 import { hint } from "../../lib/device.ts";
+import { EditProjectDialog } from "./EditProjectDialog.tsx";
 
 const route = getRouteApi("/projects/$slug");
 
@@ -17,6 +18,7 @@ export function ProjectPage() {
   const projects = useProjects();
   const board = search.view === "board";
   const project = projects.data?.find((p) => p.slug === slug);
+  const [editing, setEditing] = useState(false);
 
   if (projects.isPending) return <Loading />;
   if (projects.isError) return <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />;
@@ -41,28 +43,34 @@ export function ProjectPage() {
           </span>
         }
         actions={
-          <div className={styles.modes} role="group" aria-label="View">
-            {(["list", "board"] as const).map((view) => (
-              <button
-                key={view}
-                type="button"
-                className={styles.mode}
-                aria-pressed={(view === "board") === board}
-                onClick={() =>
-                  void navigate({
-                    to: "/projects/$slug",
-                    params: { slug },
-                    search: view === "board" ? { view } : {},
-                    replace: true,
-                  })
-                }
-              >
-                {view === "list" ? "List" : "Board"}
-              </button>
-            ))}
-          </div>
+          <>
+            <Button size="sm" onClick={() => setEditing(true)}>
+              Edit project
+            </Button>
+            <div className={styles.modes} role="group" aria-label="View">
+              {(["list", "board"] as const).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  className={styles.mode}
+                  aria-pressed={(view === "board") === board}
+                  onClick={() =>
+                    void navigate({
+                      to: "/projects/$slug",
+                      params: { slug },
+                      search: view === "board" ? { view } : {},
+                      replace: true,
+                    })
+                  }
+                >
+                  {view === "list" ? "List" : "Board"}
+                </button>
+              ))}
+            </div>
+          </>
         }
       />
+      <EditProjectDialog project={editing ? project : null} onOpenChange={setEditing} />
       {project.description && <p className={styles.description}>{project.description}</p>}
       {board ? (
         <>

@@ -1,4 +1,5 @@
 import { statSync } from "node:fs";
+import { VERSION } from "../src/app.ts";
 import { describe, expect, it } from "vitest";
 import { apiTokens, events } from "../src/db/schema.ts";
 import { CORS_EXPOSE_HEADERS } from "../src/http/cors.ts";
@@ -110,7 +111,7 @@ describe("authentication", () => {
     const t = await makeApp();
     expect((await t.app.inject({ method: "GET", url: "/api/v1/health" })).json()).toEqual({
       ok: true,
-      version: "0.1.0",
+      version: VERSION,
     });
     const urls = ["/api/v1/me", "/api/v1/todos", "/api/v1/export.zip", "/api/v1/account"];
     const responses = await Promise.all(urls.map((url) => t.app.inject({ method: "GET", url })));
@@ -313,5 +314,24 @@ describe("headers and files", () => {
     expect(statSync(t.dataDir).mode & 0o777).toBe(0o700);
     expect(statSync(`${t.dataDir}/secret`).mode & 0o777).toBe(0o600);
     expect(statSync(t.filesDir).mode & 0o777).toBe(0o700);
+  });
+});
+
+describe("version for the web app", () => {
+  it("health tells the web origin the release version and nothing else", async () => {
+    const t = await makeApp();
+    const res = await t.app.inject({ method: "GET", url: "/api/v1/health", headers: { origin: WEB } });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["access-control-allow-origin"]).toBe(WEB);
+    const rootVersion = (await import("../../../package.json", { with: { type: "json" } })).default.version;
+    expect(res.json()).toEqual({ ok: true, version: rootVersion });
+  });
+
+  it("answers an unknown route in the form the web app reads as 'not on this server yet'", async () => {
+    // apps/web/src/lib/serverVersion.ts matches this text while the server is being updated.
+    const t = await makeApp();
+    const res = await t.app.inject({ method: "GET", url: "/api/v1/recurring", headers: authHeaders(t) });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.message).toMatch(/^GET \/api\/v1\/recurring does not exist\. See \/api\/docs/);
   });
 });

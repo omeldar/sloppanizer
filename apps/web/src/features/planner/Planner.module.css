@@ -825,3 +825,35 @@
   flex-direction: column;
   gap: 12px;
 }
+
+/* ---------- planned time that repeats with a todo ---------- */
+
+.block[data-repeats] {
+  border-style: dashed;
+}
+
+.repeatChoice {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--sunken);
+}
+
+.repeatLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.repeatLabel input {
+  margin-top: 2px;
+  accent-color: var(--amber);
+}
+
+.repeatText {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}

@@ -10,7 +10,7 @@ import {
   nextQuarter,
   blockItem,
   meetingItem,
-  meetingMoveScopes,
+  seriesMoveScopes,
   ONLY_THIS_DAY,
   placeItems,
   scrollStartMinutes,
@@ -227,10 +227,10 @@ describe("meetings in the planner", () => {
     const thu = { seriesId: 1, occursOn: "2026-11-19" };
     // Same day, later: all three.
     expect(
-      meetingMoveScopes(thursdays, thu, "2026-11-19T09:00:00.000Z", TZ).map((o) => o.off ?? null),
+      seriesMoveScopes(thursdays, thu, "2026-11-19T09:00:00.000Z", TZ).map((o) => o.off ?? null),
     ).toEqual([null, null, null]);
     // To Friday: the weekdays turn to Fri, so following and all work too.
-    const friday = meetingMoveScopes(thursdays, thu, "2026-11-20T08:00:00.000Z", TZ);
+    const friday = seriesMoveScopes(thursdays, thu, "2026-11-20T08:00:00.000Z", TZ);
     expect(friday.every((o) => !o.off)).toBe(true);
     expect(friday[1]?.hint).toBe("From 19.11. on");
   });
@@ -238,7 +238,7 @@ describe("meetings in the planner", () => {
   it("offers only this date when the repeat cannot move by those days", () => {
     // Monthly on the 30th: no rule for every date one day later.
     const monthly = [makeSeries({ rule: { every: "month", interval: 1, monthDay: 30, basis: "schedule" } })];
-    const choices = meetingMoveScopes(
+    const choices = seriesMoveScopes(
       monthly,
       { seriesId: 1, occursOn: "2026-11-30" },
       "2026-12-01T08:00:00.000Z",
@@ -253,7 +253,7 @@ describe("meetings in the planner", () => {
 
   it("says that All changes only this part of a split repeat", () => {
     const split = [makeSeries({ endsOn: "2026-11-25" }), makeSeries({ id: 2, startsOn: "2026-11-27" })];
-    const choices = meetingMoveScopes(
+    const choices = seriesMoveScopes(
       split,
       { seriesId: 2, occursOn: "2026-12-03" },
       "2026-12-03T09:00:00.000Z",

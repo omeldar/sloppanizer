@@ -53,6 +53,26 @@ afterEach(async () => {
   await Promise.all(clients.splice(0).map((client) => client.close()));
 });
 
+const plannedSeries = {
+  id: 3,
+  rule: { every: "week", interval: 1, weekdays: ["thu"], basis: "schedule" },
+  startsOn: "2026-11-12",
+  endsOn: null,
+  startTime: "10:00",
+  durationMinutes: 60,
+  text: "every week on Thu, 10:00–11:00",
+};
+const planned = (occursOn: string, startAt: string, endAt: string, status = "scheduled") => ({
+  seriesId: 3,
+  ownerTodoId: 12,
+  todo: { id: 12, title: "Team report", status: "open" },
+  project: { id: 1, slug: "lab", name: "Lab", color: "#4c9aff" },
+  occursOn,
+  startAt,
+  endAt,
+  status,
+});
+
 async function connect(handler: Handler) {
   const { api, calls } = fakeApi(handler);
   const server = new McpServer({ name: "test", version: "0.0.0" });
@@ -964,7 +984,10 @@ describe("meeting tools", () => {
       createdAt: at,
       updatedAt: at,
     };
-    const { call } = await connect(({ path }) => (path === "/blocks" ? [block] : [meeting().next]));
+    const { call } = await connect(({ path }) => {
+      if (path === "/blocks") return [block];
+      return path === "/meetings/occurrences" ? [meeting().next] : [];
+    });
     expect((await call("list_plan", { from: "2026-11-12", to: "2026-11-12" })).text.split("\n")).toEqual([
       "Plan 12.11.2026 to 12.11.2026:",
       "meeting 2 | 12.11.2026 09:00-09:15 | Weekly Standup",
@@ -977,5 +1000,129 @@ describe("meeting tools", () => {
     expect((await older.call("list_plan", { from: "2026-11-12", to: "2026-11-12" })).text).toContain(
       "Nothing planned.",
     );
+  });
+
+  it("list_plan shows the planned dates of repeating todos, moved ones with their date", async () => {
+    const { call } = await connect(({ path }) => {
+      if (path === "/blocks/series")
+        return [
+          planned("2026-11-12", "2026-11-12T09:00:00.000Z", "2026-11-12T10:00:00.000Z"),
+          planned("2026-11-19", "2026-11-18T14:00:00.000Z", "2026-11-18T15:00:00.000Z", "moved"),
+        ];
+      return [];
+    });
+    expect((await call("list_plan", { from: "2026-11-12", to: "2026-11-18" })).text.split("\n")).toEqual([
+      "Plan 12.11.2026 to 18.11.2026:",
+      "repeat #12 | 12.11.2026 10:00-11:00 | Team report [Lab]",
+      "repeat #12 | 18.11.2026 15:00-16:00 | Team report [Lab] | moved from 19.11.2026",
+    ]);
+  });
+
+  it("plan_time with repeat plans the todo's repeat instead of one block", async () => {
+    const { call, calls } = await connect(() => ({
+      todoId: 12,
+      schedule: plannedSeries,
+      segments: [plannedSeries],
+      next: planned("2026-11-12", "2026-11-12T09:00:00.000Z", "2026-11-12T10:00:00.000Z"),
+    }));
+    const result = await call("plan_time", {
+      todo: 12,
+      date: "2026-11-12",
+      start: "10:00",
+      minutes: 60,
+      repeat: true,
+    });
+    expect(calls).toEqual([
+      {
+        method: "POST",
+        path: "/todos/12/plan",
+        body: { startAt: "2026-11-12T09:00:00.000Z", endAt: "2026-11-12T10:00:00.000Z" },
+      },
+    ]);
+    expect(result.text).toBe(
+      "Planned #12 every week on Thu, 10:00–11:00, from 12.11.2026.\nNext: repeat #12 | 12.11.2026 10:00-11:00 | Team report [Lab]",
+    );
+    expect(
+      (
+        await call("plan_time", {
+          title: "Gym",
+          date: "2026-11-12",
+          start: "10:00",
+          minutes: 60,
+          repeat: true,
+        })
+      ).text,
+    ).toContain("repeat needs a todo");
+  });
+
+  it("list_recurring lists each repeating todo once with its next date, history and planned time", async () => {
+    const { call } = await connect(() => [
+      {
+        todo: { id: 12, title: "Team report" },
+        text: "every week on Thu",
+        nextOn: "2026-11-12",
+        ended: false,
+        doneCount: 3,
+        lastDoneAt: "2026-11-05T15:00:00.000Z",
+        plan: { todoId: 12, schedule: plannedSeries, segments: [plannedSeries], next: null },
+      },
+      {
+        todo: { id: 4, title: "Course" },
+        text: "every week until 01.11.2026",
+        nextOn: null,
+        ended: true,
+        doneCount: 1,
+        lastDoneAt: "2026-10-29T15:00:00.000Z",
+        plan: null,
+      },
+    ]);
+    expect((await call("list_recurring")).text.split("\n")).toEqual([
+      "#12 Team report | every week on Thu | next 12.11.2026 | done 3 times, last 05.11.2026 | planned every week on Thu, 10:00–11:00",
+      "#4 Course | every week until 01.11.2026 | ended | done 1 time, last 29.10.2026",
+    ]);
+  });
+
+  it("work_stats sums up worked time per project, requester and week, the last 4 weeks by default", async () => {
+    const hours = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
+    const { call, calls } = await connect(() => ({
+      from: "2026-10-15",
+      to: "2026-11-11",
+      totals: { workedMinutes: 270, meetingMinutes: 30, created: 3, done: 2, medianDoneMs: 2 * 86_400_000 },
+      projects: [
+        {
+          kind: "project",
+          project: { id: 1, slug: "lab", name: "Lab", color: "#4c9aff" },
+          minutes: 180,
+          done: 1,
+        },
+        { kind: "inbox", project: null, minutes: 90, done: 1 },
+      ],
+      requesters: [{ person: { id: 9, name: "Anna Meier" }, minutes: 120, done: 1 }],
+      otherRequesters: null,
+      weeks: [
+        { start: "2026-11-09", workedMinutes: 270, meetingMinutes: 30, created: 3, done: 2, projects: [] },
+      ],
+      days: [],
+      hours,
+      doneDurations: [],
+    }));
+    const text = (await call("work_stats")).text;
+    expect(calls[0]).toMatchObject({
+      path: "/stats/overview",
+      query: { from: "2026-10-15", to: "2026-11-11" },
+    });
+    expect(text.split("\n")).toEqual([
+      "15.10.2026 to 11.11.2026: worked 4.5 h, meetings 0.5 h, 2 done, median 2d to done, 3 created.",
+      "",
+      "Projects:",
+      "- Lab: 3 h, 1 done",
+      "- Inbox: 1.5 h, 1 done",
+      "",
+      "Requesters (a todo counts for each of its requesters):",
+      "- Anna Meier: 2 h, 1 done",
+      "",
+      "Weeks:",
+      "- 09.11.2026: worked 4.5 h, meetings 0.5 h, 3 created, 2 done",
+    ]);
   });
 });

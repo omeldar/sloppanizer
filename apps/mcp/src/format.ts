@@ -1,4 +1,7 @@
 import {
+  type StatsGroup,
+  type BlockOccurrence,
+  type RecurringTodo,
   type ActivityItem,
   daysBetween,
   describeEvent,
@@ -498,3 +501,42 @@ export function standupText(standup: Standup, name: string, timeZone: string): s
     lines.push(`Dismissed on ${formatDate(standup.on)}: ${standup.dismissedCount}`);
   return lines.join("\n");
 }
+
+/** "repeat #12 | 17.11.2026 09:00-10:00 | Team report [Lab]": a date of a repeating todo's planned time. */
+export function plannedLine(o: BlockOccurrence, timeZone: string): string {
+  const day = toLocalDate(o.startAt, timeZone);
+  const endDay = toLocalDate(o.endAt, timeZone);
+  const end = `${endDay === day ? "" : `${formatDate(endDay)} `}${toLocalTime(o.endAt, timeZone)}`;
+  const project = o.project ? ` [${o.project.name}]` : "";
+  const parts = [
+    `repeat #${o.todo.id}`,
+    `${formatDate(day)} ${toLocalTime(o.startAt, timeZone)}-${end}`,
+    `${o.todo.title}${o.todo.status === "done" ? " (done)" : ""}${project}`,
+  ];
+  if (o.status === "moved") parts.push(`moved from ${formatDate(o.occursOn)}`);
+  if (o.status === "cancelled") parts.push("cancelled");
+  return parts.join(" | ");
+}
+
+/** "#12 Team report | every week on Mon | next 16.11.2026 | done 3 times, last 09.11.2026 | planned ...". */
+export function recurringLine(r: RecurringTodo, timeZone: string): string {
+  const parts = [`#${r.todo.id} ${r.todo.title}`, r.text];
+  parts.push(r.ended || r.nextOn === null ? "ended" : `next ${formatDate(r.nextOn)}`);
+  if (r.doneCount > 0) {
+    const last = r.lastDoneAt === null ? "" : `, last ${formatDate(toLocalDate(r.lastDoneAt, timeZone))}`;
+    parts.push(`done ${r.doneCount} time${r.doneCount === 1 ? "" : "s"}${last}`);
+  }
+  if (r.plan) parts.push(`planned ${r.plan.schedule.text}`);
+  return parts.join(" | ");
+}
+
+/** Minutes as hours with one decimal: "4.5 h". */
+export const hoursText = (minutes: number): string => `${Math.round(minutes / 6) / 10} h`;
+
+/** The name of a group of worked time: a project, the Inbox, or blocks with only a title. */
+export const statsGroupText = (g: StatsGroup): string =>
+  g.kind === "inbox"
+    ? "Inbox"
+    : g.kind === "untitled"
+      ? "Blocks with their own title"
+      : (g.project?.name ?? "Project");

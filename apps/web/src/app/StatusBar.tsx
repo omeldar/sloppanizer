@@ -2,8 +2,8 @@ import { Link } from "@tanstack/react-router";
 import { useKeyMode } from "../keyboard/KeyboardProvider.tsx";
 import { relativeTime } from "../lib/format.ts";
 import { useStats } from "../lib/queries.ts";
+import { WEB_COMMIT, WEB_VERSION } from "../lib/serverVersion.ts";
 import { useNow } from "../lib/useNow.ts";
-import pkg from "../../package.json" with { type: "json" };
 import styles from "./Layout.module.css";
 
 const EXPORT_STALE_MS = 7 * 24 * 3_600_000;
@@ -49,7 +49,9 @@ export function StatusBar() {
       >
         {exportAt ? `exported ${relativeTime(exportAt)}` : "never exported"}
       </Link>
-      <span className={styles.seg}>v{pkg.version}</span>
+      <span className={styles.seg} title={`Sloppanizer ${WEB_VERSION}, build ${WEB_COMMIT.slice(0, 12)}`}>
+        v{WEB_VERSION}
+      </span>
     </footer>
   );
 }

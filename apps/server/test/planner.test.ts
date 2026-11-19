@@ -177,3 +177,64 @@ describe("planner time blocks", () => {
     expect((await t.call("GET", "/api/v1/blocks?from=2026-01-01&to=2026-06-01")).statusCode).toBe(422);
   });
 });
+
+const block = (todoId: number, startAt: string, endAt: string) => ({ todoId, startAt, endAt }) as const;
+
+describe("planned time and the planned day", () => {
+  // The test clock starts on Wednesday 11.11.2026 in Zurich.
+
+  it("plans the todo for the block's day, so the Week view shows it, and follows a move to another day", async () => {
+    const t = await makeApp();
+    const todo = await t.create<Todo>("/api/v1/todos", { title: "Write report" });
+    // 23:30 UTC on the 12th is already the 13th in Zurich.
+    const created = await t.create<TimeBlock>(
+      "/api/v1/blocks",
+      block(todo.id, "2026-11-12T23:30:00.000Z", "2026-11-13T00:30:00.000Z"),
+    );
+    expect(json<Todo>(await t.call("GET", `/api/v1/todos/${todo.id}`)).plannedOn).toBe("2026-11-13");
+    const week = json<{ items: Todo[] }>(
+      await t.call("GET", "/api/v1/todos?plannedFrom=2026-11-09&plannedTo=2026-11-15"),
+    );
+    expect(week.items.map((x) => x.id)).toEqual([todo.id]);
+
+    // Moving within the day leaves the planned day; moving to another day takes it along.
+    await t.call("PATCH", `/api/v1/blocks/${created.id}`, {
+      startAt: "2026-11-13T08:00:00.000Z",
+      endAt: "2026-11-13T09:00:00.000Z",
+    });
+    await t.call("PATCH", `/api/v1/todos/${todo.id}`, { plannedOn: "2026-11-20" });
+    await t.call("PATCH", `/api/v1/blocks/${created.id}`, {
+      startAt: "2026-11-13T10:00:00.000Z",
+      endAt: "2026-11-13T11:00:00.000Z",
+    });
+    expect(json<Todo>(await t.call("GET", `/api/v1/todos/${todo.id}`)).plannedOn).toBe("2026-11-20");
+    await t.call("PATCH", `/api/v1/blocks/${created.id}`, {
+      startAt: "2026-11-16T08:00:00.000Z",
+      endAt: "2026-11-16T09:00:00.000Z",
+    });
+    const moved = json<Todo>(await t.call("GET", `/api/v1/todos/${todo.id}`));
+    expect(moved.plannedOn).toBe("2026-11-16");
+    // The history says who planned it, like any date change.
+    const activity = json<{
+      items: { type: string; event?: { kind: string; actor: string; data: { to?: unknown } } }[];
+    }>(await t.call("GET", `/api/v1/todos/${todo.id}/activity`));
+    expect(
+      activity.items
+        .flatMap((i) => (i.event?.kind === "dates_changed" ? [i.event] : []))
+        .map((e) => `${e.actor} ${(e.data.to as { plannedOn: string }).plannedOn}`),
+    ).toEqual(["you 2026-11-13", "you 2026-11-20", "you 2026-11-16"]);
+  });
+
+  it("leaves done todos and blocks with only a title alone", async () => {
+    const t = await makeApp();
+    const done = await t.create<Todo>("/api/v1/todos", { title: "Old", status: "done" });
+    await t.create("/api/v1/blocks", block(done.id, "2026-11-12T08:00:00.000Z", "2026-11-12T09:00:00.000Z"));
+    expect(json<Todo>(await t.call("GET", `/api/v1/todos/${done.id}`)).plannedOn).toBeNull();
+    const gym = await t.create<TimeBlock>("/api/v1/blocks", {
+      title: "Gym",
+      startAt: "2026-11-12T17:00:00.000Z",
+      endAt: "2026-11-12T18:00:00.000Z",
+    });
+    expect(gym.todoId).toBeNull();
+  });
+});

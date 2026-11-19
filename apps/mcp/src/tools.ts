@@ -2,6 +2,11 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import {
   type Activity,
+  formatDuration,
+  type WorkStats,
+  type BlockOccurrence,
+  type BlockSeries,
+  type RecurringTodo,
   type ChecklistItem,
   BulkUpdate,
   type BulkUpdateResult,
@@ -68,6 +73,10 @@ import {
   nextUpText,
   noteDetail,
   occurrenceLine,
+  hoursText,
+  plannedLine,
+  statsGroupText,
+  recurringLine,
   noteLine,
   peopleStatsText,
   personDetail,
@@ -1401,10 +1410,15 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   };
   const blockLines = (blocks: readonly TimeBlock[]): string =>
     blocks.length === 0 ? "Nothing planned." : blocks.map(blockLine).join("\n");
-  /** Blocks and meeting dates in one list, by start. */
-  const planLines = (blocks: readonly TimeBlock[], meetings: readonly MeetingOccurrence[]): string =>
+  /** Blocks, planned dates of repeating todos and meeting dates in one list, by start. */
+  const planLines = (
+    blocks: readonly TimeBlock[],
+    meetings: readonly MeetingOccurrence[],
+    repeats: readonly BlockOccurrence[] = [],
+  ): string =>
     [
       ...blocks.map((b) => ({ startAt: b.startAt, line: blockLine(b) })),
+      ...repeats.map((o) => ({ startAt: o.startAt, line: plannedLine(o, deps.timeZone) })),
       ...meetings.map((o) => ({ startAt: o.startAt, line: occurrenceLine(o, deps.timeZone) })),
     ]
       .toSorted((a, b) => a.startAt.localeCompare(b.startAt))
@@ -1416,9 +1430,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     {
       title: "List planned time",
       description:
-        "The user's planner: time blocks reserved for todos (or with their own title) and meeting dates " +
-        "between two days, in local time. Default: today and the next 6 days. Use it before plan_time to " +
-        "find free time.",
+        "The user's planner: time blocks reserved for todos (or with their own title), the planned dates " +
+        "of repeating todos (lines starting with repeat) and meeting dates between two days, in local time. " +
+        "Default: today and the next 6 days. Use it before plan_time to find free time.",
       inputSchema: {
         from: PlanDate.optional().describe("First day YYYY-MM-DD (default today)."),
         to: PlanDate.optional().describe("Last day YYYY-MM-DD (default from + 6)."),
@@ -1430,17 +1444,19 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async (args) => {
       const from = args.from ?? ctx().today;
       const to = args.to ?? addLocalDays(from, 6);
-      const [blocks, meetings] = await Promise.all([
+      const [blocks, meetings, repeats] = await Promise.all([
         api.get<TimeBlock[]>("/blocks", { from, to, todoId: args.todo }),
         // Meetings are busy too, but not when asking for one todo's blocks; an older server has none.
         args.todo === undefined
           ? api.get<MeetingOccurrence[]>("/meetings/occurrences", { from, to }).catch(() => [])
           : Promise.resolve([]),
+        api.get<BlockOccurrence[]>("/blocks/series", { from, to, todoId: args.todo }).catch(() => []),
       ]);
       return out(
         args.format,
-        { blocks, meetings },
-        (data) => `Plan ${formatDate(from)} to ${formatDate(to)}:\n${planLines(data.blocks, data.meetings)}`,
+        { blocks, meetings, repeats },
+        (data) =>
+          `Plan ${formatDate(from)} to ${formatDate(to)}:\n${planLines(data.blocks, data.meetings, data.repeats)}`,
       );
     },
   );
@@ -1451,9 +1467,15 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       title: "Plan time",
       description:
         "Reserve time in the user's planner: for a todo (todo) or with its own title (title), on a day from " +
-        "start to end (local HH:MM), or from start for minutes. Check list_plan first so blocks do not clash.",
+        "start to end (local HH:MM), or from start for minutes. Check list_plan first so blocks do not clash. " +
+        "For a todo that repeats on a schedule, repeat true plans the time for every date of its repeat " +
+        "(it stays when one date is done); the user changes single dates in the app.",
       inputSchema: {
         todo: TodoId.optional(),
+        repeat: z
+          .boolean()
+          .optional()
+          .describe("With a repeating todo: the time comes back with every date of its repeat."),
         title: z.string().trim().max(200).optional().describe("Title of a block without a todo."),
         date: PlanDate.describe("Day YYYY-MM-DD."),
         start: Time,
@@ -1475,6 +1497,20 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         endAt = new Date(startAt.getTime() + args.minutes * 60_000);
       } else {
         throw new ToolError("Give end (HH:MM) or minutes.");
+      }
+      if (args.repeat) {
+        if (args.todo === undefined) throw new ToolError("repeat needs a todo that repeats.");
+        const plan = await api.post<BlockSeries>(`/todos/${args.todo}/plan`, {
+          startAt: startAt.toISOString(),
+          endAt: endAt.toISOString(),
+        });
+        return out(
+          args.format,
+          plan,
+          (data) =>
+            `Planned #${data.todoId} ${data.schedule.text}, from ${formatDate(data.schedule.startsOn)}.` +
+            (data.next ? `\nNext: ${plannedLine(data.next, deps.timeZone)}` : ""),
+        );
       }
       const block = await api.post<TimeBlock>(
         "/blocks",
@@ -1543,6 +1579,79 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async (args) => {
       await api.delete(`/blocks/${args.block}`);
       return `Deleted block ${args.block}.`;
+    },
+  );
+
+  tool(
+    "list_recurring",
+    {
+      title: "List repeating todos",
+      description:
+        "Every repeating todo once: its open todo (the id to mark done or change), the repeat, the next " +
+        "date, how often it was done and the planned time that repeats with it. Ended repeats come last.",
+      inputSchema: { format },
+      annotations: READ,
+    },
+    async (args) => {
+      const list = await api.get<RecurringTodo[]>("/todos/recurring");
+      return out(args.format, list, (data) =>
+        data.length === 0
+          ? "No repeating todos."
+          : data.map((r) => recurringLine(r, deps.timeZone)).join("\n"),
+      );
+    },
+  );
+
+  tool(
+    "work_stats",
+    {
+      title: "Work statistics",
+      description:
+        "How much the user worked in a period, per project, per requester and per week, with meeting time " +
+        "and todos created and done. Worked time is planned time that has already happened (there is no " +
+        "timer). Default: the last 4 weeks.",
+      inputSchema: {
+        from: PlanDate.optional().describe("First day YYYY-MM-DD (default 27 days before to)."),
+        to: PlanDate.optional().describe("Last day YYYY-MM-DD (default today)."),
+        format,
+      },
+      annotations: READ,
+    },
+    async (args) => {
+      const to = args.to ?? ctx().today;
+      const from = args.from ?? addLocalDays(to, -27);
+      const stats = await api.get<WorkStats>("/stats/overview", { from, to });
+      return out(args.format, stats, (s) => {
+        const median =
+          s.totals.medianDoneMs === null ? "" : `, median ${formatDuration(s.totals.medianDoneMs)} to done`;
+        const lines = [
+          `${formatDate(s.from)} to ${formatDate(s.to)}: worked ${hoursText(s.totals.workedMinutes)}, meetings ` +
+            `${hoursText(s.totals.meetingMinutes)}, ${s.totals.done} done${median}, ${s.totals.created} created.`,
+          "",
+          "Projects:",
+          ...(s.projects.length === 0
+            ? ["- nothing"]
+            : s.projects.map((g) => `- ${statsGroupText(g)}: ${hoursText(g.minutes)}, ${g.done} done`)),
+          "",
+          "Requesters (a todo counts for each of its requesters):",
+          ...(s.requesters.length === 0
+            ? ["- nobody"]
+            : s.requesters.map((r) => `- ${r.person.name}: ${hoursText(r.minutes)}, ${r.done} done`)),
+          ...(s.otherRequesters
+            ? [
+                `- ${s.otherRequesters.people} others: ${hoursText(s.otherRequesters.minutes)}, ${s.otherRequesters.done} done`,
+              ]
+            : []),
+          "",
+          "Weeks:",
+          ...s.weeks.map(
+            (w) =>
+              `- ${formatDate(w.start)}: worked ${hoursText(w.workedMinutes)}, meetings ${hoursText(w.meetingMinutes)}, ` +
+              `${w.created} created, ${w.done} done`,
+          ),
+        ];
+        return lines.join("\n");
+      });
     },
   );
 

@@ -69,3 +69,83 @@ never changes its due date.
 **Blocked todos on standups.** Like a todo in progress, a blocked todo that a standup never marked is
 always on its list, also without changes, until it is said or dismissed there. After that only new
 updates bring it back. The rules per status are one pure function (services/standup-rules.ts).
+
+## 2026-11-18 Versions and the updating banner (#16)
+
+**One version, set at release.** The root package.json holds the release version; `pnpm release <version>`
+copies it into every package, moves the changelog's Unreleased entries under it, commits and tags
+`v<version>`. A test fails when a package carries another version. The server image gets the version and
+commit as labels (and the commit in its start log); the web build reads its package.json and the commit
+(Vercel's variable, else git). The health route answers only `{ ok, version }`.
+
+**When the banner shows.** "Updating" only while the server is on an older *minor* release than the web app
+(or below `MIN_SERVER_VERSION` when the web app declares one), so a fix release of one side never shows it.
+"A new version is ready" whenever the server is newer than the page. Versions are polled from the health
+route, no header on every answer, so CORS stays as it is. While updating, an unknown-route 404, an
+"Unrecognized key" 422 or an answer the app cannot read turns into "available in a few minutes". The
+banner is a grid row under the top bar, so it never covers the tab bar or the page.
+
+**Not done here.** Bumping to the first real version (proposed 1.0.0) is part of the next release, by
+`pnpm release`, when Eldar says to release.
+
+## 2026-11-18 Recurring todos: their own view, and planned time that repeats (#12)
+
+The full version was built (series with single changes), not the fallback.
+
+**A repeat of todos is a chain.** Marking a repeating todo done makes the next todo (recurrence_prev_id
+points back), as before. The Recurring view shows each chain once by its newest todo: rule, next date,
+how often it was done, planned time. Done never hides it there.
+
+**Planned time is a series owned by the chain.** It is a `series` row with owner_kind 'todo' and todo_id =
+the chain's open todo, moved to the next todo when one is made and back when an untouched next is undone
+(services/repeat-plan-owner.ts). Deleting the open todo deletes its planned time (cascade), like single
+blocks. One planned repeat per chain (with parts after "this and following"); more time is single blocks.
+
+**Its own rule, copied from the todo's.** Planning makes a schedule rule from the todo's repeat, moved to
+the weekday (or day of month) it was planned on: time planned on Tuesday for a Monday todo comes back every
+Tuesday. Changing the todo's rule later leaves the planned time as it is; stopping the repeat (no rule, or
+counted from done) or passing its last date ends the planned time today, and past dates stay as history.
+
+**Done comes from the todos, not from the series.** A planned date belongs to the newest todo of the chain
+dated on or before it (shared `todoForDate`); it shows done when that todo is done. So no "done" exception
+kind was needed; series_exceptions stay moved or cancelled.
+
+**Repeats counted from the done date get no planned repeat.** Their dates are not known ahead; time for
+them is planned one date at a time (the dialog and the API say so).
+
+**This / following / all** work exactly like meetings: the edit logic moved from meetings into
+services/series-editor.ts, which takes an owner. Cancelling all removes the planned time.
+
+**Elsewhere.** The calendar feed has one event per planned date (moved ones at their new time, cancelled
+ones left out, UID per date). MCP: list_plan shows planned dates, plan_time takes `repeat`, list_recurring
+lists the repeats; changing single dates stays in the app, like meeting dates. Export format 8 carries the
+rows; a todo's Markdown lists its planned time. All of it is scoped per account like the rest.
+
+**Migration note.** Drizzle runs migrations in one transaction with foreign keys on, so `PRAGMA
+foreign_keys=OFF` in a generated table rebuild does nothing and the drop cascades. 0008 keeps
+series_exceptions aside during the rebuild; check any future generated rebuild for the same.
+
+## 2026-11-18 Planned time plans the day (Week view in sync)
+
+The Week view lists todos by their planned day; planner blocks did not set it, so planned time never
+showed there. Creating a block for an open todo, moving it to another day or giving it to another todo
+now sets that todo's planned day (a date change in its history, by whoever planned it). Deleting a block
+leaves the planned day. Planned time that repeats with a todo (#12) does not move the todo's date: that
+would shift the repeat itself. Blocks made before this change keep their todos' planned days as they were.
+
+## 2026-11-18 Statistics (#18)
+
+**Worked time is planned time that has already happened.** There is no timer, so the honest measure is
+time blocks and planned dates of repeating todos whose end has passed, cut to the period. The page says
+so. A block counts for its todo's project (Inbox without one, "Own title" for blocks without a todo) and
+fully for each requester of its todo. Meetings are counted apart, never as worked time.
+
+**Charts without a library.** Small SVG and HTML charts in features/stats/charts.tsx, nothing from a CDN.
+Every bar list names and values each bar in text, so bars use one color (the validated blue) with the
+project's own swatch beside the name; the user-picked project colors fail a chart palette check (too
+light, too close for colorblind readers) and are kept as identity only. Two-series charts use the
+validated blue and orange (checked against both app surfaces) with a legend; heatmaps use one blue ramp
+in five steps, selected separately for dark and light. No stacked "hours per project per week" chart: it
+would need more distinguishable colors than projects can have; the week's tooltip and table list its
+projects instead. Every chart has a Table view with all its numbers.
+

@@ -36,3 +36,22 @@
   outline: 2px solid var(--amber);
   outline-offset: 2px;
 }
+
+.description {
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-text);
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.description:focus-visible {
+  outline: 2px solid var(--amber-line);
+  outline-offset: -1px;
+}

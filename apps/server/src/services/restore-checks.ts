@@ -10,7 +10,7 @@ import {
 import { readSpan } from "./meeting-data.ts";
 
 /**
- * Checks of meeting rows in a restore that the database cannot do: the JSON columns hold what the
+ * Checks of meeting and repeat rows in a restore that the database cannot do: the JSON columns hold what the
  * services read, dates and instants have their format, and the limits per account hold. A hand-made file
  * then fails with the table and row instead of breaking the account's meetings list later.
  */
@@ -37,8 +37,13 @@ const ROW_CHECKS: Partial<Record<string, (row: Row) => string | null>> = {
     return isInstant(row.since) ? null : "since is not a UTC time";
   },
   series: (row) => {
-    if (row.owner_kind !== "meeting") return 'owner_kind must be "meeting"';
-    if (typeof row.meeting_id !== "number") return "meeting_id is missing";
+    if (row.owner_kind === "meeting") {
+      if (typeof row.meeting_id !== "number") return "meeting_id is missing";
+      if (row.todo_id != null) return "a meeting's repeat has no todo_id";
+    } else if (row.owner_kind === "todo") {
+      if (typeof row.todo_id !== "number") return "todo_id is missing";
+      if (row.meeting_id != null) return "a todo's planned time has no meeting_id";
+    } else return 'owner_kind must be "meeting" or "todo"';
     const span = readSpan({
       id: Number(row.id),
       rule: String(row.rule),
@@ -83,9 +88,18 @@ export function limitProblem(
 ): { table: string; message: string } | null {
   if ((data.meetings ?? []).length > MAX_MEETINGS)
     return { table: "meetings", message: `more than ${MAX_MEETINGS} meetings in one account` };
-  for (const [meetingId, n] of countBy(data.series ?? [], "meeting_id")) {
+  const meetingSeries = (data.series ?? []).filter((row) => row.owner_kind !== "todo");
+  for (const [meetingId, n] of countBy(meetingSeries, "meeting_id")) {
     if (n > MAX_SEGMENTS)
       return { table: "series", message: `meeting ${String(meetingId)} has more than ${MAX_SEGMENTS} parts` };
+  }
+  const todoSeries = (data.series ?? []).filter((row) => row.owner_kind === "todo");
+  for (const [todoId, n] of countBy(todoSeries, "todo_id")) {
+    if (n > MAX_SEGMENTS)
+      return {
+        table: "series",
+        message: `the planned time of todo ${String(todoId)} has more than ${MAX_SEGMENTS} parts`,
+      };
   }
   for (const [meetingId, n] of countBy(data.meeting_todos ?? [], "meeting_id")) {
     if (n > MAX_MEETING_TODOS)
