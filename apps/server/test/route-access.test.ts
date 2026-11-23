@@ -60,6 +60,7 @@ const MATRIX: [method: string, path: string, access: Access][] = [
   ["POST", "/spaces/1/members", "session"],
   ["DELETE", "/spaces/1/members/2", "session"],
   ["POST", "/feedback", "session"],
+  ["GET", "/users", "read"],
   ["GET", "/ai/settings", "session"],
   ["PATCH", "/ai/settings", "session"],
   ["POST", "/ai/plan", "write"],

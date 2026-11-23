@@ -1,6 +1,6 @@
 import { applyLabelChange, parseLabelName, type Person, scopeKey } from "@organizer/shared";
 import { type CSSProperties, useState } from "react";
-import { usePeople, useLabels, useProjects } from "../../lib/queries.ts";
+import { useLabels, usePeople, useProjects, useUsers } from "../../lib/queries.ts";
 import { LabelPill } from "../LabelPill.tsx";
 import { Picker } from "./Picker.tsx";
 import styles from "./Picker.module.css";
@@ -102,7 +102,9 @@ export function splitName(text: string): { firstName: string; lastName: string }
 
 export type PersonChoice =
   | { personId: number; displayName: string }
-  | { firstName: string; lastName: string; displayName: string };
+  | { firstName: string; lastName: string; displayName: string }
+  /** A Sloppanizer user: becomes (or finds) the person linked to them. */
+  | { username: string; displayName: string };
 
 export function PeoplePicker({
   value,
@@ -116,25 +118,55 @@ export function PeoplePicker({
 }) {
   const [search, setSearch] = useState("");
   const people = usePeople({ q: search.trim() });
-  const chosenIds = new Set(value.flatMap((c) => ("personId" in c ? [String(c.personId)] : [])));
-  const items = (people.data ?? []).map((person: Person) => ({
-    value: String(person.id),
-    label: (
-      <>
-        {person.displayName}
-        {(person.note || person.team) && <span className={styles.sub}>{person.note || person.team}</span>}
-      </>
+  const users = useUsers(search.trim());
+  const chosenIds = new Set(
+    value.flatMap((c) =>
+      "personId" in c ? [String(c.personId)] : "username" in c ? [`user:${c.username}`] : [],
     ),
-  }));
+  );
+  // A user who already is one of your people shows as that person.
+  const linked = new Set((people.data ?? []).map((p) => p.username).filter(Boolean));
+  const userItems = (users.data ?? [])
+    .filter((user) => !linked.has(user.username))
+    .map((user) => ({
+      value: `user:${user.username}`,
+      label: (
+        <>
+          {user.name}
+          <span className={styles.sub}>@{user.username}, Sloppanizer user</span>
+        </>
+      ),
+    }));
+  const items = [
+    ...(people.data ?? []).map((person: Person) => ({
+      value: String(person.id),
+      label: (
+        <>
+          {person.displayName}
+          {person.username ? (
+            <span className={styles.sub}>@{person.username}</span>
+          ) : (
+            (person.note || person.team) && <span className={styles.sub}>{person.note || person.team}</span>
+          )}
+        </>
+      ),
+    })),
+    ...userItems,
+  ];
   return (
     <Picker
       label={label}
-      placeholder="Search people or type First Last"
+      placeholder="Search people and users, or type First Last"
       items={items}
       selected={chosenIds}
       search={search}
       onSearchChange={setSearch}
       onPick={(id) => {
+        if (id.startsWith("user:")) {
+          const user = users.data?.find((u) => `user:${u.username}` === id);
+          if (user) onToggle({ username: user.username, displayName: user.name });
+          return;
+        }
         const person = people.data?.find((p) => String(p.id) === id);
         if (person) onToggle({ personId: person.id, displayName: person.displayName });
       }}

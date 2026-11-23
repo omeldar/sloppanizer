@@ -30,6 +30,8 @@ const LabelList = z.array(LabelName).max(50);
 export const PersonRef = z.union([
   z.strictObject({ personId: Id }),
   z.strictObject({ firstName: PersonName, lastName: PersonName }),
+  /** A Sloppanizer user: the person linked to them, made from their name the first time. */
+  z.strictObject({ username: z.string().trim().toLowerCase().min(1).max(32) }),
 ]);
 export type PersonRef = z.infer<typeof PersonRef>;
 const PersonRefList = z.array(PersonRef).max(50);

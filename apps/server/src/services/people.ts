@@ -13,6 +13,7 @@ import {
 } from "@organizer/shared";
 import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
 import { people, personTagLinks, personTopics, todoPeople, todos, topics } from "../db/schema.ts";
+import { accounts } from "../db/auth-schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, inTx, now, type Scoped } from "./context.ts";
 import { insertOwnedRow, owned } from "./owned.ts";
@@ -29,7 +30,7 @@ export const toPersonBrief = (row: Omit<PersonRow, "accountId">): PersonBrief =>
   id: row.id,
   firstName: row.firstName,
   lastName: row.lastName,
-  displayName: `${row.firstName} ${row.lastName}`,
+  displayName: `${row.firstName} ${row.lastName}`.trim(),
   note: row.note,
   team: row.team,
   email: row.email,
@@ -109,6 +110,7 @@ export function loadPeople(sc: Scoped, rows: readonly PersonRow[]): Person[] {
   return rows.map((row) => ({
     ...toPersonBrief(row),
     notesMd: row.notesMd,
+    username: row.username,
     languages: decodeLanguages(row.languages),
     topics: topicMap.get(row.id) ?? [],
     tags: tagMap.get(row.id) ?? [],
@@ -453,6 +455,10 @@ export function resolvePeople(
       out.push(row);
       continue;
     }
+    if ("username" in ref) {
+      out.push(personForUser(sc, at, ref.username));
+      continue;
+    }
     const matches = findNamesakes(sc, ref.firstName, ref.lastName);
     if (matches.length > 1) throw ambiguous(matches);
     const match = matches[0];
@@ -461,4 +467,38 @@ export function resolvePeople(
   }
   const seen = new Set<number>();
   return out.filter((row) => (seen.has(row.id) ? false : (seen.add(row.id), true)));
+}
+
+/**
+ * The person who is this Sloppanizer user: the one linked to them, else a namesake not linked to anyone
+ * (it gets linked), else a new person named like the user ("First Last", or the username alone).
+ */
+function personForUser(sc: Scoped, at: string, username: string): PersonRow {
+  const linked = sc.db
+    .select()
+    .from(people)
+    .where(owned(sc, people, eq(people.username, username)))
+    .get();
+  if (linked) return linked;
+  const user = sc.db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.username, username), eq(accounts.kind, "user"), eq(accounts.status, "active")))
+    .get();
+  if (!user) {
+    throw new ApiError("validation_failed", `No user is called "${username}". Check the username.`, {
+      unknownUsernames: [username],
+    });
+  }
+  const named = user.firstName.trim() || user.lastName.trim();
+  const firstName = named ? user.firstName.trim() : user.username;
+  const lastName = named ? user.lastName.trim() : "";
+  const namesake = findNamesakes(sc, firstName, lastName).find((row) => row.username === "");
+  const id = namesake?.id ?? insertPerson(sc, at, firstName, lastName).id;
+  sc.db
+    .update(people)
+    .set({ username, updatedAt: at })
+    .where(owned(sc, people, eq(people.id, id)))
+    .run();
+  return getPersonRow(sc, id);
 }

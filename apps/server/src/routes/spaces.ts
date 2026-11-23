@@ -8,6 +8,7 @@ import {
   Space,
   SpaceMemberParams,
   UpdateSpace,
+  UserBrief,
 } from "@organizer/shared";
 import { z } from "zod";
 import type { Config } from "../config.ts";
@@ -20,10 +21,16 @@ import {
   getSpace,
   listSpaces,
   removeSpaceMember,
+  searchUsers,
   submitFeedback,
   updateSpace,
 } from "../services/spaces.ts";
 import { type App, authOf, type Deps } from "./types.ts";
+
+const UsersQuery = z.strictObject({
+  q: z.string().max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+});
 
 /** Shared projects (managing them; working in one goes through the normal routes) and feedback. */
 export function spaceRoutes(app: App, deps: Deps, config: Config): void {
@@ -109,6 +116,20 @@ export function spaceRoutes(app: App, deps: Deps, config: Config): void {
       removeSpaceMember(deps.db, config, me(request), request.params.id, request.params.accountId);
       return reply.status(204).send();
     },
+  );
+
+  app.get(
+    `${API_PREFIX}/users`,
+    {
+      schema: {
+        tags: ["people"],
+        summary: "Sloppanizer users to add as requester or contact ({ username } in a person reference)",
+        querystring: UsersQuery,
+        response: { 200: z.array(UserBrief) },
+      },
+    },
+    async (request) =>
+      searchUsers(deps.db, authOf(request).account.id, request.query.q ?? "", request.query.limit ?? 8),
   );
 
   app.post(

@@ -139,3 +139,42 @@ describe("date and time formats", () => {
     expect((await t.call("PATCH", "/api/v1/account", { dateFormat: "nope" })).statusCode).toBe(422);
   });
 });
+
+describe("users as people", () => {
+  it("finds users and links them as requester or contact, once", async () => {
+    const t = await makeApp();
+    const bo = await t.asAccount({ username: "bobo" });
+    await bo.call("PATCH", "/api/v1/account", { firstName: "Bo", lastName: "Lind" });
+    await t.asAccount({ username: "cyra" });
+
+    const found = json<{ username: string; name: string }[]>(await t.call("GET", "/api/v1/users?q=lind"));
+    expect(found).toEqual([{ username: "bobo", name: "Bo Lind", firstName: "Bo", lastName: "Lind" }]);
+    // Not yourself.
+    expect(json<unknown[]>(await t.call("GET", "/api/v1/users?q=anna"))).toEqual([]);
+
+    const todo = await t.create<Todo>("/api/v1/todos", {
+      title: "Review the offer",
+      requestedBy: [{ username: "bobo" }],
+      contacts: [{ username: "cyra" }],
+    });
+    expect(todo.requestedBy.map((p) => p.displayName)).toEqual(["Bo Lind"]);
+    expect(todo.contacts.map((p) => p.displayName)).toEqual(["cyra"]);
+    const again = await t.create<Todo>("/api/v1/todos", {
+      title: "Again",
+      requestedBy: [{ username: "bobo" }],
+    });
+    expect(again.requestedBy[0]?.id).toBe(todo.requestedBy[0]?.id);
+    const people = json<{ displayName: string; username: string }[]>(await t.call("GET", "/api/v1/people"));
+    expect(people.map((p) => [p.displayName, p.username])).toEqual(
+      expect.arrayContaining([
+        ["Bo Lind", "bobo"],
+        ["cyra", "cyra"],
+      ]),
+    );
+    const unknown = await t.call("POST", "/api/v1/todos", {
+      title: "X",
+      requestedBy: [{ username: "nobody" }],
+    });
+    expect(unknown.statusCode).toBe(422);
+  });
+});

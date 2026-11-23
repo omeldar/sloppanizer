@@ -107,6 +107,8 @@ export const people = sqliteTable(
     notesMd: text("notes_md").notNull().default(""),
     /** Language codes, comma-separated in the order of PERSON_LANGUAGES ("de,en"; "" = not set). */
     languages: text("languages").notNull().default(""),
+    /** The Sloppanizer user this person is ("" = not a user). Usernames never change. */
+    username: text("username").notNull().default(""),
   },
   (t) => [
     primaryKey({ columns: [t.accountId, t.id] }),

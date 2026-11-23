@@ -103,6 +103,8 @@ export const Person = z.strictObject({
   email: z.string(),
   /** Long notes in Markdown. */
   notesMd: z.string(),
+  /** The Sloppanizer user this person is ("" = not a user). */
+  username: z.string(),
   /** Languages to use with them ([] = not set), in the order of PERSON_LANGUAGES. */
   languages: z.array(PersonLanguage),
   /** Topic names (stored spelling), by name. */
@@ -126,6 +128,16 @@ export const PersonBrief = z.strictObject({
   email: z.string(),
 });
 export type PersonBrief = z.infer<typeof PersonBrief>;
+
+/** A Sloppanizer user, to add as a person (requester or contact). */
+export const UserBrief = z.strictObject({
+  username: z.string(),
+  /** "First Last" when set, else the username. */
+  name: z.string(),
+  firstName: z.string(),
+  lastName: z.string(),
+});
+export type UserBrief = z.infer<typeof UserBrief>;
 
 export const ProjectRef = z.strictObject({ id: Id, slug: Slug, name: z.string(), color: Color });
 export type ProjectRef = z.infer<typeof ProjectRef>;

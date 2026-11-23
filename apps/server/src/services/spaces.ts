@@ -10,6 +10,7 @@ import {
   type SpaceMember,
   type SpaceRole,
   type UpdateSpace,
+  type UserBrief,
 } from "@organizer/shared";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Config } from "../config.ts";
@@ -21,7 +22,6 @@ import { type AccountRow, deleteAccount, getAccount, newWebauthnUserId } from ".
 import type { Ctx, Tx } from "./context.ts";
 import { createLabel } from "./labels.ts";
 import { owned, seedAccount } from "./owned.ts";
-import { findNamesakes, resolvePeople } from "./people.ts";
 import { createProject, listProjects, updateProject } from "./projects.ts";
 import { foldCase } from "./text.ts";
 import { createTodo } from "./todos.ts";
@@ -427,20 +427,6 @@ export function submitFeedback(
   const space = getAccount(db, spaceId) as AccountRow;
   const ctx = spaceCtx(db, clock, space, sender.timeZone);
   const name = memberName(sender);
-  const first = sender.firstName.trim() || (sender.lastName.trim() ? "" : sender.username);
-  const last = sender.firstName.trim() || sender.lastName.trim() ? sender.lastName.trim() : "";
-  const at = clock().toISOString();
-  const person =
-    findNamesakes(ctx, first, last)[0] ??
-    db.transaction(
-      (tx) =>
-        resolvePeople(
-          { db: tx, accountId: ctx.accountId },
-          at,
-          [{ firstName: first, lastName: last }],
-          true,
-        )[0],
-    );
   const project =
     listProjects(ctx).find((p) => p.slug === "sloppanizer" && p.archivedAt === null) ??
     listProjects(ctx).find((p) => p.archivedAt === null);
@@ -457,7 +443,34 @@ export function submitFeedback(
     descriptionMd: details,
     projectId: project?.id ?? null,
     labels: [FEEDBACK_LABELS[input.kind].name],
-    ...(person ? { requestedBy: [{ personId: person.id }] } : {}),
+    // The sender as a linked person ("First Last", or the username).
+    requestedBy: [{ username: sender.username }],
   });
   return { id: todo.id };
+}
+
+/** Users matching the search (username or name), to add as a person; never the caller or a space. */
+export function searchUsers(db: Db, callerId: number, q: string, limit: number): UserBrief[] {
+  const needle = foldCase(q.trim());
+  return db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.kind, "user"), eq(accounts.status, "active")))
+    .orderBy(asc(accounts.username))
+    .all()
+    .filter((row) => row.id !== callerId)
+    .filter(
+      (row) =>
+        needle === "" ||
+        [row.username, row.firstName, row.lastName, row.displayName, memberName(row)].some((text) =>
+          foldCase(text).includes(needle),
+        ),
+    )
+    .slice(0, limit)
+    .map((row) => ({
+      username: row.username,
+      name: memberName(row),
+      firstName: row.firstName,
+      lastName: row.lastName,
+    }));
 }

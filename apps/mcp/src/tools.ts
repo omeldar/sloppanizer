@@ -184,6 +184,7 @@ const sameName = (a: string, b: string): boolean =>
 async function resolvePerson(api: Api, input: z.infer<typeof PersonInput>): Promise<number> {
   const ref = toPersonRef(input);
   if ("personId" in ref) return ref.personId;
+  if ("username" in ref) throw new ToolError("Use a person's id or name here, not a username.");
   const name = `${ref.firstName} ${ref.lastName}`;
   const found = await api.get<Person[]>("/people", { q: name });
   const matches = found.filter(

@@ -33,6 +33,7 @@ import {
   Todo,
   TodoPage,
   Topic,
+  UserBrief,
   type UpdateLabel,
   type UpdateNote,
   type UpdatePerson,
@@ -216,6 +217,15 @@ export const useSearch = (params: SearchParams, enabled = true) =>
     queryFn: () => api(SearchResult, "/search", { query: { ...params } }),
     placeholderData: (previous) => previous,
     enabled: enabled && params.q.trim().length > 0,
+  });
+
+/** Sloppanizer users matching the search, to add as a person (nothing for an empty search). */
+export const useUsers = (q: string) =>
+  useQuery({
+    queryKey: ["users", q] as const,
+    queryFn: () => api(z.array(UserBrief), "/users", { query: { q, limit: 5 } }),
+    enabled: q.length > 0,
+    placeholderData: (previous) => previous,
   });
 
 export const usePeopleStats = (params: PeopleStatsParams | undefined) => {

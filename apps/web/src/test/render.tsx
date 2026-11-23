@@ -93,6 +93,7 @@ export function makePerson(
     team: "",
     email: "",
     notesMd: "",
+    username: "",
     languages: [],
     topics: [],
     tags: [],

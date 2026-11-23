@@ -30,6 +30,13 @@ export const formatPrefs = (): FormatPrefs => prefs;
 export const formatDate = (date: string): string => formatDateAs(date, prefs.dateFormat);
 /** Day and month, "03.10.". */
 export const formatDayMonth = (date: string): string => formatDayMonthAs(date, prefs.dateFormat);
+/** A full hour for axes and grids: "13:00", or "1 PM" (narrow columns). */
+export function formatHour(hour: number): string {
+  if (prefs.timeFormat === "24h") return `${String(hour % 24).padStart(2, "0")}:00`;
+  const h = hour % 24;
+  return `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "AM" : "PM"}`;
+}
+
 /** A wall clock time "15:00" as the account shows it ("15:00" or "3:00 PM"). */
 export const formatTime = (time: string): string => formatTimeAs(time, prefs.timeFormat);
 

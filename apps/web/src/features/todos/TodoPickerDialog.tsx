@@ -19,9 +19,9 @@ const TITLES: Record<PickerKind, string> = {
 };
 
 export function personRef(choice: PersonChoice): PersonRef {
-  return "personId" in choice
-    ? { personId: choice.personId }
-    : { firstName: choice.firstName, lastName: choice.lastName };
+  if ("personId" in choice) return { personId: choice.personId };
+  if ("username" in choice) return { username: choice.username };
+  return { firstName: choice.firstName, lastName: choice.lastName };
 }
 
 /** Adds the person in that role, or removes them when they already have it. */

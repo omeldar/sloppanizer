@@ -217,6 +217,7 @@ describe("outputs", () => {
     const person = {
       ...brief,
       notesMd: "",
+      username: "",
       languages: ["en"],
       topics: ["VPN"],
       tags: [],

@@ -68,6 +68,7 @@ function person(overrides: Partial<Person> = {}): Person {
   return {
     ...max,
     notesMd: "",
+    username: "",
     languages: ["de", "en"],
     topics: ["firewall rules", "VPN"],
     tags: [

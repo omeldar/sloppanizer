@@ -99,6 +99,7 @@ function person(overrides: Partial<Person> = {}): Person {
     team: "Network team",
     email: "",
     notesMd: "",
+    username: "",
     languages: [],
     topics: ["VPN"],
     tags: [],

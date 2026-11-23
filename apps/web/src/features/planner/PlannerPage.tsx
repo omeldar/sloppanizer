@@ -23,6 +23,7 @@ import {
   dayLabel,
   formatDate,
   formatDayMonth,
+  formatHour,
   formatTime,
   timeZone,
   today,
@@ -518,7 +519,7 @@ export function PlannerPage() {
             <div className={styles.axis} aria-hidden="true">
               {HOURS.map((hour) => (
                 <span key={hour} className={styles.hourLabel}>
-                  {formatTime(minutesToTime(hour * 60))}
+                  {formatHour(hour)}
                 </span>
               ))}
             </div>

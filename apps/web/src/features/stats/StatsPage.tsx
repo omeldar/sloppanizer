@@ -1,7 +1,7 @@
 import { addDays, formatDuration, type WorkStats } from "@organizer/shared";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
-import { dayLabel, formatDate, formatDayMonth, formatTime, today } from "../../lib/format.ts";
+import { dayLabel, formatDate, formatDayMonth, formatHour, today } from "../../lib/format.ts";
 import {
   type BarRow,
   BarList,
@@ -291,7 +291,7 @@ function TrendCard({ stats }: { stats: WorkStats }) {
   );
 }
 
-const hourText = (hour: number): string => formatTime(`${String(hour).padStart(2, "0")}:00`);
+const hourText = (hour: number): string => formatHour(hour);
 
 function HoursCard({ stats }: { stats: WorkStats }) {
   const cells: HeatCell[] = stats.hours.flatMap((row, day) =>

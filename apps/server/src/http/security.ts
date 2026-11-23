@@ -162,7 +162,7 @@ export function authenticate(
  * Account, tokens, settings changes, export, restore, AI, meetings, calendar and admin stay personal.
  */
 const SPACE_ROUTE =
-  /^\/api\/v1\/(todos|projects|labels|people|person-tags|topics|teams|comments|attachments|notes|search|next|stats|blocks|me)(\/|$)/;
+  /^\/api\/v1\/(todos|projects|labels|people|person-tags|topics|teams|comments|attachments|notes|search|next|stats|blocks|me|users)(\/|$)/;
 
 export function allowedInSpace(route: string | undefined, method: string): boolean {
   if (route === undefined) return false;

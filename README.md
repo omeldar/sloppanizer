@@ -29,6 +29,17 @@ they sat untouched, and tells you why each one is where it is.
   time of the working day; Suggest steps proposes subtasks. Nothing is saved until you accept it. Runs on Claude
   (your Anthropic API key, stored encrypted on the server) or on a local Ollama in the browser on that computer
   (set `OLLAMA_ORIGINS` to the web app's origin for Ollama). Off, Sloppanizer is a plain todo app.
+- Shared projects: a project several users work on together (sidebar, Shared, plus). Members open it in its
+  own tab and get the whole app there: list, board, planner, notes, comments; the history names who did what.
+  Owners add members by username, rename and delete it; members can leave.
+- Feedback: "report a bug / request a feature" in the status bar, the sidebar and the palette. Reports land as
+  todos in the Sloppanizer shared project (all admins are members), labelled `type::bug` or `type::feature`,
+  requested by the sender ("First Last" from the account page, else the username).
+- Dates and times in your format: the region picked at sign-up presets it (31.12.2026 or 12/31/2026 and so
+  on, 15:00 or 3:00 PM); change it on the account page. Date fields have a Monday-first calendar, time fields
+  take 15:00 as well as 3 pm.
+- Other users as people: the requester and contact pickers also find Sloppanizer users; picking one adds
+  them to your people, linked to their account.
 - Search over todos, notes, comments and people (ignores case and accents), in the palette and on its own page.
 - People and contacts: a small directory of colleagues with team, email, the topics they help with and your own
   tags, so "whom do I ask about firewall rules?" has an answer. People statistics show who asks for how much
@@ -105,6 +116,11 @@ Settings (environment of the service, all optional): `ORGANIZER_PORT` (4711), `O
 - Search: `GET /api/v1/search?q=...` over todos, notes, comments and people.
 - Web links: `POST /api/v1/todos/{id}/urls` (`{ urls: [{ url, label? }] }`), `PATCH`/`DELETE`
   `/api/v1/todos/{id}/urls/{urlId}`; `urls` on `POST /api/v1/todos` too.
+- Shared projects: `GET`/`POST /api/v1/spaces`, `PATCH`/`DELETE /api/v1/spaces/{id}`,
+  `POST /api/v1/spaces/{id}/members` (`{ username }`), `DELETE /api/v1/spaces/{id}/members/{accountId}` (browser
+  session only). Every other route acts inside a shared project with the header `X-Sloppanizer-Space: <id>`.
+- Feedback: `POST /api/v1/feedback` (`{ kind: "bug" | "feature", title, description? }`).
+- Users: `GET /api/v1/users?q=` finds users; `{ username }` works wherever a person reference does.
 - Statistics: `GET /api/v1/stats/overview?from=YYYY-MM-DD&to=YYYY-MM-DD` (at most a year).
 - Repeating todos: `GET /api/v1/todos/recurring`; planned time that repeats with one:
   `POST`/`GET`/`DELETE /api/v1/todos/{id}/plan`, `PATCH /api/v1/todos/{id}/plan/{date}` (this, following or
