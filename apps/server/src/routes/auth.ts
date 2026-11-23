@@ -3,6 +3,8 @@ import {
   AuthConfig,
   ChallengeOptions,
   Login,
+  OidcCallback,
+  OidcReauth,
   PasskeyLogin,
   Reauth,
   RecoveryCodes,
@@ -31,6 +33,7 @@ import {
   signup,
   signupPasskeyOptions,
 } from "../services/auth/flows.ts";
+import { omeldarBackchannelLogout, omeldarReauth, omeldarSignIn } from "../services/auth/omeldar.ts";
 import { revokeSession } from "../services/auth/sessions.ts";
 import { accountRoutes } from "./account.ts";
 import { adminRoutes } from "./admin.ts";
@@ -42,7 +45,8 @@ import type { App, Deps } from "./types.ts";
  * admin exists, it logs the setup code for the first admin (the only secret ever written to the log).
  */
 export function registerAccountApi(app: App, deps: Deps, auth: AuthServices): void {
-  const code = prepareSetupCode(deps.db, auth.config.setupCode);
+  // With SLOPPANIZER_AUTH=oidc the first admin comes from auth.omeldar.com, not a setup code.
+  const code = auth.config.omeldar.mode === "oidc" ? null : prepareSetupCode(deps.db, auth.config.setupCode);
   if (code !== null) {
     const origin = auth.config.webOrigins[0] ?? "";
     app.log.warn(`No admin account yet. Open ${origin}/setup and enter the setup code: ${code}`);
@@ -58,6 +62,9 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   const publicConfig = { access: "public" as const };
   const sessionConfig = { access: "session" as const };
   const tags = ["auth"];
+  const { omeldar } = auth.config;
+  /** The own login, sign-up, setup, reset and reauth: off while sign-in goes through auth.omeldar.com. */
+  const local = { access: "public" as const, localSignIn: true };
 
   app.get(
     `${API_PREFIX}/auth/config`,
@@ -70,16 +77,26 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
       },
     },
     async () => ({
-      signupsOpen: auth.config.signupsOpen,
-      setupNeeded: !adminExists(db),
+      signupsOpen: auth.config.signupsOpen && omeldar.mode !== "oidc",
+      setupNeeded: omeldar.mode !== "oidc" && !adminExists(db),
       rpId: auth.config.rpId,
+      mode: omeldar.mode,
+      omeldar:
+        omeldar.mode === "local"
+          ? null
+          : {
+              issuer: omeldar.issuer,
+              clientId: omeldar.clientId,
+              redirectUri: omeldar.redirectUri,
+              accountUrl: `${omeldar.issuer}/account`,
+            },
     }),
   );
 
   app.post(
     `${API_PREFIX}/auth/signup/passkey-options`,
     {
-      config: publicConfig,
+      config: local,
       schema: {
         tags,
         summary: "Passkey options for a sign-up without a password",
@@ -92,7 +109,7 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/auth/signup`,
     {
-      config: publicConfig,
+      config: local,
       schema: {
         tags,
         summary: "Sign up; the account waits for an admin's approval",
@@ -106,7 +123,7 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/auth/setup/passkey-options`,
     {
-      config: publicConfig,
+      config: local,
       schema: {
         tags,
         summary: "Passkey options for the first admin",
@@ -119,7 +136,7 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/auth/setup`,
     {
-      config: publicConfig,
+      config: local,
       schema: {
         tags,
         summary: "Create the first admin with the setup code from the server log",
@@ -134,7 +151,7 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/auth/login`,
     {
-      config: publicConfig,
+      config: local,
       schema: {
         tags,
         summary: "Sign in with password plus authenticator or recovery code",
@@ -148,7 +165,7 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/auth/passkey/options`,
     {
-      config: publicConfig,
+      config: local,
       schema: {
         tags,
         summary: "Options for a passkey sign-in (any passkey of this site)",
@@ -165,7 +182,7 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/auth/passkey/login`,
     {
-      config: publicConfig,
+      config: local,
       schema: {
         tags,
         summary: "Sign in with a passkey",
@@ -193,7 +210,7 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/auth/reset/passkey-options`,
     {
-      config: publicConfig,
+      config: local,
       schema: {
         tags,
         summary: "Passkey options for a login reset",
@@ -206,7 +223,7 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/auth/reset`,
     {
-      config: publicConfig,
+      config: local,
       schema: {
         tags,
         summary: "Set up a new login with the admin's reset code",
@@ -229,7 +246,7 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/auth/reauth/passkey-options`,
     {
-      config: sessionConfig,
+      config: { ...sessionConfig, localSignIn: true },
       schema: {
         tags,
         summary: "Options to confirm it is you with a passkey of this account",
@@ -251,7 +268,7 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/auth/reauth`,
     {
-      config: sessionConfig,
+      config: { ...sessionConfig, localSignIn: true },
       schema: {
         tags,
         summary: "Confirm it is you before a sensitive action (valid 10 minutes)",
@@ -271,4 +288,57 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
       return reply.status(204).send();
     },
   );
+
+  app.post(
+    `${API_PREFIX}/auth/omeldar/callback`,
+    {
+      config: publicConfig,
+      schema: {
+        tags,
+        summary: 'Finish "Sign in with omeldar": the callback\'s query and the pending sign-in',
+        body: OidcCallback,
+        response: { 200: SessionTokens },
+      },
+    },
+    async (request) => omeldarSignIn(db, auth, now(), request.body, clientOf(request), deps.fallbackTimeZone),
+  );
+  app.post(
+    `${API_PREFIX}/auth/omeldar/reauth`,
+    {
+      config: sessionConfig,
+      schema: { tags, summary: "Confirm it is you with a fresh sign-in at omeldar", body: OidcReauth },
+    },
+    async (request, reply) => {
+      const session = sessionOf(request);
+      await omeldarReauth(
+        db,
+        auth,
+        now(),
+        { id: session.sessionId, accountId: session.accountId },
+        request.body,
+      );
+      return reply.status(204).send();
+    },
+  );
+
+  // OpenID Connect back-channel logout: auth.omeldar.com posts a form with a signed logout_token.
+  void app.register(async (scope) => {
+    scope.addContentTypeParser(
+      "application/x-www-form-urlencoded",
+      { parseAs: "string", bodyLimit: 16_384 },
+      (_request, body, done) => done(null, Object.fromEntries(new URLSearchParams(body as string))),
+    );
+    scope.post(
+      `${API_PREFIX}/auth/backchannel-logout`,
+      { config: publicConfig, schema: { tags, summary: "Sign-out from auth.omeldar.com", hide: true } },
+      async (request, reply) => {
+        const token = (request.body as { logout_token?: unknown } | undefined)?.logout_token;
+        if (typeof token !== "string" || token.length > 8192) {
+          throw new ApiError("validation_failed", "Send logout_token as a form field.");
+        }
+        await omeldarBackchannelLogout(db, auth, now(), token);
+        return reply.header("cache-control", "no-store").status(200).send();
+      },
+    );
+  });
 }

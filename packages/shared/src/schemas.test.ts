@@ -198,6 +198,7 @@ describe("errors", () => {
       unauthorized: 401,
       forbidden: 403,
       reauth_required: 403,
+      gone: 410,
       too_large: 413,
       unsupported_type: 415,
       unknown_host: 421,

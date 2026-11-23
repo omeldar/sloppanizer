@@ -8,6 +8,8 @@ export const ERROR_STATUS = {
   forbidden: 403,
   /** A sensitive action needs a fresh sign-in (POST /auth/reauth, then repeat the call once). */
   reauth_required: 403,
+  /** Turned off here, e.g. the own login while sign-in goes through auth.omeldar.com. */
+  gone: 410,
   too_large: 413,
   unsupported_type: 415,
   unknown_host: 421,

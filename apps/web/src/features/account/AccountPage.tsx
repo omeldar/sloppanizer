@@ -35,11 +35,16 @@ import { absoluteTime, relativeTime } from "../../lib/format.ts";
 import { stopTabSession } from "../../lib/session.ts";
 import { passkeysSupported } from "../../lib/webauthn.ts";
 import { PasswordInput, RecoveryCodesBlock, TotpSetup } from "../auth/parts.tsx";
+import { useQuery } from "@tanstack/react-query";
+import { authConfig } from "../../lib/auth.ts";
 import styles from "./Account.module.css";
 
 /** The signed-in account: profile, how it signs in, its sessions, and deleting it. */
 export function AccountPage() {
   const profile = useAccountProfile();
+  const config = useQuery({ queryKey: ["auth-config"], queryFn: authConfig, staleTime: Infinity });
+  const omeldar = config.data?.omeldar ?? null;
+  const omeldarOnly = config.data?.mode === "oidc";
   if (profile.isPending) return <Loading />;
   if (profile.isError) return <ErrorState error={profile.error} onRetry={() => void profile.refetch()} />;
   const data = profile.data;
@@ -57,13 +62,37 @@ export function AccountPage() {
         timeZone={data.timeZone}
         username={data.username}
       />
-      <PasswordSection username={data.username} hasPassword={data.security.password} />
-      {data.security.password && <AuthenticatorSection username={data.username} />}
-      <PasskeysSection />
-      <RecoveryCodesSection username={data.username} left={data.security.recoveryCodesLeft} />
+      {omeldar && (omeldarOnly || data.omeldarLinked) && <OmeldarSection accountUrl={omeldar.accountUrl} />}
+      {!omeldarOnly && (
+        <>
+          <PasswordSection username={data.username} hasPassword={data.security.password} />
+          {data.security.password && <AuthenticatorSection username={data.username} />}
+          <PasskeysSection />
+          <RecoveryCodesSection username={data.username} left={data.security.recoveryCodesLeft} />
+        </>
+      )}
       <SessionsSection />
       <DeleteSection accountId={data.id} username={data.username} />
     </div>
+  );
+}
+
+/** Signing in through auth.omeldar.com: password, passkeys and the second step are managed there. */
+function OmeldarSection({ accountUrl }: { accountUrl: string }) {
+  return (
+    <section className={styles.section} aria-labelledby="omeldar-heading">
+      <h2 className={styles.heading} id="omeldar-heading">
+        Sign-in
+      </h2>
+      <p className={styles.text}>
+        You sign in with your omeldar account. Change your password, passkeys and second step there.
+      </p>
+      <div className={styles.formRow}>
+        <a className={styles.linkButton} href={accountUrl} target="_blank" rel="noreferrer">
+          Manage your omeldar account
+        </a>
+      </div>
+    </section>
   );
 }
 

@@ -53,6 +53,8 @@ describe("first admin setup", () => {
       signupsOpen: true,
       setupNeeded: true,
       rpId: "app.example.test",
+      mode: "local",
+      omeldar: null,
     });
     const body = await setupAdmin(t);
     expect(body.recoveryCodes).toHaveLength(10);

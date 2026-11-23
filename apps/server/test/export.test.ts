@@ -71,7 +71,7 @@ describe("GET /export.zip", () => {
       format: 8,
       exportedAt: "2026-11-14T13:04:05.000Z",
       appVersion: VERSION,
-      schemaVersion: 20,
+      schemaVersion: 21,
       account: { username: "anna" },
       attachments: { count: 0, bytes: 0, missing: [] },
     });

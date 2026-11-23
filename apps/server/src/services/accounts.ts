@@ -148,6 +148,7 @@ export function toProfile(tx: Tx, row: AccountRow): AccountProfile {
     lastName: row.lastName,
     dateFormat: row.dateFormat,
     timeFormat: row.timeFormat,
+    omeldarLinked: row.authSubject !== null,
     timeZone: row.timeZone,
     createdAt: row.createdAt,
     security: {

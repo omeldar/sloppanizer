@@ -1,5 +1,5 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "printWidth": 110,
-  "ignorePatterns": ["**/*.md", "pnpm-lock.yaml", "tmp/**", "**/drizzle/meta/**"]
+  "ignorePatterns": ["**/*.md", "pnpm-lock.yaml", "tmp/**", "**/drizzle/meta/**", "**/omeldar-auth.ts"]
 }

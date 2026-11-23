@@ -50,6 +50,8 @@ export type { Auth };
 
 declare module "fastify" {
   interface FastifyContextConfig {
+    /** Sloppanizer's own sign-in (login, sign-up, credentials): 410 with SLOPPANIZER_AUTH=oidc. */
+    localSignIn?: boolean;
     access?: Access;
     /** Needs a full sign-in within the last 10 minutes (403 reauth_required otherwise). */
     reauth?: boolean;
@@ -252,6 +254,16 @@ export function registerSecurity(app: FastifyInstance, options: SecurityOptions)
     if (!needsApiAuth(request)) return;
 
     const access: Access = request.routeOptions.config.access ?? "auto";
+    if (request.routeOptions.config.localSignIn && config.omeldar.mode === "oidc") {
+      return reply
+        .status(410)
+        .send(
+          errorBody(
+            "gone",
+            'Sign-in and account security moved to auth.omeldar.com. Use "Sign in with omeldar".',
+          ),
+        );
+    }
     if (access === "public") return;
 
     const notFound = () => {

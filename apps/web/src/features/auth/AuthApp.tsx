@@ -4,6 +4,7 @@ import { authConfig } from "../../lib/auth.ts";
 import type { AuthPage } from "../../lib/entry.ts";
 import styles from "./Auth.module.css";
 import { LoginPage, type Go } from "./LoginPage.tsx";
+import { OmeldarCallbackPage, OmeldarLoginPage } from "./Omeldar.tsx";
 import { AuthShell } from "./parts.tsx";
 import { ConsentPage } from "./ConsentPage.tsx";
 import { ResetPage } from "./ResetPage.tsx";
@@ -16,13 +17,14 @@ const TITLES: Record<AuthPage, string> = {
   setup: "Set up",
   reset: "Reset your login",
   oauth: "Connect an app",
+  callback: "Signing in",
 };
 
 /** The pages without an account: sign in, sign up, first setup and login reset. */
 export function AuthApp({ page, search, go }: { page: AuthPage; search: URLSearchParams; go: Go }) {
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [configFailed, setConfigFailed] = useState(false);
-  const needsConfig = page === "signup" || page === "setup";
+  const needsConfig = page === "signup" || page === "setup" || page === "login";
 
   useEffect(() => {
     document.title = `${TITLES[page]}: Sloppanizer`;
@@ -40,10 +42,23 @@ export function AuthApp({ page, search, go }: { page: AuthPage; search: URLSearc
     };
   }, [needsConfig]);
 
-  if (page === "login") return <LoginPage search={search} go={go} />;
+  if (page === "callback") return <OmeldarCallbackPage search={search} go={go} />;
+  if (page === "login") {
+    // Waits for the config: with omeldar only, the own login form must not start (its passkey prompt).
+    if (!config && !configFailed) return null;
+    return config?.mode === "oidc" && config.omeldar ? (
+      <OmeldarLoginPage config={config.omeldar} search={search} />
+    ) : (
+      <LoginPage search={search} go={go} omeldar={config?.omeldar ?? null} />
+    );
+  }
   if (page === "oauth") return <ConsentPage search={search} go={go} />;
   if (page === "reset") return <ResetPage go={go} />;
-  if (page === "signup") return <SignupPage config={config} />;
+  if (page === "signup") {
+    if (config?.mode === "oidc" && config.omeldar)
+      return <OmeldarLoginPage config={config.omeldar} search={search} create />;
+    return <SignupPage config={config} />;
+  }
   // Setup only while the instance has no admin; afterwards the page does not exist.
   if (config?.setupNeeded) return <SetupPage go={go} />;
   if (config || configFailed) return <NotFound />;

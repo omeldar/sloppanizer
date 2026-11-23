@@ -6,6 +6,7 @@ import { afterEach } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
 import type { ClaudeRunner } from "../src/services/ai.ts";
+import type { OmeldarClient } from "../src/services/auth/omeldar.ts";
 import { accountFilesDir } from "../src/services/attachments.ts";
 import type { Ctx } from "../src/services/context.ts";
 import type { RestoreLimits } from "../src/services/restore.ts";
@@ -32,6 +33,8 @@ export interface TestAppOptions {
   env?: Record<string, string>;
   /** Stands in for the Claude API. */
   claude?: ClaudeRunner;
+  /** Stands in for auth.omeldar.com. */
+  omeldar?: OmeldarClient;
 }
 
 type Call = (
@@ -78,6 +81,7 @@ export async function makeApp(options: TestAppOptions = {}) {
     clock: () => new Date(current),
     ...(options.limits ? { limits: options.limits } : {}),
     ...(options.claude ? { claude: options.claude } : {}),
+    ...(options.omeldar ? { omeldar: options.omeldar } : {}),
   });
   cleanups.push(async () => {
     await app.close();

@@ -5,7 +5,10 @@ import { Button, Field, TextInput } from "../components/ui.tsx";
 import { CodeInput, PasswordInput } from "../features/auth/parts.tsx";
 import { reauth, reauthWithPasskey, useAccountProfile } from "../lib/accountQueries.ts";
 import { errorMessage, setReauthHandler } from "../lib/api.ts";
+import { authConfig } from "../lib/auth.ts";
+import { confirmWithOmeldar } from "../lib/omeldar.ts";
 import { passkeysSupported } from "../lib/webauthn.ts";
+import { useQuery } from "@tanstack/react-query";
 import styles from "../features/auth/Auth.module.css";
 
 const ignore = (): void => undefined;
@@ -60,6 +63,10 @@ type Mode = "code" | "recovery";
 
 function ReauthForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const profile = useAccountProfile();
+  const config = useQuery({ queryKey: ["auth-config"], queryFn: authConfig, staleTime: Infinity });
+  const omeldar = config.data?.omeldar ?? null;
+  const viaOmeldar = omeldar !== null && (profile.data?.omeldarLinked ?? false);
+  const omeldarOnly = config.data?.mode === "oidc";
   const hasPassword = profile.data?.security.password ?? true;
   const hasPasskeys = (profile.data?.security.passkeys ?? 0) > 0 && passkeysSupported();
   const [mode, setMode] = useState<Mode>("code");
@@ -99,8 +106,46 @@ function ReauthForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
   const recoveryOnly = !hasPassword;
   const current: Mode = recoveryOnly ? "recovery" : mode;
 
+  if (omeldarOnly) {
+    return (
+      <DialogBody>
+        {omeldar && (
+          <Button
+            variant="primary"
+            className={styles.wide}
+            disabled={busy}
+            onClick={() => void run(() => confirmWithOmeldar(omeldar))}
+          >
+            Confirm at omeldar
+          </Button>
+        )}
+        {error && (
+          <p className={styles.alert} role="alert">
+            {error}
+          </p>
+        )}
+        <DialogActions>
+          <Button onClick={onCancel}>Cancel</Button>
+        </DialogActions>
+      </DialogBody>
+    );
+  }
+
   return (
     <DialogBody onSubmit={submit}>
+      {viaOmeldar && omeldar && (
+        <>
+          <Button
+            variant="primary"
+            className={styles.wide}
+            disabled={busy}
+            onClick={() => void run(() => confirmWithOmeldar(omeldar))}
+          >
+            Confirm at omeldar
+          </Button>
+          <div className={styles.or}>or</div>
+        </>
+      )}
       {hasPasskeys && (
         <>
           <Button

@@ -73,7 +73,7 @@ describe("restore upload and preview", () => {
       format: 8,
       exportedAt: "2026-11-11T10:00:00.000Z",
       appVersion: VERSION,
-      schemaVersion: 20,
+      schemaVersion: 21,
       attachments: { count: 1, bytes: 11, missing: [] },
       warnings: [],
       expiresAt: "2026-11-11T11:00:00.000Z",

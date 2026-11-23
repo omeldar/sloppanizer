@@ -99,7 +99,7 @@ export function accountRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/account/password`,
     {
-      config: sensitive,
+      config: { ...sensitive, localSignIn: true },
       schema: { tags, summary: "Set a new password; other sessions are signed out", body: ChangePassword },
     },
     async (request, reply) => {
@@ -149,7 +149,7 @@ export function accountRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/account/totp`,
     {
-      config: sensitive,
+      config: { ...sensitive, localSignIn: true },
       schema: {
         tags,
         summary: "Replace the authenticator (prove the new one with a code)",
@@ -182,7 +182,7 @@ export function accountRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/account/recovery-codes`,
     {
-      config: sensitive,
+      config: { ...sensitive, localSignIn: true },
       schema: {
         tags,
         summary: "New recovery codes (the old ones stop working)",
@@ -202,7 +202,7 @@ export function accountRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/account/passkeys/options`,
     {
-      config: sensitive,
+      config: { ...sensitive, localSignIn: true },
       schema: { tags, summary: "Options to add a passkey", response: { 200: ChallengeOptions } },
     },
     async (request) => {
@@ -213,7 +213,7 @@ export function accountRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/account/passkeys`,
     {
-      config,
+      config: { ...config, localSignIn: true },
       schema: {
         tags,
         summary: "Add a passkey made for the options",

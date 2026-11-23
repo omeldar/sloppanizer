@@ -47,6 +47,8 @@ export const accounts = sqliteTable(
     /** How the web app shows dates and times (packages/shared/src/formats.ts); preset from the region at sign-up. */
     dateFormat: text("date_format", { enum: DATE_FORMATS }).notNull().default("dmy."),
     timeFormat: text("time_format", { enum: TIME_FORMATS }).notNull().default("24h"),
+    /** The person's permanent id at auth.omeldar.com (`sub`, "usr_..."); null until they sign in there. */
+    authSubject: text("auth_subject").unique(),
     color: text("color").notNull().default("#8B95A5"),
     timeZone: text("time_zone").notNull(),
     role: text("role", { enum: ACCOUNT_ROLES }).notNull().default("user"),
@@ -177,6 +179,8 @@ export const sessions = sqliteTable(
     revokeReason: text("revoke_reason", { enum: REVOKE_REASONS }),
     userAgent: text("user_agent").notNull().default(""),
     ip: text("ip"),
+    /** auth.omeldar.com's session id (`sid`) of an "oidc" sign-in: its back-channel logout ends this one. */
+    authSid: text("auth_sid"),
   },
   (t) => [
     index("sessions_account_idx").on(t.accountId, t.revokedAt),

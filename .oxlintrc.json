@@ -9,7 +9,15 @@
   "env": {
     "es2024": true
   },
-  "ignorePatterns": ["**/dist/**", "**/node_modules/**", "**/*.d.ts", "tmp/**", "**/coverage/**"],
+  // omeldar-auth.ts: the client of omeldar/auth, copied unchanged (update it by copying again).
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/*.d.ts",
+    "tmp/**",
+    "**/coverage/**",
+    "**/omeldar-auth.ts"
+  ],
   "rules": {
     "typescript/no-explicit-any": "error",
     "no-console": "off",

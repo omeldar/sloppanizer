@@ -45,6 +45,7 @@ import { tokenRoutes } from "./routes/tokens.ts";
 import { topicRoutes } from "./routes/topics.ts";
 import type { Deps } from "./routes/types.ts";
 import { createAuthServices } from "./services/auth/index.ts";
+import type { OmeldarClient } from "./services/auth/omeldar.ts";
 import { backupBeforeMigrate } from "./services/instance-backup.ts";
 import { repairScopeConflicts } from "./services/labels.ts";
 import { repairNameKeys } from "./services/name-keys.ts";
@@ -62,6 +63,8 @@ export interface BuildOptions {
   limits?: Partial<RestoreLimits>;
   /** Stands in for the Claude API in tests. */
   claude?: ClaudeRunner;
+  /** Stands in for auth.omeldar.com in tests. */
+  omeldar?: OmeldarClient;
 }
 
 /**
@@ -75,7 +78,12 @@ export async function buildApp(options: BuildOptions) {
   const dbFile = join(config.dataDir, DB_FILE);
   backupBeforeMigrate(dbFile, ensurePrivateDir(config.backupDir), clock, config.timeZone);
   const db = openDb(dbFile);
-  const auth = createAuthServices(config, config.secret ?? loadSecret(config.dataDir), clock);
+  const auth = createAuthServices(
+    config,
+    config.secret ?? loadSecret(config.dataDir),
+    clock,
+    options.omeldar,
+  );
   const filesDir = ensurePrivateDir(config.filesDir);
   // Before anything touches a files folder: finish or clean up interrupted restores.
   const recovered = recoverRestore({ dataDir: config.dataDir, filesDir }, db, clock());

@@ -1,4 +1,4 @@
-import { isValidTimeZone, normalizeOneTimeCode } from "@organizer/shared";
+import { type AuthMode, isValidTimeZone, normalizeOneTimeCode } from "@organizer/shared";
 import { BlockList, isIP } from "node:net";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -39,6 +39,16 @@ export interface Config {
   filesLimitBytes: number;
   /** Built web app for the local web mode (one origin), or null (API only). */
   webDir: string | null;
+  /** Sign-in through auth.omeldar.com (OpenID Connect); see SLOPPANIZER_AUTH. */
+  omeldar: {
+    mode: AuthMode;
+    issuer: string;
+    clientId: string;
+    /** Null: a public client (local auth without a secret for this app). */
+    clientSecret: string | null;
+    /** The web app's callback page, registered at auth (matched exactly). */
+    redirectUri: string;
+  };
   production: boolean;
 }
 
@@ -213,6 +223,27 @@ export function loadConfig(env: Env = process.env): Config {
     backupAt = backupAtRaw.trim();
   }
 
+  const mode = (env.SLOPPANIZER_AUTH || "local") as AuthMode;
+  if (mode !== "local" && mode !== "both" && mode !== "oidc") {
+    throw new ConfigError(`SLOPPANIZER_AUTH must be "local", "both" or "oidc", got "${mode}".`);
+  }
+  const issuer = origin(
+    "SLOPPANIZER_AUTH_ISSUER",
+    env.SLOPPANIZER_AUTH_ISSUER || "https://auth.omeldar.com",
+    production,
+  );
+  const clientSecret = env.SLOPPANIZER_AUTH_CLIENT_SECRET || null;
+  if (production && mode !== "local" && clientSecret === null) {
+    throw new ConfigError(
+      "SLOPPANIZER_AUTH_CLIENT_SECRET is required with SLOPPANIZER_AUTH=both or oidc (the same value as AUTH_CLIENT_SECRET_SLOPPANIZER at auth).",
+    );
+  }
+  const redirectUri =
+    env.SLOPPANIZER_AUTH_REDIRECT_URI || `${webOrigins[0] ?? "http://localhost:5181"}/auth/callback`;
+  if (!URL.canParse(redirectUri)) {
+    throw new ConfigError(`SLOPPANIZER_AUTH_REDIRECT_URI must be a full URL, got "${redirectUri}".`);
+  }
+
   const dataDir = resolve(env.SLOPPANIZER_DATA_DIR || join(homedir(), ".local", "share", "sloppanizer"));
   return {
     port,
@@ -236,5 +267,12 @@ export function loadConfig(env: Env = process.env): Config {
     filesLimitBytes: integer(env, "SLOPPANIZER_FILES_LIMIT_MB", 2048, 1, 1_048_576) * 1024 * 1024,
     webDir: env.SLOPPANIZER_WEB_DIR ? resolve(env.SLOPPANIZER_WEB_DIR) : null,
     production,
+    omeldar: {
+      mode,
+      issuer,
+      clientId: env.SLOPPANIZER_AUTH_CLIENT_ID || "sloppanizer",
+      clientSecret,
+      redirectUri,
+    },
   };
 }

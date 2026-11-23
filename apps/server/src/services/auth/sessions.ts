@@ -45,6 +45,10 @@ export interface NewSession {
   method: SessionMethod;
   userAgent: string;
   ip: string | null;
+  /** auth.omeldar.com's session id ("oidc" sign-ins), for its back-channel logout. */
+  authSid?: string;
+  /** When the person really signed in, if earlier than now (a single sign-on at auth). */
+  authenticatedAtMs?: number;
 }
 
 /** Live sessions of an account, oldest first. */
@@ -73,7 +77,11 @@ export function createSession(
       accountId: input.accountId,
       refreshHash: sha256Hex(refreshToken),
       method: input.method,
-      authenticatedAt: now,
+      authenticatedAt:
+        input.authenticatedAtMs !== undefined && input.authenticatedAtMs < nowMs
+          ? iso(input.authenticatedAtMs)
+          : now,
+      authSid: input.authSid ?? null,
       createdAt: now,
       lastUsedAt: now,
       expiresAt: iso(nowMs + SESSION_MAX_MS),

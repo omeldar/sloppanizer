@@ -116,7 +116,8 @@ export const ACCOUNT_STATUSES = ["pending", "active", "disabled"] as const;
 export const AccountStatus = z.enum(ACCOUNT_STATUSES);
 export type AccountStatus = z.infer<typeof AccountStatus>;
 
-export const SESSION_METHODS = ["password", "recovery", "passkey", "setup"] as const;
+/** "oidc": signed in at auth.omeldar.com ("Sign in with omeldar"). */
+export const SESSION_METHODS = ["password", "recovery", "passkey", "setup", "oidc"] as const;
 export const SessionMethod = z.enum(SESSION_METHODS);
 export type SessionMethod = z.infer<typeof SessionMethod>;
 
@@ -381,10 +382,29 @@ export const SetupResult = z.strictObject({
 });
 export type SetupResult = z.infer<typeof SetupResult>;
 
+/**
+ * How people sign in (SLOPPANIZER_AUTH): "local" Sloppanizer's own login only, "both" the own login and
+ * "Sign in with omeldar", "oidc" only omeldar (auth.omeldar.com).
+ */
+export const AUTH_MODES = ["local", "both", "oidc"] as const;
+export const AuthMode = z.enum(AUTH_MODES);
+export type AuthMode = z.infer<typeof AuthMode>;
+
 export const AuthConfig = z.strictObject({
   signupsOpen: z.boolean(),
   setupNeeded: z.boolean(),
   rpId: z.string(),
+  mode: AuthMode,
+  /** What the web app needs to start "Sign in with omeldar" (null in "local" mode). */
+  omeldar: z
+    .strictObject({
+      issuer: z.string(),
+      clientId: z.string(),
+      redirectUri: z.string(),
+      /** "Manage account" at auth.omeldar.com. */
+      accountUrl: z.string(),
+    })
+    .nullable(),
 });
 export type AuthConfig = z.infer<typeof AuthConfig>;
 
@@ -401,6 +421,8 @@ export const AccountProfile = z.strictObject({
   lastName: z.string(),
   dateFormat: DateFormat,
   timeFormat: TimeFormat,
+  /** Signed in through auth.omeldar.com at least once (it confirms "it is you" there). */
+  omeldarLinked: z.boolean(),
   timeZone: z.string(),
   createdAt: Timestamp,
   security: z.strictObject({
@@ -510,3 +532,25 @@ export function otpauthUri(secret: string, username: string, issuer = PRODUCT_NA
   const query = new URLSearchParams({ secret, issuer, algorithm: "SHA1", digits: "6", period: "30" });
   return `otpauth://totp/${label}?${query.toString()}`;
 }
+
+/** What the browser kept between starting "Sign in with omeldar" and the callback (omeldar-auth Pending). */
+export const OidcPending = z.strictObject({
+  state: z.string().min(8).max(200),
+  nonce: z.string().min(8).max(200),
+  verifier: z.string().min(43).max(200),
+  maxAge: z.number().int().min(0).max(86_400).optional(),
+});
+export type OidcPending = z.infer<typeof OidcPending>;
+
+/** The callback's query string (?code=...&state=...) and the pending sign-in, sent by the web app. */
+export const OidcCallback = z.strictObject({
+  query: z.string().max(4096),
+  pending: OidcPending,
+  /** The browser's time zone, for an account made by this sign-in. */
+  timeZone: TimeZone.optional(),
+});
+export type OidcCallback = z.infer<typeof OidcCallback>;
+
+/** Confirming it is you through auth.omeldar.com (a fresh sign-in there). */
+export const OidcReauth = z.strictObject({ query: z.string().max(4096), pending: OidcPending });
+export type OidcReauth = z.infer<typeof OidcReauth>;

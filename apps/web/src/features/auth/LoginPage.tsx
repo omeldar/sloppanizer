@@ -8,12 +8,23 @@ import { accountBase, afterLogin } from "../../lib/entry.ts";
 import { logoutOnServer } from "../../lib/session.ts";
 import { conditionalMediationAvailable, passkeysSupported } from "../../lib/webauthn.ts";
 import styles from "./Auth.module.css";
+import { OmeldarButton } from "./Omeldar.tsx";
 import { Alert, AuthShell, CodeInput, PasswordInput } from "./parts.tsx";
+import type { OmeldarConfig } from "../../lib/omeldar.ts";
 
 /** Where the browser goes after a sign-in; a full page load, so the new account starts clean. */
 export type Go = (to: string) => void;
 
-export function LoginPage({ search, go }: { search: URLSearchParams; go: Go }) {
+export function LoginPage({
+  search,
+  go,
+  omeldar = null,
+}: {
+  search: URLSearchParams;
+  go: Go;
+  /** Set while "Sign in with omeldar" is offered next to the own login (SLOPPANIZER_AUTH=both). */
+  omeldar?: OmeldarConfig | null;
+}) {
   const account = search.get("account") ?? "";
   const next = search.get("next");
   const adding = search.get("add") === "1";
@@ -129,6 +140,12 @@ export function LoginPage({ search, go }: { search: URLSearchParams; go: Go }) {
       title={account ? `Sign in to ${account}` : "Sign in"}
       lede={adding ? "Add another account to this browser. The others stay signed in." : undefined}
     >
+      {omeldar && (
+        <div className={styles.form}>
+          <OmeldarButton config={omeldar} next={next} {...(account ? { loginHint: account } : {})} />
+          <div className={styles.or}>or with your Sloppanizer password</div>
+        </div>
+      )}
       <form className={styles.form} onSubmit={(event) => void submit(event)} noValidate>
         <Field label="Username">
           <TextInput

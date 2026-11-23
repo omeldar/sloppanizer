@@ -26,6 +26,8 @@ import {
 import { errorMessage } from "../../lib/api.ts";
 import { absoluteTime, formatBytes, relativeTime } from "../../lib/format.ts";
 import { useCurrentAccount } from "../../app/account.tsx";
+import { useQuery } from "@tanstack/react-query";
+import { authConfig } from "../../lib/auth.ts";
 import styles from "./Account.module.css";
 
 /** The admin's view: sign-ups to approve, accounts (metadata only, never contents), backups, the log. */
@@ -42,11 +44,30 @@ export function AdminPage() {
   return (
     <div className={styles.page}>
       <PageHeader title="Admin" />
+      <OmeldarAdminNote />
       <SignupsSection />
       <AccountsSection selfId={me?.accountId ?? 0} />
       <InstanceSection />
       <LogSection />
     </div>
+  );
+}
+
+/** With "Sign in with omeldar", approvals, roles and disabling happen at auth.omeldar.com/admin. */
+function OmeldarAdminNote() {
+  const config = useQuery({ queryKey: ["auth-config"], queryFn: authConfig, staleTime: Infinity });
+  const omeldar = config.data?.omeldar;
+  if (!omeldar) return null;
+  return (
+    <section className={styles.section} aria-label="Sign-in with omeldar">
+      <p className={styles.text}>
+        People sign in with omeldar. Approve them, set their role and turn access off at{" "}
+        <a href={`${omeldar.issuer}/admin`} target="_blank" rel="noreferrer">
+          the omeldar admin page
+        </a>
+        ; the role follows on their next sign-in.
+      </p>
+    </section>
   );
 }
 

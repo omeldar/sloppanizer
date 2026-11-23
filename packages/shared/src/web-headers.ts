@@ -19,6 +19,7 @@ export const APP_PATH_PREFIXES = [
   "/setup",
   "/reset",
   "/oauth/authorize",
+  "/auth/callback",
 ] as const;
 
 export function isAppPath(pathname: string): boolean {

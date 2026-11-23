@@ -20,6 +20,7 @@ import { markPasskeyUsed, verifyAssertion } from "./passkeys.ts";
 import {
   createSession,
   markAuthenticated,
+  type NewSession,
   rotateRefreshToken,
   type SessionRow,
   sessionTokens,
@@ -167,6 +168,7 @@ export function startSession(
   method: SessionMethod,
   client: Client,
   recoveryLeft: number | null = null,
+  extra: Pick<NewSession, "authSid" | "authenticatedAtMs"> = {},
 ): SessionTokens {
   const { session, refreshToken } = db.transaction((tx) => {
     tx.update(accounts)
@@ -178,6 +180,7 @@ export function startSession(
       method,
       userAgent: client.userAgent,
       ip: client.ip,
+      ...extra,
     });
   });
   return sessionTokens(auth.accessKey, nowMs, account, session, refreshToken, recoveryLeft);

@@ -24,9 +24,26 @@
     {
       "source": "/oauth/authorize",
       "destination": "/app.html"
+    },
+    {
+      "source": "/auth/callback",
+      "destination": "/app.html"
     }
   ],
   "headers": [
+    {
+      "source": "/.well-known/webauthn",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    },
     {
       "source": "/(.*)",
       "headers": [
@@ -101,7 +118,7 @@
       ]
     },
     {
-      "source": "/(app.html|login|signup|setup|reset|oauth/authorize)",
+      "source": "/(app.html|login|signup|setup|reset|oauth/authorize|auth/callback)",
       "headers": [
         {
           "key": "X-Robots-Tag",
