@@ -129,6 +129,25 @@ Settings (environment of the service, all optional): `ORGANIZER_PORT` (4711), `O
   most 62), `POST /api/v1/blocks` (`{ todoId? , title?, startAt, endAt }`, ISO instants), `PATCH`/`DELETE`
   `/api/v1/blocks/{id}`.
 
+## Sign in with omeldar (auth.omeldar.com)
+
+Sign-in can move to the shared omeldar account service (OpenID Connect). Accounts keep their id, so data, API
+tokens, MCP connections and calendar feeds stay as they are; only the sign-in step changes. The switch:
+
+- `SLOPPANIZER_AUTH=local` (default): Sloppanizer's own login only.
+- `both`: "Sign in with omeldar" next to the own login. The first sign-in at omeldar binds the account auth
+  imported for that person (`legacy_id`), or makes a new one.
+- `oidc`: only omeldar. The own login, sign-up, setup, reset and password/authenticator/passkey changes
+  answer 410; people manage those at auth.omeldar.com/account, admins approve people at auth.omeldar.com/admin.
+
+Settings: `SLOPPANIZER_AUTH_CLIENT_SECRET` (required with `both`/`oidc` in production, the same value as
+`AUTH_CLIENT_SECRET_SLOPPANIZER` at auth), `SLOPPANIZER_AUTH_ISSUER` (default `https://auth.omeldar.com`),
+`SLOPPANIZER_AUTH_CLIENT_ID` (`sloppanizer`), `SLOPPANIZER_AUTH_REDIRECT_URI` (default: the first web origin +
+`/auth/callback`). Roles follow the role set at auth on every sign-in. "Confirm it is you" opens a fresh
+sign-in at omeldar in a popup. Auth's back-channel logout (`POST /api/v1/auth/backchannel-logout`) ends the
+session of that sign-in. The web app serves `/.well-known/webauthn` so passkeys made on organizer.omeldar.com
+work at auth.omeldar.com. Rollback: set `SLOPPANIZER_AUTH=local`; the own credentials were never changed.
+
 ## MCP server
 
 ### Hosted (every account)

@@ -149,3 +149,25 @@ in five steps, selected separately for dark and light. No stacked "hours per pro
 would need more distinguishable colors than projects can have; the week's tooltip and table list its
 projects instead. Every chart has a Table view with all its numbers.
 
+## 2026-11-23 Sign in with omeldar
+
+**The browser starts it, the API finishes it.** The web app (Vercel) and the API (VPS) are different hosts,
+so there is no shared cookie. The web app builds the sign-in address with omeldar's client (no secret) and
+keeps the pending sign-in in sessionStorage; the callback page posts the query and the pending sign-in to the
+API, which exchanges the code with the client secret and returns the same session tokens as the own login.
+One code path for sessions, refresh, multi-account and the MCP consent page.
+
+**Who is who.** `accounts.auth_subject` holds the person's `sub`. First sign-in: by `sub`, else the
+imported account named by `legacy_id` while it is unbound, else a new account (a free username like the
+one at auth). Never by username or email, so a new person called "anna" does not get the old anna's data.
+A Sloppanizer account disabled here stays disabled even when auth lets the person in; a pending one
+becomes active (auth approved it).
+
+**Confirm it is you in a popup.** A full redirect would lose the page and the waiting request. The
+popup's callback hands the answer back over a BroadcastChannel: auth's pages set
+Cross-Origin-Opener-Policy, which cuts `window.opener`.
+
+**The client file is vendored unchanged** (`omeldar-auth.ts` in the server and the web app, excluded from
+lint and formatting) so it can be updated by copying. The server adds the two Web Crypto types it expects
+from the DOM lib (`src/webcrypto-types.d.ts`).
+

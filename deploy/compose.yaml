@@ -2,6 +2,8 @@
 # Secrets come from the environment (a .env next to this file, never committed):
 #   SLOPPANIZER_DATA_KEY   required, openssl rand -base64 32 (keep a copy in a password manager)
 #   SLOPPANIZER_SETUP_CODE optional, else the setup code is printed in the container log
+#   SLOPPANIZER_AUTH       local (default) | both | oidc: sign-in through auth.omeldar.com (README)
+#   SLOPPANIZER_AUTH_CLIENT_SECRET  needed with both/oidc; the same value as AUTH_CLIENT_SECRET_SLOPPANIZER at auth
 name: sloppanizer
 
 services:
@@ -17,6 +19,8 @@ services:
       SLOPPANIZER_RP_ID: organizer.omeldar.com
       # Only Caddy reaches the container; Docker bridge networks live in this range.
       SLOPPANIZER_TRUSTED_PROXIES: 172.16.0.0/12
+      SLOPPANIZER_AUTH: ${SLOPPANIZER_AUTH:-local}
+      SLOPPANIZER_AUTH_CLIENT_SECRET: ${SLOPPANIZER_AUTH_CLIENT_SECRET:-}
     volumes:
       - data:/data
     read_only: true

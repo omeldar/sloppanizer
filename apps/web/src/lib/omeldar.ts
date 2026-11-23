@@ -60,49 +60,50 @@ export async function finishOmeldarSignIn(
   return { tokens, next: saved.next };
 }
 
-/** In the popup's callback page: hands the answer to the window that asked, then closes. */
-export function handBackToOpener(search: URLSearchParams): boolean {
-  if (!window.opener || window.opener === window) return false;
-  (window.opener as Window).postMessage(
-    { type: "omeldar-reauth", query: search.toString() },
-    location.origin,
-  );
+/** Same-origin channel between the confirm popup and the page that opened it. */
+const CHANNEL = "sloppanizer.omeldar.reauth";
+
+/**
+ * In the popup's callback page: hands the answer to the page that asked, then closes. A channel, not
+ * window.opener: auth.omeldar.com's pages cut the opener (Cross-Origin-Opener-Policy).
+ */
+export function handBackToOpener(search: URLSearchParams): void {
+  const channel = new BroadcastChannel(CHANNEL);
+  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel has no target origin
+  channel.postMessage({ type: "omeldar-reauth", query: search.toString() });
+  channel.close();
   window.close();
-  return true;
 }
 
 /**
  * "Confirm it is you" at auth.omeldar.com in a popup (the page and its unsaved work stay): a fresh sign-in
- * there, then the API marks this session as just confirmed. Resolves false when closed or refused.
+ * there, then the API marks this session as just confirmed. Resolves false when it never answers.
  */
 export async function confirmWithOmeldar(config: OmeldarConfig): Promise<boolean> {
   const { url, pending } = await clientFor(config).signIn({ maxAge: 0, prompt: "login" });
   localStorage.setItem(REAUTH_KEY, pending.state);
   const popup = window.open(url, "omeldar-confirm", "popup,width=480,height=760");
-  if (!popup)
+  if (!popup) {
     throw new Error("The browser blocked the sign-in window. Allow popups for this site and try again.");
+  }
   const query = await new Promise<string | null>((resolve) => {
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: unknown; query?: unknown } | null;
-      if (
-        event.origin !== location.origin ||
-        data?.type !== "omeldar-reauth" ||
-        typeof data.query !== "string"
-      )
-        return;
-      done(data.query);
-    };
-    const closed = window.setInterval(() => popup.closed && done(null), 500);
+    const channel = new BroadcastChannel(CHANNEL);
+    // popup.closed says nothing once auth cut the opener: give up after 10 minutes (Cancel works anytime).
+    const timeout = window.setTimeout(() => done(null), 10 * 60_000);
     function done(value: string | null) {
-      window.removeEventListener("message", onMessage);
-      window.clearInterval(closed);
+      channel.close();
+      window.clearTimeout(timeout);
       resolve(value);
     }
-    window.addEventListener("message", onMessage);
+    channel.addEventListener("message", (event: MessageEvent) => {
+      const data = event.data as { type?: unknown; query?: unknown } | null;
+      if (data?.type !== "omeldar-reauth" || typeof data.query !== "string") return;
+      if (new URLSearchParams(data.query).get("state") !== pending.state) return;
+      done(data.query);
+    });
   });
   localStorage.removeItem(REAUTH_KEY);
   if (query === null) return false;
-  if (new URLSearchParams(query).get("state") !== pending.state) return false;
   await apiVoid("/auth/omeldar/reauth", { method: "POST", body: { query, pending } });
   return true;
 }

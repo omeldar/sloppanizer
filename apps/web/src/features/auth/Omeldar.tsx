@@ -58,6 +58,8 @@ export function OmeldarButton({
 /** /auth/callback: auth.omeldar.com sent the browser back; finish the sign-in (or the confirm popup). */
 export function OmeldarCallbackPage({ search, go }: { search: URLSearchParams; go: Go }) {
   const [error, setError] = useState<string | null>(null);
+  // The end of a "confirm it is you" popup, not a sign-in of this tab.
+  const [confirmed] = useState(() => callbackKind(search) === "reauth");
   const started = useRef(false);
 
   useEffect(() => {
@@ -65,7 +67,7 @@ export function OmeldarCallbackPage({ search, go }: { search: URLSearchParams; g
     started.current = true;
     // The code is used once: keep it out of the history.
     history.replaceState(null, "", "/auth/callback");
-    if (callbackKind(search) === "reauth" && handBackToOpener(search)) return;
+    if (confirmed) return handBackToOpener(search);
     const run = async () => {
       const { tokens, next } = await finishOmeldarSignIn(search);
       try {
@@ -77,8 +79,18 @@ export function OmeldarCallbackPage({ search, go }: { search: URLSearchParams; g
       go(afterLogin(tokens.account.username, next));
     };
     run().catch((problem: unknown) => setError(errorMessage(problem)));
-  }, [search, go]);
+  }, [search, go, confirmed]);
 
+  if (confirmed) {
+    // Browsers may refuse window.close() here; then this says what to do.
+    return (
+      <AuthShell title="Confirmed">
+        <p className={styles.lede} role="status">
+          You can close this window and go back to Sloppanizer.
+        </p>
+      </AuthShell>
+    );
+  }
   if (!error) {
     return (
       <AuthShell title="Signing you in">
