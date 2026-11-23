@@ -35,7 +35,7 @@ const ID_QUERY = /^#?(\d+)$/;
 function PaletteBody({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const downloadExport = useDownloadExport();
-  const { openQuickAdd, openNewNote, openNewPerson, todoCommands } = useCommands();
+  const { openQuickAdd, openNewNote, openNewPerson, openFeedback, todoCommands } = useCommands();
   const projects = useProjects();
   const session = useIsSession();
   const [search, setSearch] = useState("");
@@ -192,6 +192,12 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
               </Item>
               <Item value="new person contact" onSelect={() => openNewPerson()}>
                 New person
+              </Item>
+              <Item value="report a bug feedback problem issue" onSelect={() => openFeedback("bug")}>
+                Report a bug
+              </Item>
+              <Item value="request a feature idea feedback wish" onSelect={() => openFeedback("feature")}>
+                Request a feature
               </Item>
               <Item value="switch theme dark light" onSelect={run(toggleTheme)}>
                 Switch theme

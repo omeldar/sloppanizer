@@ -35,6 +35,7 @@ import { peopleStatsRoutes } from "./routes/people-stats.ts";
 import { peopleRoutes } from "./routes/people.ts";
 import { personTagRoutes } from "./routes/person-tags.ts";
 import { projectRoutes } from "./routes/projects.ts";
+import { spaceRoutes } from "./routes/spaces.ts";
 import { restoreRoutes } from "./routes/restore.ts";
 import { searchRoutes } from "./routes/search.ts";
 import { settingsRoutes } from "./routes/settings.ts";
@@ -136,6 +137,7 @@ export async function buildApp(options: BuildOptions) {
 
   metaRoutes(app, deps);
   projectRoutes(app, deps);
+  spaceRoutes(app, deps, auth.config);
   labelRoutes(app, deps);
   peopleRoutes(app, deps);
   peopleStatsRoutes(app, deps);

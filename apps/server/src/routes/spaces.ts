@@ -1,0 +1,128 @@
+import {
+  AddSpaceMember,
+  API_PREFIX,
+  CreateFeedback,
+  CreateSpace,
+  FeedbackResult,
+  IdParams,
+  Space,
+  SpaceMemberParams,
+  UpdateSpace,
+} from "@organizer/shared";
+import { z } from "zod";
+import type { Config } from "../config.ts";
+import { ApiError } from "../http/errors.ts";
+import { type AccountRow, getAccount } from "../services/accounts.ts";
+import {
+  addSpaceMember,
+  createSpace,
+  deleteSpace,
+  getSpace,
+  listSpaces,
+  removeSpaceMember,
+  submitFeedback,
+  updateSpace,
+} from "../services/spaces.ts";
+import { type App, authOf, type Deps } from "./types.ts";
+
+/** Shared projects (managing them; working in one goes through the normal routes) and feedback. */
+export function spaceRoutes(app: App, deps: Deps, config: Config): void {
+  const tags = ["shared projects"];
+  const session = { access: "session" as const };
+  /** The caller's own account row (never a space: these routes are refused inside one). */
+  const me = (request: Parameters<typeof authOf>[0]): AccountRow => {
+    const auth = authOf(request);
+    const row = getAccount(deps.db, auth.account.id);
+    if (!row) throw new ApiError("unauthorized", "Sign in first.");
+    return row;
+  };
+
+  app.get(
+    `${API_PREFIX}/spaces`,
+    {
+      config: session,
+      schema: { tags, summary: "Shared projects you can open", response: { 200: z.array(Space) } },
+    },
+    async (request) => listSpaces(deps.db, deps.clock, me(request)),
+  );
+  app.post(
+    `${API_PREFIX}/spaces`,
+    {
+      config: session,
+      schema: { tags, summary: "Create a shared project", body: CreateSpace, response: { 201: Space } },
+    },
+    async (request, reply) =>
+      reply.status(201).send(createSpace(deps.db, deps.clock, me(request), request.body)),
+  );
+  app.get(
+    `${API_PREFIX}/spaces/:id`,
+    { config: session, schema: { tags, params: IdParams, response: { 200: Space } } },
+    async (request) => getSpace(deps.db, deps.clock, me(request), request.params.id),
+  );
+  app.patch(
+    `${API_PREFIX}/spaces/:id`,
+    {
+      config: session,
+      schema: {
+        tags,
+        summary: "Rename or recolor (owners)",
+        params: IdParams,
+        body: UpdateSpace,
+        response: { 200: Space },
+      },
+    },
+    async (request) => updateSpace(deps.db, deps.clock, me(request), request.params.id, request.body),
+  );
+  app.delete(
+    `${API_PREFIX}/spaces/:id`,
+    { config: session, schema: { tags, summary: "Delete with all its data (owners)", params: IdParams } },
+    async (request, reply) => {
+      deleteSpace(deps.db, config, me(request), request.params.id);
+      return reply.status(204).send();
+    },
+  );
+  app.post(
+    `${API_PREFIX}/spaces/:id/members`,
+    {
+      config: session,
+      schema: {
+        tags,
+        summary: "Add a member by username (owners)",
+        params: IdParams,
+        body: AddSpaceMember,
+        response: { 200: Space },
+      },
+    },
+    async (request) => addSpaceMember(deps.db, deps.clock, me(request), request.params.id, request.body),
+  );
+  app.delete(
+    `${API_PREFIX}/spaces/:id/members/:accountId`,
+    {
+      config: session,
+      schema: {
+        tags,
+        summary: "Remove a member (owners), or leave (your own id)",
+        params: SpaceMemberParams,
+      },
+    },
+    async (request, reply) => {
+      removeSpaceMember(deps.db, config, me(request), request.params.id, request.params.accountId);
+      return reply.status(204).send();
+    },
+  );
+
+  app.post(
+    `${API_PREFIX}/feedback`,
+    {
+      config: session,
+      schema: {
+        tags,
+        summary: "Report a bug or request a feature (goes to the Sloppanizer project)",
+        body: CreateFeedback,
+        response: { 201: FeedbackResult },
+      },
+    },
+    async (request, reply) =>
+      reply.status(201).send(submitFeedback(deps.db, deps.clock, me(request), request.body, deps.version)),
+  );
+}

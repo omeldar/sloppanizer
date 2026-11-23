@@ -16,6 +16,8 @@ const profile: AccountProfile = {
   id: 1,
   username: "anna",
   displayName: "Anna Private",
+  firstName: "",
+  lastName: "",
   color: "#2EC5CE",
   role: "admin",
   timeZone: "Europe/Zurich",

@@ -6,7 +6,7 @@ import {
   toLocalDate,
 } from "@organizer/shared";
 import Database from "better-sqlite3";
-import { count } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import {
   chmodSync,
   closeSync,
@@ -126,7 +126,8 @@ export async function createInstanceBackup(options: BackupOptions): Promise<Inst
         "The instance is too large for one backup zip (4 GB). Copy the Docker volumes instead (see the README).",
       );
     }
-    const accountCount = options.db.select({ n: count() }).from(accounts).get()?.n ?? 0;
+    const accountCount =
+      options.db.select({ n: count() }).from(accounts).where(eq(accounts.kind, "user")).get()?.n ?? 0;
     const manifest = {
       app: "sloppanizer",
       kind: "instance",

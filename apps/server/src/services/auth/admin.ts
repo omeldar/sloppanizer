@@ -7,6 +7,7 @@ import { ApiError } from "../../http/errors.ts";
 import { type AccountRow, deleteAccount, getAccount } from "../accounts.ts";
 import type { Tx } from "../context.ts";
 import { seedAccount } from "../owned.ts";
+import { deleteOrphanSpaces } from "../spaces.ts";
 import { newOneTimeCode } from "./crypto.ts";
 import { SIGNUP_EXPIRY_MS, startLoginReset } from "./flows.ts";
 import type { AuthServices } from "./index.ts";
@@ -24,7 +25,9 @@ const iso = (ms: number): string => new Date(ms).toISOString();
 /** Every admin lookup of an account by id: unknown ids are 404 like any missing record. */
 function accountById(tx: Tx, id: number): AccountRow {
   const row = getAccount(tx, id);
-  if (!row) throw new ApiError("not_found", `Account ${id} does not exist. Check the id.`);
+  // Shared projects' space accounts are not people: the admin pages never see them.
+  if (!row || row.kind !== "user")
+    throw new ApiError("not_found", `Account ${id} does not exist. Check the id.`);
   return row;
 }
 
@@ -89,7 +92,7 @@ export function listAccounts(tx: Tx, nowMs: number, status?: AccountStatus): Adm
   return tx
     .select()
     .from(accounts)
-    .where(status ? eq(accounts.status, status) : undefined)
+    .where(and(eq(accounts.kind, "user"), status ? eq(accounts.status, status) : undefined))
     .orderBy(asc(accounts.username))
     .all()
     .map((row) => toAdminAccount(tx, nowMs, row));
@@ -198,7 +201,11 @@ export function resetAccountLogin(
 /** Emergency (CLI only): makes an account admin, e.g. when the only admin is locked out. */
 export function makeAdmin(db: Db, nowMs: number, actor: Actor, username: string): AccountRow {
   return db.transaction((tx) => {
-    const row = tx.select().from(accounts).where(eq(accounts.username, username)).get();
+    const row = tx
+      .select()
+      .from(accounts)
+      .where(and(eq(accounts.username, username), eq(accounts.kind, "user")))
+      .get();
     if (!row) throw new ApiError("not_found", `Account ${username} does not exist.`);
     if (row.status !== "active") throw new ApiError("conflict", `Account ${username} is not active.`);
     tx.update(accounts)
@@ -228,6 +235,8 @@ export function adminDeleteAccount(
   deleteAccount(db, auth.config, row, (tx) =>
     logAdminEvent(tx, iso(nowMs), actor.name, "delete", row.username),
   );
+  // Shared projects it was the last member of go with it.
+  deleteOrphanSpaces(db, auth.config);
 }
 
 /** Hourly: pending sign-ups older than 30 days are deleted (logged as expire_signup). */

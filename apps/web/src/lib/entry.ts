@@ -7,13 +7,16 @@ import { type AccountStore, defaultAccount, findAccount, type StoredAccount } fr
 export type AuthPage = "login" | "signup" | "setup" | "reset" | "oauth";
 
 export type Entry =
-  | { kind: "app"; account: StoredAccount; basepath: string }
+  | { kind: "app"; account: StoredAccount; basepath: string; spaceId: number | null }
   | { kind: "auth"; page: AuthPage }
   | { kind: "redirect"; to: string };
 
 const AUTH_PAGES: ReadonlySet<string> = new Set<AuthPage>(["login", "signup", "setup", "reset"]);
 
 export const accountBase = (username: string) => `/u/${username}`;
+
+/** A shared project opened by this account: the whole app, scoped to it, under its own base path. */
+export const spaceBase = (username: string, spaceId: number) => `${accountBase(username)}/shared/${spaceId}`;
 
 /** The login page for one account, coming back to `next` (a path inside that account) afterwards. */
 export function loginFor(username: string, next?: string): string {
@@ -34,7 +37,13 @@ export function resolveEntry(pathname: string, search: string, store: AccountSto
     const account = findAccount(store, username);
     if (!account || account.signedOut) return { kind: "redirect", to: loginFor(username, pathname + search) };
     if (!match?.[2]) return { kind: "redirect", to: `${accountBase(username)}/${search}` };
-    return { kind: "app", account, basepath: accountBase(username) };
+    const shared = /^\/shared\/([1-9]\d{0,9})(\/.*)?$/.exec(match[2]);
+    if (shared?.[1]) {
+      const spaceId = Number(shared[1]);
+      if (!shared[2]) return { kind: "redirect", to: `${spaceBase(username, spaceId)}/${search}` };
+      return { kind: "app", account, basepath: spaceBase(username, spaceId), spaceId };
+    }
+    return { kind: "app", account, basepath: accountBase(username), spaceId: null };
   }
 
   // "/u/", "/u" or any other path of app.html: the last used account, else the login.

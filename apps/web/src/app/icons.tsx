@@ -20,6 +20,7 @@ export const ICONS = {
   ),
   admin: <path d="M10 2.5l6 2.5v4.5c0 3.8-2.6 6.6-6 8-3.4-1.4-6-4.2-6-8V5z" />,
   more: <path d="M4 6h12M4 10h12M4 14h12" />,
+  feedback: <path d="M3 4h14v9H9l-4 3.5V13H3zM10 6.5v3M10 11.5h.01" />,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof ICONS;

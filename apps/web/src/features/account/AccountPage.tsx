@@ -36,8 +36,10 @@ export function AccountPage() {
     <div className={styles.page}>
       <PageHeader title="Account" />
       <ProfileSection
-        key={`${data.displayName}|${data.color}|${data.timeZone}`}
+        key={`${data.displayName}|${data.firstName}|${data.lastName}|${data.color}|${data.timeZone}`}
         displayName={data.displayName}
+        firstName={data.firstName}
+        lastName={data.lastName}
         color={data.color}
         timeZone={data.timeZone}
         username={data.username}
@@ -52,21 +54,36 @@ export function AccountPage() {
   );
 }
 
-function ProfileSection(props: { displayName: string; color: string; timeZone: string; username: string }) {
+function ProfileSection(props: {
+  displayName: string;
+  firstName: string;
+  lastName: string;
+  color: string;
+  timeZone: string;
+  username: string;
+}) {
   const update = useUpdateProfile();
   const toast = useToast();
   const [displayName, setDisplayName] = useState(props.displayName);
+  const [firstName, setFirstName] = useState(props.firstName);
+  const [lastName, setLastName] = useState(props.lastName);
   const [color, setColor] = useState(props.color);
   const [timeZone, setTimeZone] = useState(props.timeZone);
   const zones = timeZones(props.timeZone);
   const changed =
-    displayName.trim() !== props.displayName || color !== props.color || timeZone !== props.timeZone;
+    displayName.trim() !== props.displayName ||
+    firstName.trim() !== props.firstName ||
+    lastName.trim() !== props.lastName ||
+    color !== props.color ||
+    timeZone !== props.timeZone;
 
   const save = (event: FormEvent) => {
     event.preventDefault();
     update.mutate(
       {
         ...(displayName.trim() === props.displayName ? {} : { displayName: displayName.trim() }),
+        ...(firstName.trim() === props.firstName ? {} : { firstName: firstName.trim() }),
+        ...(lastName.trim() === props.lastName ? {} : { lastName: lastName.trim() }),
         ...(color === props.color ? {} : { color: AccountColor.parse(color) }),
         ...(timeZone === props.timeZone ? {} : { timeZone }),
       },
@@ -87,6 +104,17 @@ function ProfileSection(props: { displayName: string; color: string; timeZone: s
         <Field label="Display name">
           <TextInput value={displayName} maxLength={64} onChange={(e) => setDisplayName(e.target.value)} />
         </Field>
+        <div className={styles.nameRow}>
+          <Field label="First name">
+            <TextInput value={firstName} maxLength={60} onChange={(e) => setFirstName(e.target.value)} />
+          </Field>
+          <Field label="Last name">
+            <TextInput value={lastName} maxLength={60} onChange={(e) => setLastName(e.target.value)} />
+          </Field>
+        </div>
+        <p className={styles.text}>
+          Optional. Shared projects and your bug reports show this name; without one, your username.
+        </p>
         <div className={styles.swatches} role="radiogroup" aria-label="Color">
           {PROJECT_COLORS.map((value) => (
             <button

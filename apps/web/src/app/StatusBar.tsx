@@ -1,5 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useKeyMode } from "../keyboard/KeyboardProvider.tsx";
+import { currentSpace } from "../lib/api.ts";
+import { useCommands } from "./commands.tsx";
 import { relativeTime } from "../lib/format.ts";
 import { useStats } from "../lib/queries.ts";
 import { WEB_COMMIT, WEB_VERSION } from "../lib/serverVersion.ts";
@@ -12,6 +14,8 @@ const EXPORT_STALE_MS = 7 * 24 * 3_600_000;
 export function StatusBar() {
   const { mode, pending } = useKeyMode();
   const stats = useStats();
+  const commands = useCommands();
+  const inSpace = currentSpace() !== null;
   const s = stats.data;
   const exportAt = s?.lastExportAt ?? null;
   const now = useNow();
@@ -41,14 +45,24 @@ export function StatusBar() {
         </>
       )}
       <span className={styles.spacer} />
-      <Link
-        to="/settings"
+      <button
+        type="button"
         className={styles.seg}
-        data-tone={exportStale ? "amber" : undefined}
-        title="Export settings"
+        onClick={() => commands.openFeedback("bug")}
+        title="Report a bug or request a feature"
       >
-        {exportAt ? `exported ${relativeTime(exportAt)}` : "never exported"}
-      </Link>
+        report a bug / request a feature
+      </button>
+      {!inSpace && (
+        <Link
+          to="/settings"
+          className={styles.seg}
+          data-tone={exportStale ? "amber" : undefined}
+          title="Export settings"
+        >
+          {exportAt ? `exported ${relativeTime(exportAt)}` : "never exported"}
+        </Link>
+      )}
       <span className={styles.seg} title={`Sloppanizer ${WEB_VERSION}, build ${WEB_COMMIT.slice(0, 12)}`}>
         v{WEB_VERSION}
       </span>

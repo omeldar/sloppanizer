@@ -1,3 +1,4 @@
+import { SPACE_HEADER } from "@organizer/shared";
 import type { z } from "zod";
 import { ApiError, NETWORK_MESSAGE, responseError, safeJson } from "./apiError.ts";
 import { apiUrl } from "./config.ts";
@@ -31,6 +32,8 @@ interface RequestOptions {
   raw?: Blob;
   query?: Query;
   accept?: string;
+  /** About the account itself (shared projects, feedback): never sent to the tab's shared project. */
+  personal?: boolean;
 }
 
 /**
@@ -44,6 +47,18 @@ let reauthHandler: ReauthHandler | null = null;
 export function setReauthHandler(handler: ReauthHandler | null): void {
   reauthHandler = handler;
 }
+
+/**
+ * The shared project this tab works in (from /u/<username>/shared/<id>), or null for the account's own
+ * data. Set once at start: every call of the tab then goes to that shared project.
+ */
+let spaceId: number | null = null;
+/** Sign-in, the account itself, shared projects and feedback: always the account's own, never a space's. */
+const PERSONAL_PATH = /^\/(auth|account|spaces|feedback)(\/|$)/;
+export function setSpace(id: number | null): void {
+  spaceId = id;
+}
+export const currentSpace = (): number | null => spaceId;
 
 /** Calls `/api/v1<path>` with this tab's account and parses the answer with the contract schema. */
 export async function api<S extends z.ZodType>(
@@ -110,8 +125,9 @@ async function send(path: string, options: RequestOptions): Promise<unknown> {
  * ends the session. A 403 reauth_required opens the confirm dialog and, once confirmed, repeats the call
  * once. Any other failure becomes an ApiError with the server's message.
  */
-async function authorizedFetch(path: string, options: RequestOptions): Promise<Response> {
-  const url = `${apiUrl(path)}${queryString(options.query)}`;
+async function authorizedFetch(path: string, given: RequestOptions): Promise<Response> {
+  const url = `${apiUrl(path)}${queryString(given.query)}`;
+  const options = { ...given, personal: given.personal === true || PERSONAL_PATH.test(path) };
   let token = await accessToken();
   let response = await fetchOnce(url, options, token);
   // On /auth/* a 401 means wrong credentials (a reauth password, say), not an expired token.
@@ -140,6 +156,9 @@ async function fetchOnce(url: string, options: RequestOptions, token: string | n
   if (raw !== undefined) headers["content-type"] = "application/octet-stream";
   else if (body !== undefined) headers["content-type"] = "application/json";
   if (token) headers.authorization = `Bearer ${token}`;
+  if (spaceId !== null && !options.personal) {
+    headers[SPACE_HEADER] = String(spaceId);
+  }
   try {
     return await fetch(url, {
       method,

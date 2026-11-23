@@ -1,4 +1,4 @@
-import { API_PREFIX, errorBody } from "@organizer/shared";
+import { API_PREFIX, errorBody, SPACE_HEADER } from "@organizer/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Clock } from "../clock.ts";
 import type { Db } from "../db/index.ts";
@@ -7,6 +7,7 @@ import { isPublicOAuthPath } from "../routes/oauth.ts";
 import { looksLikeAccessToken, readAccessToken } from "../services/auth/access-token.ts";
 import type { AuthServices } from "../services/auth/index.ts";
 import { useSession } from "../services/auth/sessions.ts";
+import { memberName, openSpace } from "../services/spaces.ts";
 import type { Auth } from "../services/context.ts";
 import { verifyToken } from "../services/tokens.ts";
 import { applyCors } from "./cors.ts";
@@ -156,6 +157,60 @@ export function authenticate(
   };
 }
 
+/**
+ * Routes that work inside a shared project (X-Sloppanizer-Space): the todo, note and people features.
+ * Account, tokens, settings changes, export, restore, AI, meetings, calendar and admin stay personal.
+ */
+const SPACE_ROUTE =
+  /^\/api\/v1\/(todos|projects|labels|people|person-tags|topics|teams|comments|attachments|notes|search|next|stats|blocks|me)(\/|$)/;
+
+export function allowedInSpace(route: string | undefined, method: string): boolean {
+  if (route === undefined) return false;
+  if (route === `${API_PREFIX}/settings`) return SAFE_METHODS.has(method);
+  return SPACE_ROUTE.test(route);
+}
+
+/**
+ * Scopes a request to a shared project: a browser session of a member, on a route that works there.
+ * The account becomes the space's; the actor is the member's name, so the history says who did it.
+ */
+function enterSpace(
+  db: Db,
+  request: FastifyRequest,
+  auth: Auth,
+  header: string | string[],
+): { auth: Auth } | { status: 403 | 404; code: "forbidden" | "not_found"; message: string } {
+  const raw = Array.isArray(header) ? header[0] : header;
+  const id = raw !== undefined && /^[1-9]\d{0,9}$/.test(raw) ? Number(raw) : null;
+  if (auth.via !== "session") {
+    return {
+      status: 403,
+      code: "forbidden",
+      message: "Shared projects work from the Sloppanizer web app only.",
+    };
+  }
+  if (!allowedInSpace(request.routeOptions.url, request.method)) {
+    return { status: 403, code: "forbidden", message: "This is not available inside a shared project." };
+  }
+  const opened = id === null ? null : openSpace(db, auth.account, id);
+  const member = getAccount(db, auth.account.id);
+  if (!opened || !member) {
+    return {
+      status: 404,
+      code: "not_found",
+      message: "That shared project does not exist or you are not a member. Ask its owner to add you.",
+    };
+  }
+  return {
+    auth: {
+      ...auth,
+      accountId: opened.space.id,
+      actor: memberName(member),
+      space: { id: opened.space.id, role: opened.role, memberId: member.id },
+    },
+  };
+}
+
 /** Whether the session's last full sign-in is recent enough for a sensitive action. */
 export const freshlyAuthenticated = (auth: Auth, nowMs: number): boolean =>
   auth.via === "session" && nowMs - Date.parse(auth.authenticatedAt) <= REAUTH_WINDOW_MS;
@@ -239,6 +294,14 @@ export function registerSecurity(app: FastifyInstance, options: SecurityOptions)
           retryAfterSeconds: verdict.retryAfterSeconds,
         });
       }
+    }
+
+    const spaceHeader = request.headers[SPACE_HEADER];
+    if (spaceHeader !== undefined) {
+      const entered = enterSpace(options.db, request, auth, spaceHeader);
+      if ("status" in entered)
+        return reply.status(entered.status).send(errorBody(entered.code, entered.message));
+      request.auth = entered.auth;
     }
 
     if (request.routeOptions.config.reauth && !freshlyAuthenticated(auth, options.clock().getTime())) {

@@ -12,7 +12,7 @@ import { ToastProvider } from "./components/toast/ToastProvider.tsx";
 import { AuthApp } from "./features/auth/AuthApp.tsx";
 import { KeyboardProvider } from "./keyboard/KeyboardProvider.tsx";
 import { readAccounts, setLastUsed } from "./lib/accounts.ts";
-import { ApiError } from "./lib/api.ts";
+import { ApiError, setSpace } from "./lib/api.ts";
 import { loginFor, resolveEntry } from "./lib/entry.ts";
 import { startTabSession } from "./lib/session.ts";
 import { applyTheme, initialTheme } from "./lib/theme.ts";
@@ -35,6 +35,7 @@ if (entry.kind === "redirect") {
 } else if (root && entry.kind === "app") {
   const { account } = entry;
   setLastUsed(account.username);
+  setSpace(entry.spaceId);
   startTabSession(account, () =>
     location.replace(loginFor(account.username, location.pathname + location.search)),
   );

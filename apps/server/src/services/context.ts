@@ -36,7 +36,14 @@ export interface AuthAccount extends AccountBrief {
  * Who is acting: a signed-in browser session ("you", write; its session id and last full sign-in) or an
  * API token (its id, name and scope). Both belong to exactly one account.
  */
-export type Auth = { accountId: number; account: AuthAccount; actor: string; scope: TokenScope } & (
-  | { via: "session"; sessionId: string; authenticatedAt: string }
-  | { via: "token"; tokenId: number }
-);
+export type Auth = {
+  accountId: number;
+  account: AuthAccount;
+  actor: string;
+  scope: TokenScope;
+  /**
+   * Set inside a shared project: accountId is then the space's, account stays the member's own (its time
+   * zone is used), actor is the member's name.
+   */
+  space?: { id: number; role: "owner" | "member"; memberId: number };
+} & ({ via: "session"; sessionId: string; authenticatedAt: string } | { via: "token"; tokenId: number });

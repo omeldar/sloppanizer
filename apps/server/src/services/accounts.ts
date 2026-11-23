@@ -42,8 +42,13 @@ export const toAuthAccount = (row: AccountRow): AuthAccount => ({ ...toBrief(row
 export const getAccount = (tx: Tx, id: number): AccountRow | undefined =>
   tx.select().from(accounts).where(eq(accounts.id, id)).get();
 
+/** A person's account by username (space accounts of shared projects never match). */
 export const findAccount = (tx: Tx, username: string): AccountRow | undefined =>
-  tx.select().from(accounts).where(eq(accounts.username, username)).get();
+  tx
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.username, username), eq(accounts.kind, "user")))
+    .get();
 
 export interface NewAccount {
   username: string;
@@ -132,6 +137,8 @@ export function toProfile(tx: Tx, row: AccountRow): AccountProfile {
     tx.select({ n: count() }).from(passkeys).where(eq(passkeys.accountId, row.id)).get()?.n ?? 0;
   return {
     ...toBrief(row),
+    firstName: row.firstName,
+    lastName: row.lastName,
     timeZone: row.timeZone,
     createdAt: row.createdAt,
     security: {
@@ -149,6 +156,8 @@ export function updateAccount(tx: Tx, id: number, nowIso: string, input: UpdateA
   tx.update(accounts)
     .set({
       ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+      ...(input.firstName !== undefined ? { firstName: input.firstName } : {}),
+      ...(input.lastName !== undefined ? { lastName: input.lastName } : {}),
       ...(input.color !== undefined ? { color: input.color } : {}),
       ...(input.timeZone !== undefined ? { timeZone: input.timeZone } : {}),
       updatedAt: nowIso,
@@ -162,7 +171,14 @@ export const otherActiveAdmin = (tx: Tx, id: number): boolean =>
   (tx
     .select({ n: count() })
     .from(accounts)
-    .where(and(eq(accounts.role, "admin"), eq(accounts.status, "active"), ne(accounts.id, id)))
+    .where(
+      and(
+        eq(accounts.role, "admin"),
+        eq(accounts.status, "active"),
+        eq(accounts.kind, "user"),
+        ne(accounts.id, id),
+      ),
+    )
     .get()?.n ?? 0) > 0;
 
 /**

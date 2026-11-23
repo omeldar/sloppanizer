@@ -11,7 +11,7 @@ import {
   ResetCodeResult,
 } from "@organizer/shared";
 import type { FastifyRequest } from "fastify";
-import { count, sum } from "drizzle-orm";
+import { count, eq, sum } from "drizzle-orm";
 import { statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -165,6 +165,7 @@ export function adminRoutes(app: App, deps: Deps, auth: AuthServices): void {
       const byStatus = db
         .select({ status: accounts.status, n: count() })
         .from(accounts)
+        .where(eq(accounts.kind, "user"))
         .groupBy(accounts.status)
         .all();
       const of = (status: string) => byStatus.find((row) => row.status === status)?.n ?? 0;

@@ -1,0 +1,124 @@
+.kinds {
+  display: flex;
+  gap: 6px;
+}
+
+.kind {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  cursor: pointer;
+}
+
+.kind[data-on] {
+  border-color: var(--amber);
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
+.kind:focus-within {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.kind input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.kindName {
+  font-weight: 600;
+}
+
+.kindNote {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-text);
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.textarea:focus-visible {
+  outline: 2px solid var(--amber-line);
+  outline-offset: -1px;
+}
+
+.error {
+  color: var(--red);
+  font-size: var(--fs-small);
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.members {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+}
+
+.member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.member + .member {
+  border-top: 1px solid var(--line);
+}
+
+.memberName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memberUser {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.role {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.addRow {
+  display: flex;
+  gap: 6px;
+}
+
+.danger {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}

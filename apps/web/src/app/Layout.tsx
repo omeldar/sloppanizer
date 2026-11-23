@@ -1,6 +1,6 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { type CSSProperties, useState } from "react";
-import type { Project } from "@organizer/shared";
+import type { Project, Space } from "@organizer/shared";
 import { Menu } from "../components/Menu.tsx";
 import { Kbd } from "../components/ui.tsx";
 import { BrandMark } from "./BrandMark.tsx";
@@ -12,6 +12,11 @@ import { NewPersonDialog } from "../features/people/NewPersonDialog.tsx";
 import { EditProjectDialog } from "../features/projects/EditProjectDialog.tsx";
 import { NewProjectDialog } from "../features/projects/NewProjectDialog.tsx";
 import { QuickAdd } from "../features/quickadd/QuickAdd.tsx";
+import { FeedbackDialog } from "../features/spaces/FeedbackDialog.tsx";
+import { NewSpaceDialog, SpaceDialog } from "../features/spaces/SpaceDialogs.tsx";
+import { currentSpace } from "../lib/api.ts";
+import { accountBase } from "../lib/entry.ts";
+import { spaceHref, useCurrentSpace, useSpaces } from "../lib/spaces.ts";
 import { type KeyBinding, useActiveBindings, useKeyHold, useKeys } from "../keyboard/KeyboardProvider.tsx";
 import { useProjects, useStats, useTodo } from "../lib/queries.ts";
 import { useSignups } from "../lib/adminQueries.ts";
@@ -37,7 +42,8 @@ export function Layout() {
   const setDrawer = (open: boolean) => setDrawerOn(open ? pathname : null);
 
   const go = (to: string) => () => void navigate({ to });
-  const globalKeys: KeyBinding[] = [
+  const inSpace = currentSpace() !== null;
+  const allKeys: KeyBinding[] = [
     {
       keys: "mod+k",
       run: () => commands.openPalette(),
@@ -89,6 +95,9 @@ export function Layout() {
       whileTyping: true,
     },
   ];
+  // Meetings, settings, account and admin are personal: a shared project has none of them.
+  const personalOnly = new Set(["g m", "g s", "g u", "g a"]);
+  const globalKeys = inSpace ? allKeys.filter((k) => !personalOnly.has(k.keys)) : allKeys;
   useKeys(globalKeys);
   // Keys typed while the next page loads (its code or data) wait for it instead of getting lost.
   const loading = useRouterState({ select: (s) => s.isLoading });
@@ -115,6 +124,7 @@ export function Layout() {
       <NewPersonDialog />
       <Palette />
       <HelpOverlay bindings={helpBindings} />
+      <FeedbackDialog />
     </div>
   );
 }
@@ -142,7 +152,9 @@ function usePageProject() {
 
 function Sidebar({ open }: { open: boolean }) {
   const isAdmin = useCurrentAccount()?.role === "admin";
-  const signups = useSignups(isAdmin);
+  const inSpace = currentSpace() !== null;
+  const commands = useCommands();
+  const signups = useSignups(isAdmin && !inSpace);
   const projects = useProjects();
   const stats = useStats();
   const [newProject, setNewProject] = useState(false);
@@ -156,12 +168,13 @@ function Sidebar({ open }: { open: boolean }) {
         <BrandMark />
         <span>Sloppanizer</span>
       </Link>
+      {inSpace && <SpaceBanner />}
       <ul className={styles.nav}>
         <NavItem to="/" icon="next" label="Next up" keys="g n" exact />
         <NavItem to="/inbox" icon="inbox" label="Inbox" count={stats.data?.inbox} keys="g i" />
         <NavItem to="/board" icon="board" label="Board" keys="g b" />
         <NavItem to="/planner" icon="planner" label="Planner" keys="g t" />
-        <NavItem to="/meetings" icon="meetings" label="Meetings" keys="g m" />
+        {!inSpace && <NavItem to="/meetings" icon="meetings" label="Meetings" keys="g m" />}
         <NavItem to="/recurring" icon="recurring" label="Recurring" keys="g r" />
         <NavItem to="/week" icon="week" label="Week" keys="g w" />
         <NavItem to="/notes" icon="notes" label="Notes" keys="g o" />
@@ -218,11 +231,20 @@ function Sidebar({ open }: { open: boolean }) {
           <li className={styles.navEmpty}>No projects yet. Use the plus to add one.</li>
         )}
       </ul>
+      {!inSpace && <SharedSection />}
       <ul className={[styles.nav, styles.navBottom].join(" ")}>
         <NavItem to="/labels" icon="labels" label="Labels" keys="g l" />
         <NavItem to="/people" icon="people" label="People" keys="g p" />
-        <NavItem to="/settings" icon="settings" label="Settings" keys="g s" />
-        {isAdmin && (
+        {!inSpace && <NavItem to="/settings" icon="settings" label="Settings" keys="g s" />}
+        <li>
+          <button type="button" className={styles.navLink} onClick={() => commands.openFeedback("bug")}>
+            <span className={styles.navIcon}>
+              <Icon name="feedback" />
+            </span>
+            <span className={styles.navLabel}>Feedback</span>
+          </button>
+        </li>
+        {isAdmin && !inSpace && (
           <NavItem to="/admin" icon="admin" label="Admin" count={signups.data?.length} keys="g a" />
         )}
       </ul>
@@ -233,6 +255,97 @@ function Sidebar({ open }: { open: boolean }) {
         onOpenChange={(on) => !on && setEditingId(null)}
       />
     </nav>
+  );
+}
+
+/** Inside a shared project: which one, and the way back to your own todos. */
+function SpaceBanner() {
+  const space = useCurrentSpace();
+  const account = useCurrentAccount();
+  return (
+    <div className={styles.spaceBanner}>
+      <span className={styles.spaceKicker}>Shared project</span>
+      <span className={styles.spaceName}>
+        <span
+          className={styles.swatch}
+          style={{ "--swatch": space.data?.color ?? "#8B95A5" } as CSSProperties}
+        />
+        {space.data?.name ?? (space.isError ? "Not available" : "Loading")}
+      </span>
+      {space.data && (
+        <span className={styles.spaceMembers}>
+          {space.data.members.length} {space.data.members.length === 1 ? "member" : "members"}
+        </span>
+      )}
+      {account && (
+        <a className={styles.spaceBack} href={`${accountBase(account.username)}/`}>
+          Back to my todos
+        </a>
+      )}
+    </div>
+  );
+}
+
+/** Shared projects you are in (the Sloppanizer project for admins), each opening in its own scope. */
+function SharedSection() {
+  const spaces = useSpaces();
+  const account = useCurrentAccount();
+  const [creating, setCreating] = useState(false);
+  const [managingId, setManagingId] = useState<number | null>(null);
+  const list = spaces.data ?? [];
+  const managing: Space | null = list.find((s) => s.id === managingId) ?? null;
+  return (
+    <>
+      <div className={styles.sectionHead}>
+        <span>Shared</span>
+        <button
+          type="button"
+          className={styles.sectionAdd}
+          onClick={() => setCreating(true)}
+          aria-label="New shared project"
+          title="New shared project"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M5 0v10M0 5h10" stroke="currentColor" strokeWidth="1.5" />
+          </svg>
+        </button>
+      </div>
+      <ul className={styles.nav}>
+        {account &&
+          list.map((space) => (
+            <li key={space.id} className={styles.projectItem}>
+              <a href={spaceHref(account.username, space)} className={styles.navLink}>
+                <span className={styles.swatch} style={{ "--swatch": space.color } as CSSProperties} />
+                <span className={styles.navLabel}>{space.name}</span>
+                <span className={styles.count}>{space.openCount}</span>
+              </a>
+              <Menu
+                label={`${space.name} menu`}
+                items={[{ label: "Members and settings", run: () => setManagingId(space.id) }]}
+                trigger={
+                  <button
+                    type="button"
+                    className={styles.navMore}
+                    aria-label={`More for ${space.name}`}
+                    title="More"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                      <circle cx="2" cy="6" r="1.2" fill="currentColor" />
+                      <circle cx="6" cy="6" r="1.2" fill="currentColor" />
+                      <circle cx="10" cy="6" r="1.2" fill="currentColor" />
+                    </svg>
+                  </button>
+                }
+              />
+            </li>
+          ))}
+        {spaces.isSuccess && list.length === 0 && (
+          <li className={styles.navEmpty}>Work on a project with others: use the plus.</li>
+        )}
+      </ul>
+      <NewSpaceDialog open={creating} onOpenChange={setCreating} />
+      <SpaceDialog space={managing} onOpenChange={(on) => !on && setManagingId(null)} />
+    </>
   );
 }
 

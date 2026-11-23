@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { Menu, type MenuItem } from "../components/Menu.tsx";
 import { MAX_ACCOUNTS, type StoredAccount } from "../lib/accounts.ts";
 import { accountBase, loginFor } from "../lib/entry.ts";
+import { currentSpace } from "../lib/api.ts";
 import { signOutAccount } from "../lib/session.ts";
 import { useAccounts } from "./account.tsx";
 import styles from "./Layout.module.css";
@@ -33,7 +34,14 @@ export function AccountSwitcher() {
     ...(all.length < MAX_ACCOUNTS
       ? [{ label: "Add another account", run: () => window.location.assign("/login?add=1") }]
       : []),
-    { label: "Account settings", run: () => void navigate({ to: "/account" }) },
+    {
+      label: "Account settings",
+      // Inside a shared project the account page lives in your own tab.
+      run: () =>
+        currentSpace() === null
+          ? void navigate({ to: "/account" })
+          : window.location.assign(`${accountBase(current.username)}/account`),
+    },
     {
       label: `Sign out ${current.username}`,
       danger: true,

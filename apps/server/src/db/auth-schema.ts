@@ -1,4 +1,11 @@
-import { ACCOUNT_ROLES, ACCOUNT_STATUSES, REVOKE_REASONS, SESSION_METHODS } from "@organizer/shared";
+import {
+  ACCOUNT_KINDS,
+  ACCOUNT_ROLES,
+  ACCOUNT_STATUSES,
+  REVOKE_REASONS,
+  SESSION_METHODS,
+  SPACE_ROLES,
+} from "@organizer/shared";
 import { sql } from "drizzle-orm";
 import {
   type AnySQLiteColumn,
@@ -27,6 +34,14 @@ export const accounts = sqliteTable(
     /** Lowercase, fixed after sign-up. */
     username: text("username").notNull().unique(),
     displayName: text("display_name").notNull(),
+    /** Optional real name; feedback and shared projects show "First Last" when set, else the username. */
+    firstName: text("first_name").notNull().default(""),
+    lastName: text("last_name").notNull().default(""),
+    /**
+     * "user": a person who signs in. "space": the hidden owner of a shared project's data (services/spaces.ts);
+     * it never signs in (its username starts with "~", which no sign-in form accepts).
+     */
+    kind: text("kind", { enum: ACCOUNT_KINDS }).notNull().default("user"),
     color: text("color").notNull().default("#8B95A5"),
     timeZone: text("time_zone").notNull(),
     role: text("role", { enum: ACCOUNT_ROLES }).notNull().default("user"),
@@ -59,6 +74,41 @@ export const accounts = sqliteTable(
     index("accounts_status_idx").on(t.status),
     check("accounts_role_check", sql`${t.role} IN (${inList(ACCOUNT_ROLES)})`),
     check("accounts_status_check", sql`${t.status} IN (${inList(ACCOUNT_STATUSES)})`),
+    check("accounts_kind_check", sql`${t.kind} IN (${inList(ACCOUNT_KINDS)})`),
+  ],
+);
+
+/**
+ * Shared projects. Each one is a space account (accounts.kind = "space") holding the project's data;
+ * members open it in the web app under /u/<username>/shared/<space id> and every request carries the
+ * X-Sloppanizer-Space header (http/security.ts). system_key "feedback" marks the Sloppanizer project
+ * that bug reports and feature requests go to: its members are all admins (not stored).
+ */
+export const spaces = sqliteTable("spaces", {
+  accountId: integer("account_id")
+    .primaryKey()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  systemKey: text("system_key").unique(),
+  createdBy: integer("created_by").references(() => accounts.id, { onDelete: "set null" }),
+  createdAt: text("created_at").notNull(),
+});
+
+export const spaceMembers = sqliteTable(
+  "space_members",
+  {
+    spaceId: integer("space_id")
+      .notNull()
+      .references(() => spaces.accountId, { onDelete: "cascade" }),
+    accountId: integer("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    role: text("role", { enum: SPACE_ROLES }).notNull(),
+    addedAt: text("added_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.spaceId, t.accountId] }),
+    index("space_members_account_idx").on(t.accountId),
+    check("space_members_role_check", sql`${t.role} IN (${inList(SPACE_ROLES)})`),
   ],
 );
 

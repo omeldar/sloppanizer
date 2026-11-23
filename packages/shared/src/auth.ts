@@ -107,6 +107,10 @@ export const ACCOUNT_ROLES = ["user", "admin"] as const;
 export const AccountRole = z.enum(ACCOUNT_ROLES);
 export type AccountRole = z.infer<typeof AccountRole>;
 
+/** "space": the hidden account of a shared project (never signs in). */
+export const ACCOUNT_KINDS = ["user", "space"] as const;
+export type AccountKind = (typeof ACCOUNT_KINDS)[number];
+
 export const ACCOUNT_STATUSES = ["pending", "active", "disabled"] as const;
 export const AccountStatus = z.enum(ACCOUNT_STATUSES);
 export type AccountStatus = z.infer<typeof AccountStatus>;
@@ -278,9 +282,14 @@ export const Reauth = z.union([
 ]);
 export type Reauth = z.infer<typeof Reauth>;
 
+/** First or last name on the account (optional, "" clears it). */
+export const AccountName = z.string().trim().max(60, "Keep the name at 60 characters or fewer.");
+
 export const UpdateAccount = z
   .strictObject({
     displayName: DisplayName.optional(),
+    firstName: AccountName.optional(),
+    lastName: AccountName.optional(),
     color: AccountColor.optional(),
     timeZone: TimeZone.optional(),
   })
@@ -377,6 +386,8 @@ export type ChallengeOptions = z.infer<typeof ChallengeOptions>;
 
 export const AccountProfile = z.strictObject({
   ...AccountBrief.shape,
+  firstName: z.string(),
+  lastName: z.string(),
   timeZone: z.string(),
   createdAt: Timestamp,
   security: z.strictObject({
