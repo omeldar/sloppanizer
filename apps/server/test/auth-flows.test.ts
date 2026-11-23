@@ -162,6 +162,8 @@ describe("sign-up", () => {
       timeZone: "Europe/Berlin",
     });
     expect(row?.totpSecretEnc).not.toContain(SECRET_B);
+    // No region: the Swiss formats.
+    expect(row).toMatchObject({ dateFormat: "dmy.", timeFormat: "24h" });
     expect(
       t.deps.db
         .select()
@@ -169,6 +171,14 @@ describe("sign-up", () => {
         .all()
         .map((e) => [e.actor, e.action, e.target]),
     ).toEqual([["system", "signup", "petra"]]);
+  });
+
+  it("presets the date and time formats from the region", async () => {
+    const t = await makeAuthApp();
+    const res = await t.call("POST", "/api/v1/auth/signup", signupBody(t, "petra", { region: "us" }));
+    expect(res.statusCode).toBe(201);
+    const row = t.deps.db.select().from(accounts).where(eq(accounts.username, "petra")).get();
+    expect(row).toMatchObject({ dateFormat: "mdy/", timeFormat: "12h" });
   });
 
   it("answers 409 for a taken name (pending too, any case) and 422 for a password with the name", async () => {

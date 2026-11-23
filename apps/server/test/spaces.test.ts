@@ -128,3 +128,14 @@ describe("shared projects", () => {
     expect(json<Space[]>(await cy.call("GET", "/api/v1/spaces"))).toEqual([]);
   });
 });
+
+describe("date and time formats", () => {
+  it("are part of the profile and can be changed", async () => {
+    const t = await makeApp();
+    const before = json<{ dateFormat: string; timeFormat: string }>(await t.call("GET", "/api/v1/account"));
+    expect(before).toMatchObject({ dateFormat: "dmy.", timeFormat: "24h" });
+    const after = await t.call("PATCH", "/api/v1/account", { dateFormat: "mdy/", timeFormat: "12h" });
+    expect(json(after)).toMatchObject({ dateFormat: "mdy/", timeFormat: "12h" });
+    expect((await t.call("PATCH", "/api/v1/account", { dateFormat: "nope" })).statusCode).toBe(422);
+  });
+});

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isValidTimeZone } from "./dates.ts";
+import { DateFormat, Region, TimeFormat } from "./formats.ts";
 import { Id, PROJECT_COLORS, Timestamp } from "./primitives.ts";
 
 /**
@@ -210,6 +211,8 @@ const signupBase = {
     .max(SIGNUP_NOTE_MAX, `Keep the note at ${SIGNUP_NOTE_MAX} characters or fewer.`)
     .optional(),
   timeZone: TimeZone,
+  /** Presets the date and time formats (Switzerland when left out). */
+  region: Region.optional(),
 };
 
 export const Signup = z.union([
@@ -222,7 +225,13 @@ export type Signup = z.infer<typeof Signup>;
 export const SignupPasskeyOptions = z.strictObject({ username: Username, displayName: DisplayName });
 export type SignupPasskeyOptions = z.infer<typeof SignupPasskeyOptions>;
 
-const setupBase = { setupCode: SetupCode, username: Username, displayName: DisplayName, timeZone: TimeZone };
+const setupBase = {
+  setupCode: SetupCode,
+  username: Username,
+  displayName: DisplayName,
+  timeZone: TimeZone,
+  region: Region.optional(),
+};
 
 export const Setup = z.union([
   z.strictObject({ ...setupBase, ...passwordFactors }).superRefine(checkPasswordName),
@@ -290,6 +299,8 @@ export const UpdateAccount = z
     displayName: DisplayName.optional(),
     firstName: AccountName.optional(),
     lastName: AccountName.optional(),
+    dateFormat: DateFormat.optional(),
+    timeFormat: TimeFormat.optional(),
     color: AccountColor.optional(),
     timeZone: TimeZone.optional(),
   })
@@ -388,6 +399,8 @@ export const AccountProfile = z.strictObject({
   ...AccountBrief.shape,
   firstName: z.string(),
   lastName: z.string(),
+  dateFormat: DateFormat,
+  timeFormat: TimeFormat,
   timeZone: z.string(),
   createdAt: Timestamp,
   security: z.strictObject({

@@ -1,17 +1,17 @@
-import { canRepeatPlan, type RecurringTodo, toLocalDate, toLocalTime } from "@organizer/shared";
+import { canRepeatPlan, type RecurringTodo, toLocalDate } from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
 import type { CSSProperties } from "react";
 import { Button, EmptyState, ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { errorMessage } from "../../lib/api.ts";
-import { dayLabel, timeZone } from "../../lib/format.ts";
+import { dayLabel, timeZone, localClock } from "../../lib/format.ts";
 import { useRecurring } from "../../lib/plans.ts";
 import { useUpdateTodo } from "../../lib/queries.ts";
 import styles from "./Recurring.module.css";
 
 /** "Thu 20.11., 09:00" in local time. */
 const startText = (startAt: string): string =>
-  `${dayLabel(toLocalDate(startAt, timeZone))}, ${toLocalTime(startAt, timeZone)}`;
+  `${dayLabel(toLocalDate(startAt, timeZone))}, ${localClock(startAt)}`;
 
 /**
  * Every repeating todo once, with its repeat and when it comes next. Marking one done here (or anywhere)

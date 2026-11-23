@@ -3,7 +3,7 @@ import { type FormEvent, useState } from "react";
 import { Button, Field } from "../../components/ui.tsx";
 import { browserTimeZone, signup } from "../../lib/auth.ts";
 import { loginFor } from "../../lib/entry.ts";
-import { type AccountDraft, AccountFields, checkAccount } from "./AccountFields.tsx";
+import { type AccountDraft, AccountFields, browserRegion, checkAccount } from "./AccountFields.tsx";
 import styles from "./Auth.module.css";
 import { FactorSetup } from "./FactorSetup.tsx";
 import { Alert, AuthShell, RecoveryCodesBlock, Steps } from "./parts.tsx";
@@ -94,6 +94,7 @@ export function SignupPage({ config }: { config: AuthConfig | null }) {
               displayName: state.displayName,
               ...(note.trim() ? { note: note.trim() } : {}),
               timeZone: browserTimeZone(),
+              region: draft.region ?? browserRegion(),
               ...factors,
             });
             setState({ step: 2, username: state.username, codes: result.recoveryCodes });

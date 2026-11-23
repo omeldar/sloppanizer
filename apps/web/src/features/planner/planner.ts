@@ -12,7 +12,7 @@ import {
   toLocalTime,
 } from "@organizer/shared";
 import type { ScopeOption } from "../../components/SeriesScopeDialog.tsx";
-import { formatDayMonth } from "../../lib/format.ts";
+import { formatDayMonth, formatTime } from "../../lib/format.ts";
 
 export const SNAP_MINUTES = 15;
 /** Height of an hour in the planner's grid. */
@@ -190,7 +190,7 @@ export function blockSpan(
 
 /** "09:00–10:30" in local time. */
 export const spanText = (block: Pick<TimeBlock, "startAt" | "endAt">, timeZone: string): string =>
-  `${toLocalTime(block.startAt, timeZone)}–${toLocalTime(block.endAt, timeZone)}`;
+  `${formatTime(toLocalTime(block.startAt, timeZone))}–${formatTime(toLocalTime(block.endAt, timeZone))}`;
 
 /** What a block is for: its todo's title, else its own title. */
 export const blockTitle = (block: TimeBlock): string => block.todo?.title ?? block.title;

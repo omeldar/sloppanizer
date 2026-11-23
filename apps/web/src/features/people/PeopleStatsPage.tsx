@@ -1,7 +1,7 @@
 import type { PersonStat } from "@organizer/shared";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { type CSSProperties, useState } from "react";
-import { EmptyState, ErrorState, Loading, PageHeader, TextInput } from "../../components/ui.tsx";
+import { EmptyState, ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { absoluteDate, formatDate, today as localToday } from "../../lib/format.ts";
 import { useLabels, usePeopleStats, useProjects } from "../../lib/queries.ts";
@@ -22,6 +22,7 @@ import {
   tookText,
 } from "./stats.ts";
 import { TopicInput } from "./TopicInput.tsx";
+import { DateInput } from "../../components/DateTimeInputs.tsx";
 
 const route = getRouteApi("/people/stats");
 
@@ -124,20 +125,18 @@ export function PeopleStatsPage() {
         </label>
         {period === "custom" && (
           <span className={styles.control}>
-            <TextInput
-              type="date"
+            <DateInput
               aria-label="From"
               className={styles.date}
               value={search.from ?? ""}
-              onChange={(e) => set({ from: e.target.value || undefined })}
+              onChange={(value) => set({ from: value || undefined })}
             />
             <span>to</span>
-            <TextInput
-              type="date"
+            <DateInput
               aria-label="To"
               className={styles.date}
               value={search.to ?? ""}
-              onChange={(e) => set({ to: e.target.value || undefined })}
+              onChange={(value) => set({ to: value || undefined })}
             />
           </span>
         )}

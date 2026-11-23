@@ -22,6 +22,7 @@ import { urlHost } from "../todos/relations/WebLinks.tsx";
 import { personRef } from "../todos/TodoPickerDialog.tsx";
 import styles from "./QuickAdd.module.css";
 import { fitTitle, parseQuickTitle } from "./tokens.ts";
+import { DateInput, TimeInput } from "../../components/DateTimeInputs.tsx";
 
 export function QuickAdd() {
   const { quickAdd, close } = useCommands();
@@ -241,31 +242,28 @@ function QuickAddForm({ defaults, onDone }: { defaults: QuickAddDefaults; onDone
         </Popover>
 
         <span className={styles.fieldName}>Due</span>
-        <input
-          type="date"
+        <DateInput
           className={styles.date}
           value={dueOn}
-          onChange={(event) => setDueOn(event.target.value)}
+          onChange={(value) => setDueOn(value)}
           aria-label="Due date"
         />
 
         <span className={styles.fieldName}>Plan for</span>
         <div className={styles.planRow}>
-          <input
-            type="date"
+          <DateInput
             className={styles.date}
             value={plannedOn}
-            onChange={(event) => setPlannedOn(event.target.value)}
+            onChange={(value) => setPlannedOn(value)}
             aria-label="Planned day"
           />
           {plannedOn && (
             <>
-              <input
-                type="time"
+              <TimeInput
                 step={900}
                 className={styles.date}
                 value={slotStart}
-                onChange={(event) => setSlotStart(event.target.value)}
+                onChange={(value) => setSlotStart(value)}
                 aria-label="Time slot start (optional)"
               />
               {slotStart && (

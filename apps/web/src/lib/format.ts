@@ -1,19 +1,37 @@
 import {
+  DEFAULT_FORMATS,
   daysBetween,
   daysSince,
-  formatDate,
-  formatDateTime,
-  formatDayMonth,
+  type FormatPrefs,
+  formatDateAs,
+  formatDayMonthAs,
   formatDuration,
+  formatMonthAs,
+  formatTimeAs,
   systemTimeZone,
   toLocalDate,
+  toLocalTime,
 } from "@organizer/shared";
 
 /**
- * Every date the app shows goes through here: "03.10.2026", or "03.10." where only short text fits.
- * Never month names, the same for every browser locale. Data keeps "YYYY-MM-DD".
+ * Every date and time the app shows goes through here, in the account's formats (Account page): "03.10.2026"
+ * or "10/03/2026", "03.10." where only short text fits, "15:00" or "3:00 PM". Never month names, the same
+ * for every browser locale. Data keeps "YYYY-MM-DD" and "HH:mm".
  */
-export { formatDate, formatDayMonth };
+let prefs: FormatPrefs = DEFAULT_FORMATS;
+
+/** Set at start and when the account's formats change (lib/formatPrefs.tsx re-renders the app after). */
+export function setFormatPrefs(next: FormatPrefs): void {
+  prefs = next;
+}
+export const formatPrefs = (): FormatPrefs => prefs;
+
+/** A calendar date, "03.10.2026". */
+export const formatDate = (date: string): string => formatDateAs(date, prefs.dateFormat);
+/** Day and month, "03.10.". */
+export const formatDayMonth = (date: string): string => formatDayMonthAs(date, prefs.dateFormat);
+/** A wall clock time "15:00" as the account shows it ("15:00" or "3:00 PM"). */
+export const formatTime = (time: string): string => formatTimeAs(time, prefs.timeFormat);
 
 export const timeZone = systemTimeZone();
 
@@ -57,8 +75,7 @@ export function dayLabel(date: string): string {
 
 /** A month of the year, "2026-10" as "10.2026". */
 export function formatMonth(month: string): string {
-  const [year, number] = month.split("-");
-  return number ? `${number}.${year}` : month;
+  return formatMonthAs(month, prefs.dateFormat);
 }
 
 /**
@@ -85,7 +102,12 @@ export function dueText(dueOn: string, now: Date = new Date()): string {
 
 /** "11.11.2026 14:30" in local time. */
 export function absoluteTime(instant: string): string {
-  return formatDateTime(instant, timeZone);
+  return `${formatDate(toDate(instant))} ${formatTime(toLocalTime(instant, timeZone))}`;
+}
+
+/** The local time of an instant as the account shows it, "15:00". */
+export function localClock(instant: string): string {
+  return formatTime(toLocalTime(instant, timeZone));
 }
 
 /** The local calendar day of an instant, "11.11.2026". */

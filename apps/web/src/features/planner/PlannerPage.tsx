@@ -19,7 +19,15 @@ import {
   useState,
 } from "react";
 import { Button, PageHeader } from "../../components/ui.tsx";
-import { dayLabel, formatDate, formatDayMonth, timeZone, today, weekdayName } from "../../lib/format.ts";
+import {
+  dayLabel,
+  formatDate,
+  formatDayMonth,
+  formatTime,
+  timeZone,
+  today,
+  weekdayName,
+} from "../../lib/format.ts";
 import { errorMessage } from "../../lib/api.ts";
 import { useBlocks, useCreateBlock, useNext, useTodos, useUpdateBlock } from "../../lib/queries.ts";
 import { useChangeOccurrence, useDeleteMeeting, useMeetings, useOccurrences } from "../../lib/meetings.ts";
@@ -419,7 +427,7 @@ export function PlannerPage() {
                     }}
                   />
                   <span className={styles.todayTime}>
-                    {b.start}–{b.end}
+                    {formatTime(b.start)}–{formatTime(b.end)}
                   </span>
                   <span className={styles.todayTitle}>{b.title}</span>
                 </label>
@@ -510,7 +518,7 @@ export function PlannerPage() {
             <div className={styles.axis} aria-hidden="true">
               {HOURS.map((hour) => (
                 <span key={hour} className={styles.hourLabel}>
-                  {minutesToTime(hour * 60)}
+                  {formatTime(minutesToTime(hour * 60))}
                 </span>
               ))}
             </div>
@@ -546,7 +554,7 @@ export function PlannerPage() {
                       >
                         <span className={styles.blockTitle}>{b.title}</span>
                         <span className={styles.blockTime}>
-                          {b.start}–{b.end}
+                          {formatTime(b.start)}–{formatTime(b.end)}
                         </span>
                       </span>
                     ))}
@@ -559,7 +567,7 @@ export function PlannerPage() {
                     }}
                     aria-hidden="true"
                   >
-                    {minutesToTime(drag.target.startMin)} {drag.todo.title}
+                    {formatTime(minutesToTime(drag.target.startMin))} {drag.todo.title}
                   </span>
                 )}
                 {(placedByDay.get(day) ?? []).map((placed) => {

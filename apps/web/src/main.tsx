@@ -14,6 +14,7 @@ import { KeyboardProvider } from "./keyboard/KeyboardProvider.tsx";
 import { readAccounts, setLastUsed } from "./lib/accounts.ts";
 import { ApiError, setSpace } from "./lib/api.ts";
 import { loginFor, resolveEntry } from "./lib/entry.ts";
+import { FormatPrefsProvider } from "./lib/formatPrefs.tsx";
 import { startTabSession } from "./lib/session.ts";
 import { applyTheme, initialTheme } from "./lib/theme.ts";
 
@@ -59,7 +60,9 @@ if (entry.kind === "redirect") {
             <ToastProvider>
               <ReauthProvider>
                 <CommandsProvider>
-                  <RouterProvider router={router} />
+                  <FormatPrefsProvider accountId={account.accountId}>
+                    <RouterProvider router={router} />
+                  </FormatPrefsProvider>
                 </CommandsProvider>
               </ReauthProvider>
             </ToastProvider>

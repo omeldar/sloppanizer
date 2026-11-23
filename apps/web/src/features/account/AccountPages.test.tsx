@@ -18,6 +18,8 @@ const profile: AccountProfile = {
   displayName: "Anna Private",
   firstName: "",
   lastName: "",
+  dateFormat: "dmy.",
+  timeFormat: "24h",
   color: "#2EC5CE",
   role: "admin",
   timeZone: "Europe/Zurich",

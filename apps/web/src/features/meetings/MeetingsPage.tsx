@@ -1,9 +1,9 @@
-import { type Meeting, toLocalDate, toLocalTime } from "@organizer/shared";
+import { type Meeting, toLocalDate } from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button, EmptyState, ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
 import { useKeys } from "../../keyboard/KeyboardProvider.tsx";
-import { dayLabel, timeZone } from "../../lib/format.ts";
+import { dayLabel, timeZone, localClock } from "../../lib/format.ts";
 import { useMeetings } from "../../lib/meetings.ts";
 import { MeetingDialog, type MeetingDraft } from "./MeetingDialog.tsx";
 import styles from "./Meetings.module.css";
@@ -17,7 +17,7 @@ export function byNext(a: Meeting, b: Meeting): number {
 
 /** "Thu 20.11., 09:00" for the next date, in local time. */
 export const nextText = (startAt: string): string =>
-  `${dayLabel(toLocalDate(startAt, timeZone))}, ${toLocalTime(startAt, timeZone)}`;
+  `${dayLabel(toLocalDate(startAt, timeZone))}, ${localClock(startAt)}`;
 
 export function MeetingsPage() {
   const meetings = useMeetings();

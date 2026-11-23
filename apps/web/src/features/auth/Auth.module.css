@@ -393,3 +393,14 @@
   outline-offset: 0;
   border-color: var(--amber);
 }
+
+.select {
+  width: 100%;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--sunken);
+  color: var(--text);
+  font: inherit;
+}

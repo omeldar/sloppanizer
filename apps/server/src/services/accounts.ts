@@ -6,6 +6,8 @@ import {
   type AccountStatus,
   PROJECT_COLORS,
   RECOVERY_CODE_COUNT,
+  type Region,
+  REGIONS,
   type UpdateAccount,
 } from "@organizer/shared";
 import { and, count, eq, isNull, ne } from "drizzle-orm";
@@ -65,6 +67,8 @@ export interface NewAccount {
   totpStep: number | null;
   /** WebAuthn user handle; made here when the sign-up did not need one yet. */
   webauthnUserId?: string;
+  /** Presets the date and time formats. */
+  region?: Region;
 }
 
 export const newWebauthnUserId = (): string => randomBytes(32).toString("base64url");
@@ -78,6 +82,9 @@ export function insertAccount(tx: Tx, dataKey: Buffer, nowIso: string, input: Ne
       displayName: input.displayName,
       color: PROJECT_COLORS[0],
       timeZone: input.timeZone,
+      ...(input.region
+        ? { dateFormat: REGIONS[input.region].dateFormat, timeFormat: REGIONS[input.region].timeFormat }
+        : {}),
       role: input.role ?? "user",
       status: input.status,
       signupNote: input.note ?? "",
@@ -139,6 +146,8 @@ export function toProfile(tx: Tx, row: AccountRow): AccountProfile {
     ...toBrief(row),
     firstName: row.firstName,
     lastName: row.lastName,
+    dateFormat: row.dateFormat,
+    timeFormat: row.timeFormat,
     timeZone: row.timeZone,
     createdAt: row.createdAt,
     security: {
@@ -158,6 +167,8 @@ export function updateAccount(tx: Tx, id: number, nowIso: string, input: UpdateA
       ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
       ...(input.firstName !== undefined ? { firstName: input.firstName } : {}),
       ...(input.lastName !== undefined ? { lastName: input.lastName } : {}),
+      ...(input.dateFormat !== undefined ? { dateFormat: input.dateFormat } : {}),
+      ...(input.timeFormat !== undefined ? { timeFormat: input.timeFormat } : {}),
       ...(input.color !== undefined ? { color: input.color } : {}),
       ...(input.timeZone !== undefined ? { timeZone: input.timeZone } : {}),
       updatedAt: nowIso,

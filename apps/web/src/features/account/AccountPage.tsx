@@ -1,4 +1,15 @@
-import { AccountColor, PROJECT_COLORS, passwordProblem, type Passkey, TotpCode } from "@organizer/shared";
+import {
+  AccountColor,
+  DATE_FORMAT_LABELS,
+  DATE_FORMATS,
+  type DateFormat,
+  PROJECT_COLORS,
+  passwordProblem,
+  type Passkey,
+  TIME_FORMATS,
+  type TimeFormat,
+  TotpCode,
+} from "@organizer/shared";
 import { type CSSProperties, type FormEvent, useState } from "react";
 import { Button, ErrorState, Field, Loading, PageHeader, TextInput } from "../../components/ui.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
@@ -36,10 +47,12 @@ export function AccountPage() {
     <div className={styles.page}>
       <PageHeader title="Account" />
       <ProfileSection
-        key={`${data.displayName}|${data.firstName}|${data.lastName}|${data.color}|${data.timeZone}`}
+        key={`${data.displayName}|${data.firstName}|${data.lastName}|${data.color}|${data.timeZone}|${data.dateFormat}|${data.timeFormat}`}
         displayName={data.displayName}
         firstName={data.firstName}
         lastName={data.lastName}
+        dateFormat={data.dateFormat}
+        timeFormat={data.timeFormat}
         color={data.color}
         timeZone={data.timeZone}
         username={data.username}
@@ -58,6 +71,8 @@ function ProfileSection(props: {
   displayName: string;
   firstName: string;
   lastName: string;
+  dateFormat: DateFormat;
+  timeFormat: TimeFormat;
   color: string;
   timeZone: string;
   username: string;
@@ -67,6 +82,8 @@ function ProfileSection(props: {
   const [displayName, setDisplayName] = useState(props.displayName);
   const [firstName, setFirstName] = useState(props.firstName);
   const [lastName, setLastName] = useState(props.lastName);
+  const [dateFormat, setDateFormat] = useState(props.dateFormat);
+  const [timeFormat, setTimeFormat] = useState(props.timeFormat);
   const [color, setColor] = useState(props.color);
   const [timeZone, setTimeZone] = useState(props.timeZone);
   const zones = timeZones(props.timeZone);
@@ -74,6 +91,8 @@ function ProfileSection(props: {
     displayName.trim() !== props.displayName ||
     firstName.trim() !== props.firstName ||
     lastName.trim() !== props.lastName ||
+    dateFormat !== props.dateFormat ||
+    timeFormat !== props.timeFormat ||
     color !== props.color ||
     timeZone !== props.timeZone;
 
@@ -84,6 +103,8 @@ function ProfileSection(props: {
         ...(displayName.trim() === props.displayName ? {} : { displayName: displayName.trim() }),
         ...(firstName.trim() === props.firstName ? {} : { firstName: firstName.trim() }),
         ...(lastName.trim() === props.lastName ? {} : { lastName: lastName.trim() }),
+        ...(dateFormat === props.dateFormat ? {} : { dateFormat }),
+        ...(timeFormat === props.timeFormat ? {} : { timeFormat }),
         ...(color === props.color ? {} : { color: AccountColor.parse(color) }),
         ...(timeZone === props.timeZone ? {} : { timeZone }),
       },
@@ -129,6 +150,34 @@ function ProfileSection(props: {
               onClick={() => setColor(value)}
             />
           ))}
+        </div>
+        <div className={styles.nameRow}>
+          <Field label="Dates">
+            <select
+              className={styles.select}
+              value={dateFormat}
+              onChange={(e) => setDateFormat(e.target.value as DateFormat)}
+            >
+              {DATE_FORMATS.map((f) => (
+                <option key={f} value={f}>
+                  {DATE_FORMAT_LABELS[f]}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Times">
+            <select
+              className={styles.select}
+              value={timeFormat}
+              onChange={(e) => setTimeFormat(e.target.value as TimeFormat)}
+            >
+              {TIME_FORMATS.map((f) => (
+                <option key={f} value={f}>
+                  {f === "24h" ? "24 hours (15:00)" : "12 hours (3:00 PM)"}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
         <Field label="Time zone" hint="For today, due dates and overdue.">
           <select className={styles.select} value={timeZone} onChange={(e) => setTimeZone(e.target.value)}>

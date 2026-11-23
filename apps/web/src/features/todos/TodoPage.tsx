@@ -54,6 +54,7 @@ import { Activity } from "./Activity.tsx";
 import { chosen, type PickerKind, togglePersonPatch } from "./TodoPickerDialog.tsx";
 import styles from "./TodoPage.module.css";
 import { useTodoActions } from "./useTodoActions.ts";
+import { DateInput as DateField } from "../../components/DateTimeInputs.tsx";
 
 const route = getRouteApi("/todos/$id");
 
@@ -561,13 +562,12 @@ function DateInput({
 }) {
   return (
     <span className={styles.dateRow}>
-      <input
-        type="date"
+      <DateField
         className={styles.date}
         aria-label={label}
         value={value ?? ""}
-        onChange={(event) => {
-          const next = event.target.value || null;
+        onChange={(picked) => {
+          const next = picked || null;
           if (next !== value) onChange(next);
         }}
       />

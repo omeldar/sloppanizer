@@ -16,6 +16,7 @@ import { useCreateBlock, useDeleteBlock, useTodo, useUpdateBlock } from "../../l
 import { TodoSearchPicker } from "../todos/relations/TodoSearchPicker.tsx";
 import styles from "./Planner.module.css";
 import { blockSpan, lengthMinutes, minutesToTime, timeToMinutes } from "./planner.ts";
+import { DateInput, TimeInput } from "../../components/DateTimeInputs.tsx";
 
 export interface BlockDraft {
   /** An existing block to edit, or none for a new one. */
@@ -121,25 +122,13 @@ function BlockForm({ draft, onClose }: { draft: BlockDraft; onClose: () => void 
       )}
       <div className={styles.timeRow}>
         <Field label="Day">
-          <TextInput type="date" value={day} onChange={(event) => setDay(event.target.value)} required />
+          <DateInput value={day} onChange={(value) => setDay(value)} required />
         </Field>
         <Field label="From">
-          <TextInput
-            type="time"
-            step={900}
-            value={start}
-            onChange={(event) => setStart(event.target.value)}
-            required
-          />
+          <TimeInput step={900} value={start} onChange={(value) => setStart(value)} required />
         </Field>
         <Field label="To">
-          <TextInput
-            type="time"
-            step={900}
-            value={end}
-            onChange={(event) => setEnd(event.target.value)}
-            required
-          />
+          <TimeInput step={900} value={end} onChange={(value) => setEnd(value)} required />
         </Field>
       </div>
       <div className={styles.lengths} role="group" aria-label="Length">

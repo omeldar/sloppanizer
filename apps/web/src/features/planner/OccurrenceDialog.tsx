@@ -2,10 +2,11 @@ import { type MeetingOccurrence, toLocalDate, toLocalTime } from "@organizer/sha
 import { Link } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { Dialog } from "../../components/Dialog.tsx";
-import { Button, Field, TextInput } from "../../components/ui.tsx";
+import { Button, Field } from "../../components/ui.tsx";
 import { dayLabel, timeZone } from "../../lib/format.ts";
 import styles from "./Planner.module.css";
 import { blockSpan, lengthMinutes, spanText } from "./planner.ts";
+import { DateInput, TimeInput } from "../../components/DateTimeInputs.tsx";
 
 /**
  * A meeting date in the planner: when it is, its standup list and note, and moving or cancelling it.
@@ -106,25 +107,13 @@ function OccurrenceBody({
         <form className={styles.moveForm} onSubmit={submit} aria-label="Move to">
           <div className={styles.timeRow}>
             <Field label="Day">
-              <TextInput type="date" value={day} onChange={(event) => setDay(event.target.value)} required />
+              <DateInput value={day} onChange={(value) => setDay(value)} required />
             </Field>
             <Field label="From">
-              <TextInput
-                type="time"
-                step={300}
-                value={start}
-                onChange={(event) => setStart(event.target.value)}
-                required
-              />
+              <TimeInput step={300} value={start} onChange={(value) => setStart(value)} required />
             </Field>
             <Field label="To">
-              <TextInput
-                type="time"
-                step={300}
-                value={end}
-                onChange={(event) => setEnd(event.target.value)}
-                required
-              />
+              <TimeInput step={300} value={end} onChange={(value) => setEnd(value)} required />
             </Field>
           </div>
           {error && (

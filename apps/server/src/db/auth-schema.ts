@@ -1,5 +1,7 @@
 import {
   ACCOUNT_KINDS,
+  DATE_FORMATS,
+  TIME_FORMATS,
   ACCOUNT_ROLES,
   ACCOUNT_STATUSES,
   REVOKE_REASONS,
@@ -42,6 +44,9 @@ export const accounts = sqliteTable(
      * it never signs in (its username starts with "~", which no sign-in form accepts).
      */
     kind: text("kind", { enum: ACCOUNT_KINDS }).notNull().default("user"),
+    /** How the web app shows dates and times (packages/shared/src/formats.ts); preset from the region at sign-up. */
+    dateFormat: text("date_format", { enum: DATE_FORMATS }).notNull().default("dmy."),
+    timeFormat: text("time_format", { enum: TIME_FORMATS }).notNull().default("24h"),
     color: text("color").notNull().default("#8B95A5"),
     timeZone: text("time_zone").notNull(),
     role: text("role", { enum: ACCOUNT_ROLES }).notNull().default("user"),

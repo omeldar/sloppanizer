@@ -4,7 +4,7 @@ import { Button, Field, TextInput } from "../../components/ui.tsx";
 import { saveSession } from "../../lib/accounts.ts";
 import { browserTimeZone, setup } from "../../lib/auth.ts";
 import { accountBase } from "../../lib/entry.ts";
-import { type AccountDraft, AccountFields, checkAccount } from "./AccountFields.tsx";
+import { type AccountDraft, AccountFields, browserRegion, checkAccount } from "./AccountFields.tsx";
 import styles from "./Auth.module.css";
 import { FactorSetup } from "./FactorSetup.tsx";
 import type { Go } from "./LoginPage.tsx";
@@ -102,6 +102,7 @@ export function SetupPage({ go }: { go: Go }) {
               username: state.username,
               displayName: state.displayName,
               timeZone: browserTimeZone(),
+              region: draft.region ?? browserRegion(),
               ...factors,
             });
             setState({

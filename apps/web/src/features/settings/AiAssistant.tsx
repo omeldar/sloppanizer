@@ -5,6 +5,7 @@ import { Button, Field, TextInput } from "../../components/ui.tsx";
 import { testOllama, useAiSettings, useUpdateAiSettings } from "../../lib/ai.ts";
 import { errorMessage } from "../../lib/api.ts";
 import styles from "./Settings.module.css";
+import { TimeInput } from "../../components/DateTimeInputs.tsx";
 
 const PROVIDERS: { value: AiProvider; name: string; note: string }[] = [
   { value: "none", name: "Off", note: "A plain todo app, no AI." },
@@ -139,19 +140,17 @@ export function AiAssistantSection() {
       {data.provider !== "none" && (
         <div className={styles.aiRow}>
           <Field label="Working day from">
-            <TextInput
-              type="time"
+            <TimeInput
               step={900}
-              defaultValue={data.dayStart}
-              onBlur={(e) => e.target.value !== data.dayStart && save({ dayStart: e.target.value })}
+              value={data.dayStart}
+              onChange={(value) => value && value !== data.dayStart && save({ dayStart: value })}
             />
           </Field>
           <Field label="to">
-            <TextInput
-              type="time"
+            <TimeInput
               step={900}
-              defaultValue={data.dayEnd}
-              onBlur={(e) => e.target.value !== data.dayEnd && save({ dayEnd: e.target.value })}
+              value={data.dayEnd}
+              onChange={(value) => value && value !== data.dayEnd && save({ dayEnd: value })}
             />
           </Field>
         </div>

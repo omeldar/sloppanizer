@@ -5,6 +5,7 @@ import { Button, FieldButton } from "../../../components/ui.tsx";
 import { formatDate, today as localToday } from "../../../lib/format.ts";
 import { checkRule, type Draft, draftFrom, presets, ruleFrom, sameRule, WEEKDAY_SHORT } from "./repeat.ts";
 import styles from "./Repeat.module.css";
+import { DateInput } from "../../../components/DateTimeInputs.tsx";
 
 const UNITS = [
   { value: "day", one: "day", many: "days" },
@@ -327,12 +328,11 @@ function CustomForm({
 
       <label className={styles.row}>
         <span>Ends</span>
-        <input
-          type="date"
+        <DateInput
           className={styles.text}
           aria-label="Ends on"
           value={draft.until}
-          onChange={(e) => set({ until: e.target.value })}
+          onChange={(until) => set({ until })}
         />
         {draft.until && (
           <button type="button" className={styles.clear} onClick={() => set({ until: "" })}>

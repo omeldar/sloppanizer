@@ -1,7 +1,7 @@
 import { addDays, formatDuration, type WorkStats } from "@organizer/shared";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
-import { dayLabel, formatDate, formatDayMonth, today } from "../../lib/format.ts";
+import { dayLabel, formatDate, formatDayMonth, formatTime, today } from "../../lib/format.ts";
 import {
   type BarRow,
   BarList,
@@ -14,6 +14,7 @@ import {
 } from "./charts.tsx";
 import { BUCKET_LABELS, hoursText, periodOf, PRESETS, useWorkStats, WEEKDAY_SHORT } from "./stats.ts";
 import styles from "./Stats.module.css";
+import { DateInput } from "../../components/DateTimeInputs.tsx";
 
 const route = getRouteApi("/stats");
 
@@ -52,24 +53,24 @@ export function StatsPage() {
             </button>
           ))}
         </div>
-        <label className={styles.range}>
+        <span className={styles.range}>
           From
-          <input
-            type="date"
+          <DateInput
+            aria-label="From"
             value={period.from}
             max={period.to}
-            onChange={(e) => e.target.value && go({ from: e.target.value, to: period.to })}
+            onChange={(value) => value && go({ from: value, to: period.to })}
           />
-        </label>
-        <label className={styles.range}>
+        </span>
+        <span className={styles.range}>
           to
-          <input
-            type="date"
+          <DateInput
+            aria-label="To"
             value={period.to}
             min={period.from}
-            onChange={(e) => e.target.value && go({ from: period.from, to: e.target.value })}
+            onChange={(value) => value && go({ from: period.from, to: value })}
           />
-        </label>
+        </span>
       </div>
       <p className={styles.note}>
         Worked time is planned time that has already happened: time blocks and planned dates of repeating
@@ -290,7 +291,7 @@ function TrendCard({ stats }: { stats: WorkStats }) {
   );
 }
 
-const hourText = (hour: number): string => `${String(hour).padStart(2, "0")}:00`;
+const hourText = (hour: number): string => formatTime(`${String(hour).padStart(2, "0")}:00`);
 
 function HoursCard({ stats }: { stats: WorkStats }) {
   const cells: HeatCell[] = stats.hours.flatMap((row, day) =>

@@ -29,6 +29,7 @@ import { useLabels, useProjects } from "../../lib/queries.ts";
 import { lengthMinutes } from "../planner/planner.ts";
 import { RepeatField } from "../todos/repeat/RepeatField.tsx";
 import styles from "./Meetings.module.css";
+import { DateInput, TimeInput } from "../../components/DateTimeInputs.tsx";
 
 /** A new meeting, or an existing one to edit; `from` is the date a repeat change starts at. */
 export type MeetingDraft = { meeting?: undefined } | { meeting: Meeting; from: string };
@@ -225,31 +226,18 @@ function MeetingForm({ draft, onClose }: { draft: MeetingDraft; onClose: () => v
 
         <div className={styles.timeRow}>
           <Field label={editing ? "From the date" : "First date"}>
-            <TextInput
-              type="date"
+            <DateInput
               value={startsOn}
-              onChange={(event) => changeStart(event.target.value)}
+              onChange={(value) => changeStart(value)}
               disabled={editing !== undefined}
               required
             />
           </Field>
           <Field label="From">
-            <TextInput
-              type="time"
-              step={300}
-              value={start}
-              onChange={(event) => setStart(event.target.value)}
-              required
-            />
+            <TimeInput step={300} value={start} onChange={(value) => setStart(value)} required />
           </Field>
           <Field label="To">
-            <TextInput
-              type="time"
-              step={300}
-              value={end}
-              onChange={(event) => setEnd(event.target.value)}
-              required
-            />
+            <TimeInput step={300} value={end} onChange={(value) => setEnd(value)} required />
           </Field>
         </div>
         <div className={styles.repeatRow}>
@@ -278,11 +266,7 @@ function MeetingForm({ draft, onClose }: { draft: MeetingDraft; onClose: () => v
                   : "The list counts what happened since the start of this day."
               }
             >
-              <TextInput
-                type="date"
-                value={shownCount}
-                onChange={(event) => setCountFrom(event.target.value || null)}
-              />
+              <DateInput value={shownCount} onChange={(value) => setCountFrom(value || null)} />
             </Field>
             <FilterFields filter={filter} onChange={setFilter} />
           </>
