@@ -109,10 +109,17 @@ export function StripRow({
           type="checkbox"
           checked={done || collapsing}
           onChange={toggle}
-          aria-label={done ? `Reopen #${todo.id}` : `Mark #${todo.id} done`}
+          aria-label={
+            // A shared project numbers its todos on its own: #3 there is not your #3.
+            source
+              ? `${done ? "Reopen" : "Mark"} "${todo.title}"${done ? "" : " done"}`
+              : done
+                ? `Reopen #${todo.id}`
+                : `Mark #${todo.id} done`
+          }
         />
       </span>
-      <span className={styles.id}>#{todo.id}</span>
+      <span className={styles.id}>{source ? "" : `#${todo.id}`}</span>
       <span className={styles.main}>
         <span className={styles.line}>
           {editingTitle ? (

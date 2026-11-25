@@ -52,6 +52,9 @@ describe("StripRow", () => {
     const item = await screen.findByRole("listitem");
     expect(within(item).getByText("from Home move")).toBeTruthy();
     expect(within(item).getAllByText("Home move")).toHaveLength(1);
+    // Its number belongs to the shared project, so it is not shown next to your own.
+    expect(within(item).queryByText("#3")).toBeNull();
+    expect(within(item).getByRole("checkbox", { name: 'Mark "Book van" done' })).toBeTruthy();
     expect(within(item).getByRole("link", { name: "Book van" }).getAttribute("href")).toBe(
       "/u/anna/shared/7/todos/3",
     );

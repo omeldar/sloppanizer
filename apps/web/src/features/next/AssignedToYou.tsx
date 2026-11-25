@@ -39,7 +39,7 @@ export function AssignedToYou() {
   };
 
   return (
-    <section className={stripStyles.group} aria-label="Assigned to you">
+    <section className={stripStyles.groupLead} aria-label="Assigned to you">
       <h2 className={stripStyles.groupTitle}>
         Assigned to you <span className={stripStyles.groupCount}>{items.length}</span>
       </h2>
