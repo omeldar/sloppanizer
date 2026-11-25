@@ -8,6 +8,12 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- Move your sign-in to omeldar: accounts that still sign in with their Sloppanizer password see a line
+  under the top bar and a section on the Account page; "Move my sign-in" binds their omeldar account
+  (auth.omeldar.com) after a fresh sign-in there. "Later" hides it for a day. With
+  `SLOPPANIZER_LOCAL_LOGIN_UNTIL` the own login, sign-up and reset stop on that day; the banner and the
+  login page name it beforehand.
+
 ## 1.0.0 (2026-11-19)
 
 - Projects: edit a project's name, description and color from the project page or its menu in the

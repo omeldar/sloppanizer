@@ -15,6 +15,7 @@ import { type AccountRow, getAccount, insertAccount } from "../accounts.ts";
 import type { Tx } from "../context.ts";
 import { seedAccount } from "../owned.ts";
 import type { AuthServices } from "./index.ts";
+import { logAdminEvent } from "./instance.ts";
 import { type Client, startSession } from "./login.ts";
 import { AuthError, type AuthClient, createAuthClient, type User } from "./omeldar-auth.ts";
 import { markAuthenticated, revokeAccountSessions, revokeSession } from "./sessions.ts";
@@ -44,6 +45,17 @@ export function createOmeldarClient(config: Config["omeldar"]): OmeldarClient | 
 }
 
 const OFF = "Sign-in with omeldar is not turned on here.";
+
+/** Whether Sloppanizer's own login has ended (SLOPPANIZER_LOCAL_LOGIN_UNTIL passed, with "both"). */
+export function localLoginEnded(config: Config["omeldar"], nowMs: number): boolean {
+  return config.localLoginEnds !== null && nowMs >= config.localLoginEnds.at.getTime();
+}
+
+/** What the own login, sign-up, setup and reset answer once it has ended. */
+export function localLoginEndedMessage(config: Config["omeldar"]): string {
+  const day = config.localLoginEnds?.on ?? "";
+  return `Sign-in with your Sloppanizer password ended on ${day}. Use "Sign in with omeldar" (auth.omeldar.com). If you never moved your sign-in, try your Sloppanizer username and password there, or ask the admin.`;
+}
 /** A sensitive action accepts a sign-in at auth this recent. */
 const REAUTH_MAX_AGE_S = 300;
 
@@ -196,6 +208,67 @@ export async function omeldarReauth(
     throw new ApiError("forbidden", "Sign in again at omeldar to confirm it is you.", { reason: "stale" });
   }
   db.transaction((tx) => markAuthenticated(tx, nowMs, session.id));
+}
+
+/** Whether the session's account may move its sign-in to omeldar now (POST /auth/omeldar/link/start). */
+export function omeldarLinkReady(db: Db, auth: AuthServices, accountId: number): void {
+  clientOf(auth);
+  const account = getAccount(db, accountId);
+  if (!account) throw new ApiError("unauthorized", "Sign in again.");
+  if (account.authSubject !== null) {
+    throw new ApiError("conflict", "Your sign-in already moved to omeldar.", { reason: "linked" });
+  }
+}
+
+/**
+ * POST /auth/omeldar/link: moves the signed-in account's sign-in to the omeldar account that just signed
+ * in (a fresh sign-in there, in a popup). Binds `auth_subject` only: never an omeldar account that belongs
+ * to another Sloppanizer account (bound already, or imported from one). Name and role follow at the next
+ * sign-in with omeldar, as for everyone. The own credentials stay until the own login is removed.
+ */
+export async function omeldarLink(
+  db: Db,
+  auth: AuthServices,
+  nowMs: number,
+  session: { accountId: number },
+  input: OidcReauth,
+): Promise<void> {
+  const user = await exchange(clientOf(auth), input);
+  if (nowMs / 1000 - user.auth_time > REAUTH_MAX_AGE_S) {
+    throw new ApiError("forbidden", "Sign in again at omeldar to move your sign-in.", { reason: "stale" });
+  }
+  const legacyId =
+    typeof user.legacy_id === "string" && /^\d{1,10}$/.test(user.legacy_id) ? Number(user.legacy_id) : null;
+  const nowIso = new Date(nowMs).toISOString();
+  db.transaction((tx) => {
+    const account = getAccount(tx, session.accountId);
+    if (!account) throw new ApiError("unauthorized", "Sign in again.");
+    if (account.authSubject === user.sub) return;
+    if (account.authSubject !== null) {
+      throw new ApiError("conflict", "Your sign-in already moved to another omeldar account.", {
+        reason: "linked",
+      });
+    }
+    const taken = tx
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(eq(accounts.authSubject, user.sub))
+      .get();
+    if (taken || (legacyId !== null && legacyId !== account.id)) {
+      throw new ApiError(
+        "conflict",
+        "That omeldar account belongs to another Sloppanizer account. Sign in at omeldar as yourself, or ask the admin.",
+        { reason: "other_account" },
+      );
+    }
+    tx.update(accounts)
+      .set({ authSubject: user.sub, updatedAt: nowIso })
+      .where(eq(accounts.id, account.id))
+      .run();
+    logAdminEvent(tx, nowIso, account.username, "move_signin", account.username, {
+      omeldarUsername: user.preferred_username,
+    });
+  });
 }
 
 /**

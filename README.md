@@ -148,6 +148,20 @@ sign-in at omeldar in a popup. Auth's back-channel logout (`POST /api/v1/auth/ba
 session of that sign-in. The web app serves `/.well-known/webauthn` so passkeys made on organizer.omeldar.com
 work at auth.omeldar.com. Rollback: set `SLOPPANIZER_AUTH=local`; the own credentials were never changed.
 
+**Moving people over, with an end date.** With `both`, everyone who still signs in with their Sloppanizer
+password sees a line under the top bar (and a section on the Account page): "Move my sign-in" explains it,
+asks them to confirm it is them here when the last sign-in is older than 10 minutes, then opens a fresh
+sign-in at omeldar in a popup and binds that omeldar account to theirs (`POST /api/v1/auth/omeldar/link`;
+never an omeldar account that already belongs to, or was imported from, another Sloppanizer account).
+"Later" hides it for a day. Accounts that moved never see it.
+
+`SLOPPANIZER_LOCAL_LOGIN_UNTIL=YYYY-MM-DD` (optional, only with `both`) is the day the own login stops, from
+00:00 that day in `SLOPPANIZER_DEFAULT_TZ`. Before it, the banner and the login page name the day; from it,
+the own login, passkey login, sign-up, setup and reset answer 410 and point to omeldar, and the login page
+offers only "Sign in with omeldar". Sessions that are still open keep working and can still move. Unset (the
+default): no end, nothing changes. For "30 days from now", set it to the date 30 days after the release
+ships. With `local` it is ignored, so rollback stays one switch.
+
 ## MCP server
 
 ### Hosted (every account)

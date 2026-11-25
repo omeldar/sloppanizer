@@ -97,6 +97,21 @@ describe("config", () => {
     expect(configError({ SLOPPANIZER_SECRET: "short" })).toMatch(/at least 32/);
   });
 
+  it("reads the day the own login ends, in the default time zone, only with SLOPPANIZER_AUTH=both", () => {
+    const env = { SLOPPANIZER_LOCAL_LOGIN_UNTIL: "2026-12-25", SLOPPANIZER_DEFAULT_TZ: "Europe/Zurich" };
+    expect(loadConfig({ ...env, SLOPPANIZER_AUTH: "both" }).omeldar.localLoginEnds).toEqual({
+      on: "2026-12-25",
+      at: new Date("2026-12-24T23:00:00.000Z"),
+    });
+    expect(loadConfig({ ...env, SLOPPANIZER_AUTH: "local" }).omeldar.localLoginEnds).toBeNull();
+    expect(loadConfig({ SLOPPANIZER_AUTH: "both" }).omeldar.localLoginEnds).toBeNull();
+    for (const bad of ["25.12.2026", "2026-02-30", "tomorrow"]) {
+      expect(configError({ SLOPPANIZER_LOCAL_LOGIN_UNTIL: bad })).toBe(
+        `SLOPPANIZER_LOCAL_LOGIN_UNTIL must be a date like 2026-12-31 (the day the own login stops), got "${bad}".`,
+      );
+    }
+  });
+
   it("matches trusted proxies by CIDR, also IPv4-mapped IPv6 addresses", () => {
     const trusted = proxyMatcher(["172.16.0.0/12", "fd00::/8"]);
     expect(trusted("172.18.0.5")).toBe(true);

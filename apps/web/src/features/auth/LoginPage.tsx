@@ -5,6 +5,7 @@ import { saveSession, TooManyAccountsError } from "../../lib/accounts.ts";
 import { errorMessage } from "../../lib/api.ts";
 import { login, loginWithPasskey } from "../../lib/auth.ts";
 import { accountBase, afterLogin } from "../../lib/entry.ts";
+import { formatDate } from "../../lib/format.ts";
 import { logoutOnServer } from "../../lib/session.ts";
 import { conditionalMediationAvailable, passkeysSupported } from "../../lib/webauthn.ts";
 import styles from "./Auth.module.css";
@@ -19,11 +20,14 @@ export function LoginPage({
   search,
   go,
   omeldar = null,
+  localLoginEndsOn = null,
 }: {
   search: URLSearchParams;
   go: Go;
   /** Set while "Sign in with omeldar" is offered next to the own login (SLOPPANIZER_AUTH=both). */
   omeldar?: OmeldarConfig | null;
+  /** The day the own login stops (SLOPPANIZER_LOCAL_LOGIN_UNTIL), or null. */
+  localLoginEndsOn?: string | null;
 }) {
   const account = search.get("account") ?? "";
   const next = search.get("next");
@@ -144,6 +148,12 @@ export function LoginPage({
         <div className={styles.form}>
           <OmeldarButton config={omeldar} next={next} {...(account ? { loginHint: account } : {})} />
           <div className={styles.or}>or with your Sloppanizer password</div>
+          {localLoginEndsOn && (
+            <p className={styles.lede}>
+              Sign-in with your Sloppanizer password ends on {formatDate(localLoginEndsOn)}. Move to omeldar
+              before then: sign in, then Account.
+            </p>
+          )}
         </div>
       )}
       <form className={styles.form} onSubmit={(event) => void submit(event)} noValidate>

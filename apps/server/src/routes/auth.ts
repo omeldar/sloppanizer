@@ -33,7 +33,14 @@ import {
   signup,
   signupPasskeyOptions,
 } from "../services/auth/flows.ts";
-import { omeldarBackchannelLogout, omeldarReauth, omeldarSignIn } from "../services/auth/omeldar.ts";
+import {
+  localLoginEnded,
+  omeldarBackchannelLogout,
+  omeldarLink,
+  omeldarLinkReady,
+  omeldarReauth,
+  omeldarSignIn,
+} from "../services/auth/omeldar.ts";
 import { revokeSession } from "../services/auth/sessions.ts";
 import { accountRoutes } from "./account.ts";
 import { adminRoutes } from "./admin.ts";
@@ -63,8 +70,11 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   const sessionConfig = { access: "session" as const };
   const tags = ["auth"];
   const { omeldar } = auth.config;
-  /** The own login, sign-up, setup, reset and reauth: off while sign-in goes through auth.omeldar.com. */
-  const local = { access: "public" as const, localSignIn: true };
+  /**
+   * The own login, sign-up, setup and reset: off while sign-in goes through auth.omeldar.com only, and
+   * once SLOPPANIZER_LOCAL_LOGIN_UNTIL has passed.
+   */
+  const local = { access: "public" as const, localSignIn: true, localLogin: true };
 
   app.get(
     `${API_PREFIX}/auth/config`,
@@ -76,21 +86,27 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
         response: { 200: AuthConfig },
       },
     },
-    async () => ({
-      signupsOpen: auth.config.signupsOpen && omeldar.mode !== "oidc",
-      setupNeeded: omeldar.mode !== "oidc" && !adminExists(db),
-      rpId: auth.config.rpId,
-      mode: omeldar.mode,
-      omeldar:
-        omeldar.mode === "local"
-          ? null
-          : {
-              issuer: omeldar.issuer,
-              clientId: omeldar.clientId,
-              redirectUri: omeldar.redirectUri,
-              accountUrl: `${omeldar.issuer}/account`,
-            },
-    }),
+    async () => {
+      const ownLogin = omeldar.mode !== "oidc" && !localLoginEnded(omeldar, now());
+      return {
+        signupsOpen: auth.config.signupsOpen && ownLogin,
+        setupNeeded: ownLogin && !adminExists(db),
+        rpId: auth.config.rpId,
+        mode: omeldar.mode,
+        omeldar:
+          omeldar.mode === "local"
+            ? null
+            : {
+                issuer: omeldar.issuer,
+                clientId: omeldar.clientId,
+                redirectUri: omeldar.redirectUri,
+                accountUrl: `${omeldar.issuer}/account`,
+              },
+        localLoginEnds: omeldar.localLoginEnds
+          ? { on: omeldar.localLoginEnds.on, at: omeldar.localLoginEnds.at.toISOString() }
+          : null,
+      };
+    },
   );
 
   app.post(
@@ -317,6 +333,35 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
         { id: session.sessionId, accountId: session.accountId },
         request.body,
       );
+      return reply.status(204).send();
+    },
+  );
+
+  // Moving a signed-in account's sign-in to omeldar: needs a recent sign-in here (a stolen session must
+  // not bind someone else's omeldar account), then a fresh sign-in at omeldar in a popup.
+  app.post(
+    `${API_PREFIX}/auth/omeldar/link/start`,
+    {
+      config: { ...sessionConfig, reauth: true },
+      schema: { tags, summary: "Check that this account can move its sign-in to omeldar now" },
+    },
+    async (request, reply) => {
+      omeldarLinkReady(db, auth, sessionOf(request).accountId);
+      return reply.status(204).send();
+    },
+  );
+  app.post(
+    `${API_PREFIX}/auth/omeldar/link`,
+    {
+      config: { ...sessionConfig, reauth: true },
+      schema: {
+        tags,
+        summary: "Move this account's sign-in to the omeldar account of a fresh sign-in there",
+        body: OidcReauth,
+      },
+    },
+    async (request, reply) => {
+      await omeldarLink(db, auth, now(), { accountId: sessionOf(request).accountId }, request.body);
       return reply.status(204).send();
     },
   );

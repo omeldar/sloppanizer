@@ -46,16 +46,28 @@ export function AuthApp({ page, search, go }: { page: AuthPage; search: URLSearc
   if (page === "login") {
     // Waits for the config: with omeldar only, the own login form must not start (its passkey prompt).
     if (!config && !configFailed) return null;
-    return config?.mode === "oidc" && config.omeldar ? (
-      <OmeldarLoginPage config={config.omeldar} search={search} />
-    ) : (
-      <LoginPage search={search} go={go} omeldar={config?.omeldar ?? null} />
+    if (config?.omeldar && (config.mode === "oidc" || ownLoginEnded(config))) {
+      return (
+        <OmeldarLoginPage
+          config={config.omeldar}
+          search={search}
+          endedOn={config.mode === "both" ? (config.localLoginEnds?.on ?? null) : null}
+        />
+      );
+    }
+    return (
+      <LoginPage
+        search={search}
+        go={go}
+        omeldar={config?.omeldar ?? null}
+        localLoginEndsOn={config?.localLoginEnds?.on ?? null}
+      />
     );
   }
   if (page === "oauth") return <ConsentPage search={search} go={go} />;
   if (page === "reset") return <ResetPage go={go} />;
   if (page === "signup") {
-    if (config?.mode === "oidc" && config.omeldar)
+    if (config?.omeldar && (config.mode === "oidc" || ownLoginEnded(config)))
       return <OmeldarLoginPage config={config.omeldar} search={search} create />;
     return <SignupPage config={config} />;
   }
@@ -64,6 +76,10 @@ export function AuthApp({ page, search, go }: { page: AuthPage; search: URLSearc
   if (config || configFailed) return <NotFound />;
   return null;
 }
+
+/** Whether SLOPPANIZER_LOCAL_LOGIN_UNTIL has passed (the server refuses the own login from then on). */
+const ownLoginEnded = (config: AuthConfig): boolean =>
+  config.localLoginEnds != null && Date.parse(config.localLoginEnds.at) <= Date.now();
 
 export function NotFound() {
   return (

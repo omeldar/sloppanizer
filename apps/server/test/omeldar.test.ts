@@ -1,8 +1,9 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { accounts, sessions } from "../src/db/auth-schema.ts";
+import { accounts, adminEvents, sessions } from "../src/db/auth-schema.ts";
 import type { OmeldarClient } from "../src/services/auth/omeldar.ts";
 import { AuthError, type User } from "../src/services/auth/omeldar-auth.ts";
+import { codeAt, TEST_PASSWORD, TEST_TOTP_SECRET } from "./auth-helpers.ts";
 import { json, makeApp } from "./helpers.ts";
 
 /**
@@ -48,10 +49,14 @@ const callbackBody = (code: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-async function omeldarApp(mode: "both" | "oidc", people: Record<string, Partial<User>>) {
+async function omeldarApp(
+  mode: "local" | "both" | "oidc",
+  people: Record<string, Partial<User>>,
+  env: Record<string, string> = {},
+) {
   let nowS = 0;
   const t = await makeApp({
-    env: { SLOPPANIZER_AUTH: mode, SLOPPANIZER_AUTH_ISSUER: "https://auth.example.test" },
+    env: { SLOPPANIZER_AUTH: mode, SLOPPANIZER_AUTH_ISSUER: "https://auth.example.test", ...env },
     omeldar: fakeOmeldar(people, () => nowS),
   });
   nowS = Math.floor(t.deps.clock().getTime() / 1000);
@@ -197,5 +202,174 @@ describe("sign in with omeldar", () => {
       });
     expect((await reauth("other")).statusCode).toBe(403);
     expect((await reauth("a")).statusCode).toBe(204);
+  });
+});
+
+/** Anna's own login (password and authenticator) at the test clock's now. */
+const passwordLogin = (t: Awaited<ReturnType<typeof omeldarApp>>["t"]) =>
+  t.app.inject({
+    method: "POST",
+    url: "/api/v1/auth/login",
+    payload: { username: "anna", password: TEST_PASSWORD, code: codeAt(TEST_TOTP_SECRET, t.deps.clock) },
+  });
+
+// 25.12.2026 starts at 2026-12-24T23:00Z in Zurich.
+const UNTIL = { SLOPPANIZER_LOCAL_LOGIN_UNTIL: "2026-12-25", SLOPPANIZER_DEFAULT_TZ: "Europe/Zurich" };
+
+describe("the own login ends (SLOPPANIZER_LOCAL_LOGIN_UNTIL)", () => {
+  it("works until the day starts, then answers 410 pointing to omeldar; open sessions keep working", async () => {
+    const { t, post } = await omeldarApp("both", { a: { sub: "usr_a", preferred_username: "anna" } }, UNTIL);
+    expect(json(await t.app.inject({ method: "GET", url: "/api/v1/auth/config" }))).toMatchObject({
+      mode: "both",
+      signupsOpen: true,
+      localLoginEnds: { on: "2026-12-25", at: "2026-12-24T23:00:00.000Z" },
+    });
+
+    t.setNow("2026-12-24T22:59:00.000Z");
+    expect((await passwordLogin(t)).statusCode).toBe(200);
+
+    t.setNow("2026-12-24T23:00:00.000Z");
+    const refused = await passwordLogin(t);
+    expect(refused.statusCode).toBe(410);
+    expect(json<{ error: { code: string; message: string } }>(refused).error).toMatchObject({
+      code: "gone",
+    });
+    expect(json<{ error: { message: string } }>(refused).error.message).toContain("ended on 2026-12-25");
+    const others = [
+      "/api/v1/auth/passkey/options",
+      "/api/v1/auth/passkey/login",
+      "/api/v1/auth/signup",
+      "/api/v1/auth/reset",
+      "/api/v1/auth/setup",
+    ];
+    const answers = await Promise.all(others.map(async (url) => [url, (await post(url, {})).statusCode]));
+    expect(Object.fromEntries(answers)).toEqual(Object.fromEntries(others.map((url) => [url, 410])));
+    expect(json(await t.app.inject({ method: "GET", url: "/api/v1/auth/config" }))).toMatchObject({
+      signupsOpen: false,
+      setupNeeded: false,
+      localLoginEnds: { on: "2026-12-25" },
+    });
+
+    // A session from before the end keeps working, can still confirm it is you, and can still move.
+    expect((await t.call("GET", "/api/v1/todos")).statusCode).toBe(200);
+    const reauth = await t.app.inject({
+      method: "POST",
+      url: "/api/v1/auth/reauth",
+      headers: t.account.headers(),
+      payload: { password: TEST_PASSWORD, code: codeAt(TEST_TOTP_SECRET, t.deps.clock) },
+    });
+    expect(reauth.statusCode).toBe(204);
+    // Signing in with omeldar is never affected.
+    expect((await post("/api/v1/auth/omeldar/callback", callbackBody("a"))).statusCode).toBe(200);
+  });
+
+  it("is ignored with SLOPPANIZER_AUTH=local (rollback stays one switch) and moot with oidc", async () => {
+    const local = await omeldarApp("local", {}, UNTIL);
+    local.t.setNow("2027-01-10T10:00:00.000Z");
+    expect(json(await local.t.app.inject({ method: "GET", url: "/api/v1/auth/config" }))).toMatchObject({
+      mode: "local",
+      localLoginEnds: null,
+    });
+    expect((await passwordLogin(local.t)).statusCode).toBe(200);
+
+    const oidc = await omeldarApp("oidc", {}, UNTIL);
+    expect(json(await oidc.t.app.inject({ method: "GET", url: "/api/v1/auth/config" }))).toMatchObject({
+      mode: "oidc",
+      localLoginEnds: null,
+    });
+  });
+
+  it("without it, nothing ends", async () => {
+    const { t } = await omeldarApp("both", {});
+    expect(json(await t.app.inject({ method: "GET", url: "/api/v1/auth/config" }))).toMatchObject({
+      localLoginEnds: null,
+    });
+    t.setNow("2030-01-01T10:00:00.000Z");
+    expect((await passwordLogin(t)).statusCode).toBe(200);
+  });
+});
+
+const linkBody = (code: string) => ({ query: `?code=${code}&state=${pending.state}`, pending });
+
+describe("moving a signed-in account's sign-in to omeldar", () => {
+  const people = {
+    mine: { sub: "usr_anna", preferred_username: "anna.b" },
+    imported: { sub: "usr_imp", preferred_username: "anna", legacy_id: "1" },
+    otherImported: { sub: "usr_bob", preferred_username: "bob", legacy_id: "999" },
+    stale: { sub: "usr_stale", preferred_username: "anna", auth_time: 1 },
+  } satisfies Record<string, Partial<User>>;
+
+  it("binds the omeldar account of a fresh sign-in; then sign-in with omeldar finds the same account", async () => {
+    const { t, post } = await omeldarApp("both", people);
+    const todo = await t.create<{ id: number }>("/api/v1/todos", { title: "Old data" });
+    expect(json(await t.call("GET", "/api/v1/account")).omeldarLinked).toBe(false);
+
+    expect((await t.call("POST", "/api/v1/auth/omeldar/link/start")).statusCode).toBe(204);
+    expect((await t.call("POST", "/api/v1/auth/omeldar/link", linkBody("mine"))).statusCode).toBe(204);
+    expect(json(await t.call("GET", "/api/v1/account")).omeldarLinked).toBe(true);
+    const row = t.deps.db.select().from(accounts).where(eq(accounts.id, t.account.id)).get();
+    // Bound only: the username, name, role and own credentials stay as they were.
+    expect(row).toMatchObject({ authSubject: "usr_anna", username: "anna", role: "user" });
+    expect(row?.passwordHash).not.toBeNull();
+    const event = t.deps.db.select().from(adminEvents).all().at(-1);
+    expect(event).toMatchObject({ actor: "anna", action: "move_signin", target: "anna" });
+
+    // Again: nothing to do, and the start says it already moved.
+    expect((await t.call("POST", "/api/v1/auth/omeldar/link", linkBody("mine"))).statusCode).toBe(204);
+    const again = await t.call("POST", "/api/v1/auth/omeldar/link/start");
+    expect(again.statusCode).toBe(409);
+    expect(json<{ error: { message: string } }>(again).error.message).toBe(
+      "Your sign-in already moved to omeldar.",
+    );
+    expect((await t.call("POST", "/api/v1/auth/omeldar/link", linkBody("imported"))).statusCode).toBe(409);
+
+    const signIn = await post("/api/v1/auth/omeldar/callback", callbackBody("mine"));
+    const tokens = signIn.json<{ accessToken: string; account: { id: number } }>();
+    expect(tokens.account.id).toBe(t.account.id);
+    const mine = await t.withToken(tokens.accessToken, "GET", `/api/v1/todos/${todo.id}`);
+    expect(mine.statusCode).toBe(200);
+  });
+
+  it("takes the account auth imported for this one", async () => {
+    const { t } = await omeldarApp("both", people);
+    expect((await t.call("POST", "/api/v1/auth/omeldar/link", linkBody("imported"))).statusCode).toBe(204);
+    expect(t.deps.db.select().from(accounts).where(eq(accounts.id, t.account.id)).get()?.authSubject).toBe(
+      "usr_imp",
+    );
+  });
+
+  it("refuses another account's omeldar account, a stale sign-in there, and a session not confirmed lately", async () => {
+    const { t } = await omeldarApp("both", people);
+    const bob = await t.asAccount({ username: "bob" });
+    expect((await bob.call("POST", "/api/v1/auth/omeldar/link", linkBody("mine"))).statusCode).toBe(204);
+
+    const taken = await t.call("POST", "/api/v1/auth/omeldar/link", linkBody("mine"));
+    expect(taken.statusCode).toBe(409);
+    expect(json<{ error: { details?: { reason?: string } } }>(taken).error.details?.reason).toBe(
+      "other_account",
+    );
+    expect((await t.call("POST", "/api/v1/auth/omeldar/link", linkBody("otherImported"))).statusCode).toBe(
+      409,
+    );
+    const stale = await t.call("POST", "/api/v1/auth/omeldar/link", linkBody("stale"));
+    expect(stale.statusCode).toBe(403);
+
+    // A session whose last full sign-in is older than 10 minutes must confirm it is you first.
+    t.advance(11 * 60_000);
+    const unconfirmed = await t.app.inject({
+      method: "POST",
+      url: "/api/v1/auth/omeldar/link/start",
+      headers: t.account.headers(),
+    });
+    expect(unconfirmed.statusCode).toBe(403);
+    expect(json<{ error: { code: string } }>(unconfirmed).error.code).toBe("reauth_required");
+    expect(
+      t.deps.db.select().from(accounts).where(eq(accounts.id, t.account.id)).get()?.authSubject,
+    ).toBeNull();
+  });
+
+  it("does not exist while sign-in with omeldar is off", async () => {
+    const { t } = await omeldarApp("local", {});
+    expect((await t.call("POST", "/api/v1/auth/omeldar/link/start")).statusCode).toBe(404);
   });
 });
