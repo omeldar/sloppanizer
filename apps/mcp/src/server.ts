@@ -19,6 +19,10 @@ export function createServer(config: McpConfig, fetchImpl?: typeof fetch): McpSe
         "Meetings repeat; a standup has a list of what the user has not said yet (standup_list), ticked with mark_said; " +
         "meeting_note writes into the note of a meeting date. Todos can be added to any meeting by hand (add_to_meeting, " +
         "meeting_todos, remove_from_meeting); they stay on every date until removed. " +
+        "Shared projects (list_projects) are worked on with other users: their todos are numbered on their own and shown " +
+        "as S7#12 (todo 12 of shared project 7); the lists, next_up, overview and search include them, and get_todo, " +
+        "update_todo, mark_done, add_comment, get_activity and check_item take S7#12. A todo there can be assigned to " +
+        'one member (update_todo assignee: "me", a username, or null). ' +
         "Replies write dates as dd.MM.yyyy (03.10.2026); tool inputs take dates as YYYY-MM-DD (2026-10-03).",
     },
   );

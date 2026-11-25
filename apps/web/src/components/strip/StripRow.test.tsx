@@ -44,6 +44,24 @@ describe("StripRow", () => {
     expect(item.dataset.priority).toBe("high");
   });
 
+  it("names the shared project a todo comes from and opens it there", async () => {
+    row({
+      todo: makeTodo({ id: 3, title: "Book van" }),
+      source: { name: "Home move", color: "#4C9AFF", href: "/u/anna/shared/7/todos/3" },
+    });
+    const item = await screen.findByRole("listitem");
+    expect(within(item).getByText("from Home move")).toBeTruthy();
+    expect(within(item).getAllByText("Home move")).toHaveLength(1);
+    expect(within(item).getByRole("link", { name: "Book van" }).getAttribute("href")).toBe(
+      "/u/anna/shared/7/todos/3",
+    );
+  });
+
+  it("shows whom a todo of a shared project is assigned to", async () => {
+    row({ todo: makeTodo({ id: 3, assignee: { accountId: 2, username: "bobo", name: "Bo Berg" } }) });
+    expect((await screen.findByTitle("Assigned to Bo Berg")).textContent).toBe("@bobo");
+  });
+
   it("shows the comment count only when there are comments", async () => {
     row({ todo: makeTodo({ id: 4, commentCount: 3 }) });
     expect((await screen.findByTitle("3 comments")).textContent).toContain("3");

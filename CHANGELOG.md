@@ -8,6 +8,15 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- Shared projects: a todo can be assigned to one member ("Assigned to" in the todo, `@username` on its
+  row). Only members can be assigned; someone who leaves is taken off its todos. Your own Next up lists
+  the todos assigned to you in shared projects under "Assigned to you", each with the project it comes
+  from; tick it done there or open it in its project (#15).
+- MCP: the lists, Next up, overview, search and list_projects include the shared projects you are a
+  member of. Their todos read `S7#12`, with project and assignee; `scope` and `assignee` filter them, and
+  get_todo, update_todo (`assignee`), create_todo, mark_done, add_comment, get_activity and check_item
+  work on them. API tokens of a member may now work in a shared project with the token's scope (#15).
+
 ## 1.0.0 (2026-11-19)
 
 - Projects: edit a project's name, description and color from the project page or its menu in the

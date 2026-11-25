@@ -171,3 +171,41 @@ Cross-Origin-Opener-Policy, which cuts `window.opener`.
 lint and formatting) so it can be updated by copying. The server adds the two Web Crypto types it expects
 from the DOM lib (`src/webcrypto-types.d.ts`).
 
+
+## 2026-11-25 Assignees in shared projects, "Assigned to you", shared todos in MCP (#15)
+
+**One assignee per todo, only in shared projects.** `todos.assignee_id` points at a user account (ON DELETE
+SET NULL). The server sets it only when the todo's account is a space and the user is a member of it
+(active admins in the Sloppanizer project); anything else, also on personal todos, is a 422 with the same
+answer for unknown names and non-members. A member who leaves or is removed is taken off every todo of that
+project in the same transaction, with an `assignee_changed` line in each history by whoever removed them.
+Todos never move between accounts, so a todo cannot leave its shared project with an assignee; moving it to
+another project inside the shared project keeps it. A repeat's next todo keeps the assignee while they are
+still a member. Assignees are left out of exports (`LOCAL_COLUMNS`), like comment token ids: they are
+account ids of this server, and shared projects are not exported anyway.
+
+**"My list" is Next up, worked out per project, not copied.** Your own tab's Next up shows "Assigned to you"
+above the ranking (left out while a project or label filter is set): each shared project's own `/next` with
+`assignee=me`, merged by score (one scoring function, same day, so scores compare), each row with a
+"from <project>" badge in the project's color. The title opens the todo in that project's tab, where every
+change is made; the box marks it done right there through the project (the `space` option of `api()`, so
+the same membership check as a project tab). Nothing is stored on your own account, so there is nothing to
+keep in sync. Inbox, Week and Board stay your own todos only; filters select own projects and labels.
+
+**API tokens may enter shared projects.** Replaces "shared projects work from the web app only" (2026-11-23):
+MCP clients are tokens, and the feature is to read and assign shared todos through them. A token of a
+member's own account may send `X-Sloppanizer-Space` on the same routes a session may, with the token's
+scope (a read token only reads); the history names "Member via <token name>". `GET /spaces` and
+`GET /spaces/{id}` accept tokens (read); creating, renaming, members and deleting stay browser-session only.
+Membership is checked on every request exactly as for sessions, so a token never reaches a project its
+account is not in (tests: assignees.test.ts, "no path leaks").
+
+**MCP: shared todos are `S<project>#<n>`.** Todo numbers are per account, so `#12` stays an own todo and
+`S7#12` is todo 12 of shared project 7. `list_todos`, `next_up`, `overview`, `search` and `list_projects`
+add the shared projects (each under its own heading, or ranked in for `next_up`), with `scope`
+(all, own, shared) and `assignee` ("me", "none", "anyone", a username; own todos count as "me").
+`get_todo`, `update_todo` (with `assignee`), `mark_done`, `add_comment`, `get_activity` and `check_item`
+take `S7#12`; `create_todo` takes a shared project as `project` ("S7" or its name) and `assignee`. The other
+tools (subtasks, links, web links, planning) stay on own todos for now. `next_up` ranks in only todos
+assigned to the user by default. JSON answers keep their old shape and add a `shared` key when the account
+is in shared projects.

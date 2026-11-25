@@ -34,6 +34,11 @@ interface RequestOptions {
   accept?: string;
   /** About the account itself (shared projects, feedback): never sent to the tab's shared project. */
   personal?: boolean;
+  /**
+   * Sent to this shared project instead of the tab's (the "Assigned to you" list of your own tab works
+   * on todos of shared projects). The server checks membership like for a tab in that project.
+   */
+  space?: number;
 }
 
 /**
@@ -156,7 +161,9 @@ async function fetchOnce(url: string, options: RequestOptions, token: string | n
   if (raw !== undefined) headers["content-type"] = "application/octet-stream";
   else if (body !== undefined) headers["content-type"] = "application/json";
   if (token) headers.authorization = `Bearer ${token}`;
-  if (spaceId !== null && !options.personal) {
+  if (options.space !== undefined) {
+    headers[SPACE_HEADER] = String(options.space);
+  } else if (spaceId !== null && !options.personal) {
     headers[SPACE_HEADER] = String(spaceId);
   }
   try {
