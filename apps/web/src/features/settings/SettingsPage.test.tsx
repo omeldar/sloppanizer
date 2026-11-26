@@ -1,4 +1,4 @@
-import type { RestorePreview, Settings } from "@organizer/shared";
+import type { AccountProfile, RestorePreview, Settings } from "@organizer/shared";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -93,6 +93,56 @@ describe("settings: export", () => {
     const asked = calls.map((c) => c.path);
     expect(asked).not.toContain("/api/v1/settings");
     expect(asked.some((p) => p.startsWith("/api/v1/restore"))).toBe(false);
+  });
+});
+
+const profile = (projectView: "list" | "board"): AccountProfile => ({
+  id: 1,
+  username: "lu",
+  displayName: "Lu",
+  firstName: "",
+  lastName: "",
+  dateFormat: "dmy.",
+  timeFormat: "24h",
+  projectView,
+  omeldarLinked: false,
+  color: "#2EC5CE",
+  role: "user",
+  timeZone: "Europe/Zurich",
+  createdAt: T,
+  security: {
+    password: true,
+    passwordChangedAt: T,
+    totpSince: T,
+    passkeys: 0,
+    recoveryCodesLeft: 10,
+    loginResetAt: null,
+  },
+});
+
+describe("settings: projects", () => {
+  it("saves the board as the view projects open in, to the account (S5#3)", async () => {
+    let saved: "list" | "board" = "list";
+    const { calls } = setup("session", ({ method, path, body }) => {
+      if (path !== "/api/v1/account") return undefined;
+      if (method === "PATCH") saved = (body as { projectView: "list" | "board" }).projectView;
+      return { body: profile(saved) };
+    });
+    const group = await screen.findByRole("group", { name: "Open projects as" });
+    const button = (name: string) => within(group).getByRole("button", { name });
+    await waitFor(() => expect(button("List").getAttribute("aria-pressed")).toBe("true"));
+
+    fireEvent.click(button("Board"));
+    await waitFor(() => expect(button("Board").getAttribute("aria-pressed")).toBe("true"));
+    const patches = calls.filter((c) => c.method === "PATCH" && c.path === "/api/v1/account");
+    expect(patches.map((c) => c.body)).toEqual([{ projectView: "board" }]);
+    expect(button("List").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("is not offered to a token, which cannot change the account", async () => {
+    setup("token");
+    await screen.findByRole("heading", { name: "Export" });
+    expect(screen.queryByRole("group", { name: "Open projects as" })).toBeNull();
   });
 });
 

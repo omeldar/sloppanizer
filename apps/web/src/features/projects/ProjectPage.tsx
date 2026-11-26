@@ -1,6 +1,7 @@
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { type CSSProperties, useState } from "react";
 import { Button, EmptyState, ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
+import { useProjectView } from "../../lib/accountQueries.ts";
 import { useProjects } from "../../lib/queries.ts";
 import { BoardFilterBar } from "../board/BoardFilterBar.tsx";
 import { BoardView } from "../board/BoardView.tsx";
@@ -16,11 +17,13 @@ export function ProjectPage() {
   const search = route.useSearch();
   const navigate = useNavigate();
   const projects = useProjects();
-  const board = search.view === "board";
+  // Without ?view= the page opens as the account chose in Settings (S5#3).
+  const preferred = useProjectView();
+  const board = (search.view ?? preferred.view) === "board";
   const project = projects.data?.find((p) => p.slug === slug);
   const [editing, setEditing] = useState(false);
 
-  if (projects.isPending) return <Loading />;
+  if (projects.isPending || (search.view === undefined && preferred.pending)) return <Loading />;
   if (projects.isError) return <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />;
   if (!project) {
     return (
@@ -58,7 +61,7 @@ export function ProjectPage() {
                     void navigate({
                       to: "/projects/$slug",
                       params: { slug },
-                      search: view === "board" ? { view } : {},
+                      search: view === preferred.view ? {} : { view },
                       replace: true,
                     })
                   }

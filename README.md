@@ -15,6 +15,7 @@ they sat untouched, and tells you why each one is where it is.
 - Notes: Markdown pages, alone or in a project, pinned ones first.
 - Paste or drop images and files into any Markdown field; images show inline, other files are downloads.
 - Board (Open, In progress, Blocked, Done) and a week planner, both with drag and drop and keys.
+- Projects open as a list or a board, as you choose in Settings (saved to your account).
 - Statistics: worked time (planned time that has already happened) per project, requester and week,
   meetings, created vs done, when you work, done per day and how long todos took, as charts and tables.
 - Recurring: a view of every repeating todo with its next date and history. Time planned for a todo that

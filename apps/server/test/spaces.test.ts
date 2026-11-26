@@ -140,6 +140,20 @@ describe("date and time formats", () => {
   });
 });
 
+describe("how project pages open (S5#3)", () => {
+  it("is the list until the person picks the board, per account", async () => {
+    const t = await makeApp();
+    const bo = await t.asAccount({ username: "bobo" });
+    expect(json<{ projectView: string }>(await t.call("GET", "/api/v1/account")).projectView).toBe("list");
+    const after = await t.call("PATCH", "/api/v1/account", { projectView: "board" });
+    expect(json<{ projectView: string }>(after).projectView).toBe("board");
+    expect(json<{ projectView: string }>(await t.call("GET", "/api/v1/account")).projectView).toBe("board");
+    // Someone else's choice is their own.
+    expect(json<{ projectView: string }>(await bo.call("GET", "/api/v1/account")).projectView).toBe("list");
+    expect((await t.call("PATCH", "/api/v1/account", { projectView: "grid" })).statusCode).toBe(422);
+  });
+});
+
 describe("users as people", () => {
   it("finds users and links them as requester or contact, once", async () => {
     const t = await makeApp();
