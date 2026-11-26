@@ -188,6 +188,8 @@ describe("MCP server against the real API", () => {
         "list_recurring",
         "work_stats",
         "list_meetings",
+        "plan_meeting",
+        "meeting_people",
         "standup_list",
         "mark_said",
         "meeting_note",
@@ -555,6 +557,25 @@ describe("step 2 tools against the real API", () => {
     } finally {
       db.close();
     }
+  });
+
+  it("plans a one-time meeting with people and counts it per person in work_stats", async () => {
+    const planned = await ok("plan_meeting", {
+      name: "Kick-off with Acme",
+      date: "2026-01-05",
+      start: "14:00",
+      end: "15:30",
+      people: ["Cleo Chan"],
+    });
+    expect(planned).toMatch(
+      /^Planned meeting \d+ \| Kick-off with Acme \| other \| once on 05\.01\.2026, 14:00–15:30 \| no next date \| with Cleo Chan$/,
+    );
+    expect(await ok("meeting_people", { meeting: "Kick-off with Acme", add: ["Dan Dorn"] })).toBe(
+      "Kick-off with Acme: with Cleo Chan, Dan Dorn.",
+    );
+    const stats = await ok("work_stats", { from: "2026-01-05", to: "2026-01-11" });
+    expect(stats).toContain("meetings 1.5 h");
+    expect(stats).toContain("- Cleo Chan: 1.5 h in 1 meeting\n- Dan Dorn: 1.5 h in 1 meeting");
   });
 
   it("writes, appends to and lists notes", async () => {

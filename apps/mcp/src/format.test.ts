@@ -514,6 +514,7 @@ describe("meetings", () => {
     endAt: "2026-11-19T08:15:00.000Z",
     status: "scheduled" as const,
     noteId: null,
+    oneTime: false,
   };
 
   it("writes a meeting date in local time, moved, cancelled or past midnight", () => {

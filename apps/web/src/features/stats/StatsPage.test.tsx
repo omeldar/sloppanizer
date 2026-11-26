@@ -26,6 +26,8 @@ const stats: WorkStats = {
   ],
   requesters: [{ person: { id: 9, name: "Anna Meier" }, minutes: 120, done: 1 }],
   otherRequesters: null,
+  meetingPeople: [{ person: { id: 9, name: "Anna Meier" }, minutes: 30, dates: 1 }],
+  meetingMinutesWithoutPeople: 0,
   weeks: [
     { start: "2026-11-09", workedMinutes: 120, meetingMinutes: 30, created: 1, done: 0, projects: [] },
     {
@@ -90,6 +92,17 @@ describe("statistics page", () => {
     expect(within(people).getByRole("link", { name: "Anna Meier" }).getAttribute("href")).toBe("/people/9");
     expect(screen.getByText("Busiest: Tue, 1.5 h on an average day")).toBeTruthy();
     expect(screen.getByText("1 more created than done: the backlog grows")).toBeTruthy();
+  });
+
+  it("shows the time in meetings per person, linking to each person (S5#5)", async () => {
+    renderStats();
+    const card = await screen.findByRole("region", { name: "In meetings with whom" }, LAZY_PAGE);
+    expect(
+      within(card)
+        .getAllByRole("listitem")
+        .map((r) => r.textContent),
+    ).toEqual(["Anna Meier0.5 h · 1 meeting"]);
+    expect(within(card).getByRole("link", { name: "Anna Meier" }).getAttribute("href")).toBe("/people/9");
   });
 
   it("shows every chart's numbers as a table too", async () => {

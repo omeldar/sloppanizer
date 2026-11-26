@@ -3,6 +3,7 @@ import {
   DONE_BUCKETS,
   type DoneBucket,
   daysBetween,
+  type MeetingPersonStats,
   doneBucket,
   type ProjectRef,
   type RequesterStats,
@@ -19,6 +20,7 @@ import { people, todoPeople, todos } from "../db/schema.ts";
 import { listRepeatOccurrences } from "./block-series.ts";
 import { listBlocks } from "./blocks.ts";
 import type { Ctx } from "./context.ts";
+import { peopleOf } from "./meeting-people.ts";
 import { listOccurrences } from "./meetings.ts";
 import { owned } from "./owned.ts";
 import { projectRefs } from "./projects.ts";
@@ -128,15 +130,41 @@ export function workStats(ctx: Ctx, query: WorkStatsQuery): WorkStats {
   }
 
   let meetingMinutes = 0;
+  const meetingTime: { meetingId: number; minutes: number }[] = [];
   for (const o of listOccurrences(ctx, { from, to })) {
     const span = clip(o.startAt, o.endAt);
     if (!span) continue;
     meetingMinutes += (span[1] - span[0]) / 60_000;
+    meetingTime.push({ meetingId: o.meetingId, minutes: (span[1] - span[0]) / 60_000 });
     steps(span[0], span[1], (date, _hour, m) => {
       const week = weeks.get(mondayOf(date));
       if (week) week.meeting += m;
     });
   }
+
+  // Time in meetings per person: each date counts in full for every person of its meeting.
+  const attendees = peopleOf(
+    ctx,
+    meetingTime.map((m) => m.meetingId),
+  );
+  const withPerson = new Map<number, { name: string; minutes: number; dates: number }>();
+  let meetingMinutesWithoutPeople = 0;
+  for (const { meetingId, minutes } of meetingTime) {
+    const list = attendees.get(meetingId) ?? [];
+    if (list.length === 0) meetingMinutesWithoutPeople += minutes;
+    for (const person of list) {
+      const entry = withPerson.get(person.id) ?? { name: person.displayName, minutes: 0, dates: 0 };
+      entry.minutes += minutes;
+      entry.dates += 1;
+      withPerson.set(person.id, entry);
+    }
+  }
+  const meetingPeople: MeetingPersonStats[] = [...withPerson]
+    .map(([id, p]) => ({ person: { id, name: p.name }, minutes: round(p.minutes), dates: p.dates }))
+    .toSorted(
+      (a, b) => b.minutes - a.minutes || b.dates - a.dates || a.person.name.localeCompare(b.person.name),
+    )
+    .slice(0, 10);
 
   // ---------- todos created and done ----------
   const loIso = new Date(lo).toISOString();
@@ -261,6 +289,8 @@ export function workStats(ctx: Ctx, query: WorkStatsQuery): WorkStats {
             minutes: rest.reduce((n, r) => n + r.minutes, 0),
             done: rest.reduce((n, r) => n + r.done, 0),
           },
+    meetingPeople,
+    meetingMinutesWithoutPeople: round(meetingMinutesWithoutPeople),
     weeks: weekList,
     days: [...days].map(([date, d]) => ({ date, workedMinutes: round(d.worked), done: d.done })),
     hours: hours.map((row) => row.map(round)),

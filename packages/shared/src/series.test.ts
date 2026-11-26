@@ -290,6 +290,12 @@ describe("describeSeries", () => {
       describeSeries({ ...thursdays, endsOn: "2026-12-31", startTime: "23:30", durationMinutes: 60 }),
     ).toBe("every week on Thu until 31.12.2026, 23:30–00:30");
   });
+
+  it("says once for a one-time meeting, a segment with a single date", () => {
+    expect(describeSeries({ ...thursdays, endsOn: thursdays.startsOn })).toBe(
+      `once on ${thursdays.startsOn.split("-").toReversed().join(".")}, 09:00–09:15`,
+    );
+  });
 });
 
 const starts = (s: SeriesSpan, from: string, to: string) =>

@@ -39,7 +39,10 @@ function renderPlanner(occurrences: MeetingOccurrence[] = [standup]) {
     if (path === "/api/v1/blocks") return call.method === "GET" ? { body: [focus] } : { body: focus };
     if (path?.startsWith("/api/v1/blocks/")) return { body: focus };
     if (path === "/api/v1/meetings/occurrences") return { body: occurrences };
-    if (path === "/api/v1/meetings") return { body: [makeMeeting()] };
+    if (path === "/api/v1/meetings")
+      return call.method === "POST"
+        ? { status: 201, body: makeMeeting({ oneTime: true }) }
+        : { body: [makeMeeting()] };
     if (path?.startsWith("/api/v1/meetings/7"))
       return call.method === "DELETE" ? { status: 204 } : { body: makeMeeting() };
     if (path === "/api/v1/todos") return { body: { items: [], total: 0, limit: 200, offset: 0 } };
@@ -185,6 +188,60 @@ describe("meetings in the planner", () => {
         startAt: new Date(Date.parse(standup.startAt) + 24 * HOUR).toISOString(),
         endAt: new Date(Date.parse(standup.endAt) + 24 * HOUR).toISOString(),
       }),
+    );
+  });
+});
+
+describe("one-time meetings in the planner (S5#5)", () => {
+  const once = makeOccurrence({ name: "Kick-off", type: "other", oneTime: true });
+
+  it("plans a one-time meeting with people instead of work", async () => {
+    const { calls } = renderPlanner();
+    fireEvent.click(await screen.findByRole("button", { name: "Plan time" }, { timeout: 5000 }));
+    const dialog = await screen.findByRole("dialog", { name: "Plan time" });
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Meeting" }));
+    fireEvent.change(within(dialog).getByLabelText("Meeting"), { target: { value: "Kick-off with Acme" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Plan meeting" }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === "POST" && c.path === "/api/v1/meetings")).toBe(true),
+    );
+    const post = calls.find((c) => c.method === "POST" && c.path === "/api/v1/meetings");
+    expect(post?.body).toMatchObject({ name: "Kick-off with Acme", schedule: { startsOn: "2026-11-19" } });
+    // No rule: it happens once.
+    expect(post?.body).not.toHaveProperty("schedule.rule");
+    expect(calls.some((c) => c.method === "POST" && c.path === "/api/v1/blocks")).toBe(false);
+  });
+
+  it("moves a dropped one-time meeting straight away, without asking which dates", async () => {
+    const { calls } = renderPlanner([once]);
+    const card = await screen.findByTitle(/Kick-off, /, {}, { timeout: 5000 });
+    dragDown(card, 52);
+    await waitFor(() =>
+      expect(patches(calls)).toEqual([
+        {
+          method: "PATCH",
+          path: "/api/v1/meetings/7/occurrences/2026-11-19",
+          body: {
+            scope: "this",
+            startAt: new Date(Date.parse(once.startAt) + HOUR).toISOString(),
+            endAt: new Date(Date.parse(once.endAt) + HOUR).toISOString(),
+          },
+        },
+      ]),
+    );
+    expect(screen.queryByRole("dialog", { name: "Move Kick-off" })).toBeNull();
+  });
+
+  it("deletes a one-time meeting from its dialog after asking", async () => {
+    const { calls } = renderPlanner([once]);
+    fireEvent.click(await screen.findByTitle(/Kick-off, /, {}, { timeout: 5000 }));
+    const dialog = await screen.findByRole("dialog", { name: "Kick-off" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    const ask = await screen.findByRole("dialog", { name: /^Delete Kick-off on Thu 19\.11\./ });
+    expect(within(ask).getAllByRole("radio")).toHaveLength(1);
+    fireEvent.click(within(ask).getByRole("button", { name: "Delete" }));
+    await waitFor(() =>
+      expect(patches(calls)).toEqual([{ method: "DELETE", path: "/api/v1/meetings/7", body: undefined }]),
     );
   });
 });

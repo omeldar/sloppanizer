@@ -17,11 +17,14 @@ they sat untouched, and tells you why each one is where it is.
 - Board (Open, In progress, Blocked, Done) and a week planner, both with drag and drop and keys.
 - Projects open as a list or a board, as you choose in Settings (saved to your account).
 - Statistics: worked time (planned time that has already happened) per project, requester and week,
-  meetings, created vs done, when you work, done per day and how long todos took, as charts and tables.
+  meetings (also per person in them), created vs done, when you work, done per day and how long todos took, as charts and tables.
 - Recurring: a view of every repeating todo with its next date and history. Time planned for a todo that
   repeats on a schedule repeats with it on every date; change one date, this and following, or all.
 - Planner: reserve time in a week calendar for a todo or with a title (click a free slot, drag a todo from To
   plan or the Day row onto a day, drag a block to move or resize it); todos planned for a day without a time wait in a row above it. Phones show one day at a time.
+  A free slot can also become a one-time meeting (Plan time, Meeting): a name and the people in it.
+- Meetings: repeating or once, with the people in them (from People; a new name is added there). Their
+  time counts in Statistics, also per person ("In meetings with whom").
   Settings, Calendar feed gives a secret link to subscribe to in Google Calendar, Apple Calendar or Outlook.
 - Web links on todos (tickets, docs, pull requests) with a label, and a new todo that takes notes, links, a
   planned day and a time slot at once.
@@ -216,7 +219,9 @@ Tools:
 - Web links: `create_todo` takes `links`; `add_web_link`, `remove_web_link`.
 - Planner (local time): `list_plan` (blocks, planned dates of repeating todos, meetings), `plan_time` (a
   todo or a title, a day, start and end or minutes; `repeat` for a repeating todo), `move_block`,
-  `delete_block`, `list_recurring`, `work_stats` (time per project, requester and week).
+  `delete_block`, `list_recurring`, `work_stats` (time per project, requester and week, meeting time per
+  person), `plan_meeting` (a one-time meeting with its people), `meeting_people` (add or remove people of
+  any meeting).
 
 - Shared projects: their todos read `S7#12` (todo 12 of shared project 7) with project and assignee.
   `list_todos`, `next_up` (assigned to you, ranked in), `overview`, `search` and `list_projects` include

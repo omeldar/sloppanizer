@@ -13,6 +13,11 @@ import { errorMessage } from "../../lib/api.ts";
 import { timeZone } from "../../lib/format.ts";
 import { useCreateRepeatPlan, useRepeatPlan } from "../../lib/plans.ts";
 import { useCreateBlock, useDeleteBlock, useTodo, useUpdateBlock } from "../../lib/queries.ts";
+import type { PersonChoice } from "../../components/pickers/pickers.tsx";
+import { useCreateMeeting } from "../../lib/meetings.ts";
+import { MeetingPeopleField } from "../meetings/MeetingPeopleField.tsx";
+import meetingStyles from "../meetings/Meetings.module.css";
+import { personRef } from "../todos/TodoPickerDialog.tsx";
 import { TodoSearchPicker } from "../todos/relations/TodoSearchPicker.tsx";
 import styles from "./Planner.module.css";
 import { blockSpan, lengthMinutes, minutesToTime, timeToMinutes } from "./planner.ts";
@@ -29,7 +34,8 @@ export interface BlockDraft {
 
 /**
  * Creates or edits one time block: for a todo (search) or with a title, a day, start and end. New time
- * for a todo that repeats on a schedule repeats with it by default (every date of its repeat).
+ * for a todo that repeats on a schedule repeats with it by default (every date of its repeat). New time
+ * can also be a one-time meeting instead (Meeting): a name and the people in it, counted as meeting time.
  */
 export function BlockDialog({ draft, onClose }: { draft: BlockDraft | null; onClose: () => void }) {
   return (
@@ -68,13 +74,39 @@ function BlockForm({ draft, onClose }: { draft: BlockDraft; onClose: () => void 
   // A time field cannot show 24:00: midnight at the end is 00:00, which blockSpan reads as the next day.
   const [end, setEnd] = useState(draft.end === "24:00" ? "00:00" : draft.end);
   const [error, setError] = useState<string | null>(null);
-  const busy = create.isPending || update.isPending || remove.isPending || createRepeat.isPending;
+  // Only a new block can become a meeting; one dragged in for a todo stays work.
+  const canBeMeeting = !draft.block && !draft.todo;
+  const [kind, setKind] = useState<"work" | "meeting">("work");
+  const meeting = canBeMeeting && kind === "meeting";
+  const [people, setPeople] = useState<PersonChoice[]>([]);
+  const createMeeting = useCreateMeeting();
+  const busy =
+    create.isPending ||
+    update.isPending ||
+    remove.isPending ||
+    createRepeat.isPending ||
+    createMeeting.isPending;
 
   // Late blocks may run past midnight into the next day.
   const setLength = (minutes: number) => setEnd(minutesToTime((timeToMinutes(start) + minutes) % (24 * 60)));
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (meeting) {
+      if (title.trim() === "") return setError("Give the meeting a name.");
+      const minutes = lengthMinutes(start, end);
+      if (minutes < 5) return setError("A meeting lasts at least 5 minutes.");
+      createMeeting.mutate(
+        {
+          name: title.trim(),
+          // No rule: the meeting happens once, on this day.
+          schedule: { startsOn: day, startTime: start, durationMinutes: minutes },
+          ...(people.length > 0 && { people: people.map(personRef) }),
+        },
+        { onSuccess: onClose, onError: (failure: unknown) => setError(errorMessage(failure)) },
+      );
+      return;
+    }
     if (!todo && title.trim() === "") {
       setError("Pick a todo or give the block a title.");
       return;
@@ -89,7 +121,46 @@ function BlockForm({ draft, onClose }: { draft: BlockDraft; onClose: () => void 
 
   return (
     <form className={styles.form} onSubmit={submit}>
-      {todo ? (
+      {canBeMeeting && (
+        <div className={meetingStyles.typeRow} role="radiogroup" aria-label="What to plan">
+          {(["work", "meeting"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={kind === value}
+              className={meetingStyles.typeChoice}
+              onClick={() => {
+                setKind(value);
+                setError(null);
+              }}
+            >
+              {value === "work" ? "Work" : "Meeting"}
+            </button>
+          ))}
+          <span className={meetingStyles.typeHint}>
+            {meeting
+              ? "A meeting on this day only; it counts as time in meetings, also per person."
+              : "Time for a todo, or with a title."}
+          </span>
+        </div>
+      )}
+      {meeting ? (
+        <>
+          <Field label="Meeting">
+            <TextInput
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Kick-off with Acme, 1:1 with Bo"
+              maxLength={200}
+              // oxlint-disable-next-line jsx-a11y/no-autofocus -- switching to Meeting is to type its name
+              autoFocus
+              required
+            />
+          </Field>
+          <MeetingPeopleField value={people} onChange={setPeople} />
+        </>
+      ) : todo ? (
         <div className={styles.picked}>
           <span className={styles.pickedLabel}>For</span>
           <Link
@@ -144,7 +215,7 @@ function BlockForm({ draft, onClose }: { draft: BlockDraft; onClose: () => void 
           </button>
         ))}
       </div>
-      {repeatable && rule && (
+      {!meeting && repeatable && rule && (
         <div className={styles.repeatChoice}>
           {hasPlan ? (
             <p className={styles.repeatText}>
@@ -192,7 +263,7 @@ function BlockForm({ draft, onClose }: { draft: BlockDraft; onClose: () => void 
           Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={busy}>
-          {draft.block ? "Save" : "Plan"}
+          {draft.block ? "Save" : meeting ? "Plan meeting" : "Plan"}
         </Button>
       </div>
     </form>

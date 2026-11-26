@@ -19,6 +19,7 @@ import {
 import { MeetingDialog, type MeetingDraft } from "./MeetingDialog.tsx";
 import { nextText } from "./MeetingsPage.tsx";
 import { MeetingNote } from "./MeetingNote.tsx";
+import { MeetingPeople } from "./MeetingPeopleField.tsx";
 import { MeetingTodos } from "./MeetingTodos.tsx";
 import { StandupList } from "./StandupList.tsx";
 import styles from "./Meetings.module.css";
@@ -138,12 +139,14 @@ function MeetingView({ meeting }: { meeting: Meeting }) {
         />
       )}
 
+      <MeetingPeople meeting={meeting} />
+
       <MeetingTodos meetingId={meeting.id} meetingName={meeting.name} />
 
       <MeetingNote meetingId={meeting.id} on={on} />
 
-      <section className={styles.schedule} aria-label="Repeat">
-        <h2 className={styles.sectionTitle}>Repeat</h2>
+      <section className={styles.schedule} aria-label={meeting.oneTime ? "When" : "Repeat"}>
+        <h2 className={styles.sectionTitle}>{meeting.oneTime ? "When" : "Repeat"}</h2>
         <ul className={styles.segments}>
           {meeting.segments.map((segment) => (
             <li key={segment.id}>
@@ -155,8 +158,16 @@ function MeetingView({ meeting }: { meeting: Meeting }) {
           ))}
         </ul>
         <p className={styles.quiet}>
-          {meeting.next ? `Next ${nextText(meeting.next.startAt)}.` : "No next date."} Move or cancel single
-          dates in the <Link to="/planner">Planner</Link>.
+          {meeting.oneTime ? (
+            <>
+              Once, not repeating. Move it in the <Link to="/planner">Planner</Link>.
+            </>
+          ) : (
+            <>
+              {meeting.next ? `Next ${nextText(meeting.next.startAt)}.` : "No next date."} Move or cancel
+              single dates in the <Link to="/planner">Planner</Link>.
+            </>
+          )}
         </p>
         <div className={styles.scheduleActions}>
           <Button size="sm" onClick={() => setDraft({ meeting, from: on })}>

@@ -55,6 +55,23 @@ describe("meetings contract", () => {
     expect(ok(CreateMeeting, { name: "", schedule })).toBe(false);
   });
 
+  it("takes a schedule without a rule as a one-time meeting, and people (S5#5)", () => {
+    const { rule: _rule, ...once } = schedule;
+    expect(ok(SeriesInput, once)).toBe(true);
+    expect(ok(SeriesInput, { ...once, endsOn: "2026-11-19" })).toBe(true);
+    expect(ok(SeriesInput, { ...once, endsOn: "2026-11-20" })).toBe(false);
+    const people = [{ personId: 3 }, { firstName: "Anna", lastName: "Meier" }, { username: "Bo" }];
+    expect(CreateMeeting.parse({ name: "Kick-off", schedule: once, people }).people).toEqual([
+      { personId: 3 },
+      { firstName: "Anna", lastName: "Meier" },
+      { username: "bo" },
+    ]);
+    const many = Array.from({ length: 51 }, (_, i) => ({ personId: i + 1 }));
+    expect(ok(CreateMeeting, { name: "All hands", schedule: once, people: many })).toBe(false);
+    expect(ok(UpdateMeeting, { addPeople: [{ personId: 3 }] })).toBe(true);
+    expect(ok(UpdateMeeting, { people: [], removePeople: [{ personId: 3 }] })).toBe(false);
+  });
+
   it("fills the filter with everything and drops repeated ids", () => {
     expect(StandupFilter.parse({})).toEqual({ projectIds: [], inbox: false, labelIds: [] });
     expect(StandupFilter.parse({ projectIds: [2, 2, 3] }).projectIds).toEqual([2, 3]);
