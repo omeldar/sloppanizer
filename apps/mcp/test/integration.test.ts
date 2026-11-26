@@ -195,6 +195,7 @@ describe("MCP server against the real API", () => {
         "add_to_meeting",
         "remove_from_meeting",
         "move_block",
+        "move_todo",
         "delete_block",
         "bulk_update",
         "check_item",

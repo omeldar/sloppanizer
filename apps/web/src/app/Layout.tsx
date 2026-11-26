@@ -266,6 +266,7 @@ function Sidebar({ open }: { open: boolean }) {
 function SpaceBanner() {
   const space = useCurrentSpace();
   const account = useCurrentAccount();
+  const [sharing, setSharing] = useState(false);
   return (
     <div className={styles.spaceBanner}>
       <span className={styles.spaceKicker}>Shared project</span>
@@ -277,10 +278,16 @@ function SpaceBanner() {
         {space.data?.name ?? (space.isError ? "Not available" : "Loading")}
       </span>
       {space.data && (
-        <span className={styles.spaceMembers}>
-          {space.data.members.length} {space.data.members.length === 1 ? "member" : "members"}
-        </span>
+        <button
+          type="button"
+          className={styles.spaceMembers}
+          onClick={() => setSharing(true)}
+          title="Who has access"
+        >
+          Share · {space.data.members.length} {space.data.members.length === 1 ? "member" : "members"}
+        </button>
       )}
+      <SpaceDialog space={sharing ? (space.data ?? null) : null} onOpenChange={setSharing} />
       {account && (
         <a className={styles.spaceBack} href={`${accountBase(account.username)}/`}>
           Back to my todos
@@ -325,7 +332,7 @@ function SharedSection() {
               </a>
               <Menu
                 label={`${space.name} menu`}
-                items={[{ label: "Members and settings", run: () => setManagingId(space.id) }]}
+                items={[{ label: "Share and settings", run: () => setManagingId(space.id) }]}
                 trigger={
                   <button
                     type="button"

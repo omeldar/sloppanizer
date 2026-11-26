@@ -1,12 +1,8 @@
 import type { PersonRef, PersonRole, Todo, UpdateTodo } from "@organizer/shared";
 import { Dialog } from "../../components/Dialog.tsx";
-import {
-  LabelPicker,
-  PeoplePicker,
-  type PersonChoice,
-  ProjectPicker,
-} from "../../components/pickers/pickers.tsx";
+import { LabelPicker, PeoplePicker, type PersonChoice } from "../../components/pickers/pickers.tsx";
 import { useTodo } from "../../lib/queries.ts";
+import { TodoProjectPicker } from "./TodoProjectPicker.tsx";
 import { useTodoActions } from "./useTodoActions.ts";
 
 export type PickerKind = "labels" | "project" | "people" | "contacts";
@@ -74,9 +70,9 @@ export function TodoPickerDialog({
         />
       )}
       {kind === "project" && (
-        <ProjectPicker
-          value={todo.projectId}
-          onChange={(projectId) => {
+        <TodoProjectPicker
+          todo={todo}
+          onPick={(projectId) => {
             onClose();
             if (projectId !== todo.projectId) void patch(todo.id, { projectId });
           }}

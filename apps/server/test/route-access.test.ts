@@ -44,6 +44,7 @@ const MATRIX: [method: string, path: string, access: Access][] = [
   ["PATCH", "/todos/1", "write"],
   ["DELETE", "/todos/1", "write"],
   ["POST", "/todos/1/subtasks", "write"],
+  ["POST", "/todos/1/move", "write"],
   ["POST", "/todos/1/links", "write"],
   ["DELETE", "/todos/1/links/2", "write"],
   ["POST", "/todos/1/checklist", "write"],

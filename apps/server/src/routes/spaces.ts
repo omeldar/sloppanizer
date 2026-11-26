@@ -5,6 +5,8 @@ import {
   CreateSpace,
   FeedbackResult,
   IdParams,
+  MovedTodo,
+  MoveTodo,
   Space,
   SpaceMemberParams,
   UpdateSpace,
@@ -14,6 +16,7 @@ import { z } from "zod";
 import type { Config } from "../config.ts";
 import { ApiError } from "../http/errors.ts";
 import { type AccountRow, getAccount } from "../services/accounts.ts";
+import { moveTodo } from "../services/move-todo.ts";
 import {
   addSpaceMember,
   createSpace,
@@ -125,6 +128,30 @@ export function spaceRoutes(app: App, deps: Deps, config: Config): void {
       );
       return reply.status(204).send();
     },
+  );
+
+  // Sent from where the todo is (your own tab, or the shared project's with its header), like every todo route.
+  app.post(
+    `${API_PREFIX}/todos/:id/move`,
+    {
+      schema: {
+        tags: ["todos"],
+        summary:
+          "Move a todo to a shared project or back to your own todos (copied there, this one marked done)",
+        params: IdParams,
+        body: MoveTodo,
+        response: { 200: MovedTodo },
+      },
+    },
+    async (request) =>
+      moveTodo(
+        deps.db,
+        deps.clock,
+        { filesDir: deps.filesDir, filesLimitBytes: deps.filesLimitBytes },
+        authOf(request),
+        request.params.id,
+        request.body,
+      ),
   );
 
   app.get(

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Todo } from "./entities.ts";
 import { Color, Id, PROJECT_COLORS, Slug, Timestamp } from "./primitives.ts";
 
 /**
@@ -30,6 +31,8 @@ export const SpaceMember = z.strictObject({
   /** "First Last" when the account has a name, else the username. */
   name: z.string(),
   role: SpaceRole,
+  /** When they were added (they have access from then on); null for the admins of the Sloppanizer project. */
+  addedAt: Timestamp.nullable(),
 });
 export type SpaceMember = z.infer<typeof SpaceMember>;
 
@@ -67,6 +70,31 @@ export type UpdateSpace = z.infer<typeof UpdateSpace>;
 
 export const AddSpaceMember = z.strictObject({ username: Username });
 export type AddSpaceMember = z.infer<typeof AddSpaceMember>;
+
+/**
+ * Moves a todo (with its subtasks) to another account: a shared project, or back to your own todos. Todos
+ * never change accounts, so it is copied there (thread, checklist, subtasks, labels, people, web links,
+ * files) and the original is marked done with a comment naming the copy. Sent from where the todo is.
+ */
+export const MoveTodo = z.strictObject({
+  /** The shared project to move it to; null: your own todos. */
+  spaceId: Id.nullable(),
+  /** A project there. Default: the shared project's own; in your own todos, the Inbox. */
+  projectId: Id.nullable().optional(),
+});
+export type MoveTodo = z.infer<typeof MoveTodo>;
+
+export const MovedTodo = z.strictObject({
+  /** Where the copy is: a shared project's id, or null for your own todos. */
+  spaceId: Id.nullable(),
+  /** The copy, in the account it moved to. */
+  todo: Todo,
+  /** How to name the copy: "S7#12" in a shared project, "#12" in your own todos. */
+  ref: z.string(),
+  /** The original, now done. */
+  original: Todo,
+});
+export type MovedTodo = z.infer<typeof MovedTodo>;
 
 export const SpaceMemberParams = z.strictObject({
   id: z.coerce.number().int().positive(),

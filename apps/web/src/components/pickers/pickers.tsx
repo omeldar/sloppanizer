@@ -2,20 +2,26 @@ import { applyLabelChange, parseLabelName, type Person, scopeKey } from "@organi
 import { type CSSProperties, useState } from "react";
 import { useLabels, usePeople, useProjects, useUsers } from "../../lib/queries.ts";
 import { LabelPill } from "../LabelPill.tsx";
-import { Picker } from "./Picker.tsx";
+import { Picker, type PickerItem } from "./Picker.tsx";
 import styles from "./Picker.module.css";
 
 const INBOX = "inbox";
+const NOWHERE: readonly PickerItem[] = [];
 
 export function ProjectPicker({
   value,
   onChange,
   noneLabel = "Inbox (no project)",
+  elsewhere = NOWHERE,
+  onElsewhere,
 }: {
   value: number | null;
   onChange: (projectId: number | null) => void;
   /** Name of the "no project" choice: todos without one are in the Inbox, notes just have none. */
   noneLabel?: string;
+  /** Places in other accounts (shared projects, your own todos), after the projects here. */
+  elsewhere?: readonly PickerItem[];
+  onElsewhere?: (value: string) => void;
 }) {
   const projects = useProjects();
   const items = [
@@ -32,14 +38,19 @@ export function ProjectPicker({
           </>
         ),
       })),
+    ...elsewhere,
   ];
+  const other = new Set(elsewhere.map((item) => item.value));
   return (
     <Picker
       label="Project"
       placeholder="Move to project"
       items={items}
       selected={new Set([value === null ? INBOX : String(value)])}
-      onPick={(picked) => onChange(picked === INBOX ? null : Number(picked))}
+      onPick={(picked) => {
+        if (other.has(picked)) onElsewhere?.(picked);
+        else onChange(picked === INBOX ? null : Number(picked));
+      }}
       empty="No project matches. Create projects in the sidebar."
     />
   );
