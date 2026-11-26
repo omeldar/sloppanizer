@@ -59,7 +59,7 @@ export function setReauthHandler(handler: ReauthHandler | null): void {
  */
 let spaceId: number | null = null;
 /** Sign-in, the account itself, shared projects and feedback: always the account's own, never a space's. */
-const PERSONAL_PATH = /^\/(auth|account|spaces|feedback)(\/|$)/;
+const PERSONAL_PATH = /^\/(auth|account|spaces|feedback|notifications)(\/|$)/;
 export function setSpace(id: number | null): void {
   spaceId = id;
 }

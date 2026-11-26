@@ -329,5 +329,13 @@ export function addMinutesToTime(time: string, minutes: number): string {
 /** "every week on Thu, 09:00–09:15", with " until 31.12.2026" when the series ends. */
 export function describeSeries(series: Omit<SeriesSpan, "id">): string {
   const end = addMinutesToTime(series.startTime, series.durationMinutes);
+  if (isOneTimeSpan(series)) return `once on ${formatDate(series.startsOn)}, ${series.startTime}–${end}`;
   return `${describeRecurrence({ ...series.rule, until: series.endsOn })}, ${series.startTime}–${end}`;
 }
+
+/** A segment with a single date: its first date is also its last (a one-time meeting). */
+export const isOneTimeSpan = (series: Pick<SeriesSpan, "startsOn" | "endsOn">): boolean =>
+  series.endsOn === series.startsOn;
+
+/** The rule a one-time meeting's single segment is stored with (any rule matches its one date). */
+export const ONE_TIME_RULE: RecurrenceRule = { every: "day", interval: 1, basis: "schedule" };

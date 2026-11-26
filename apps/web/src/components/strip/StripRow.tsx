@@ -134,6 +134,16 @@ export function StripRow({
               {todo.title}
             </Link>
           )}
+          {todo.actionNeeded && (
+            <span
+              className={styles.actionNeeded}
+              title={
+                todo.actionNeeded.reason ? `Action needed: ${todo.actionNeeded.reason}` : "Action needed"
+              }
+            >
+              Action needed
+            </span>
+          )}
           {(source || todo.labels.length > 0 || todo.requestedBy.length > 0 || todo.assignee) && (
             <span className={styles.tags}>
               {source && (

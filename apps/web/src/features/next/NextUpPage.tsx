@@ -8,6 +8,7 @@ import { formatDate } from "../../lib/format.ts";
 import styles from "../lists/Lists.module.css";
 import { hint } from "../../lib/device.ts";
 import { TodayPlan } from "../planner/TodayPlan.tsx";
+import { ActionNeededList } from "./ActionNeededList.tsx";
 import { AssignedToYou } from "./AssignedToYou.tsx";
 
 const route = getRouteApi("/");
@@ -89,6 +90,7 @@ export function NextUpPage() {
       />
       <TodayPlan />
       {/* Filters pick among your own projects and labels; the shared todos stay out of a filtered view. */}
+      {!search.project && !search.label && <ActionNeededList />}
       {!search.project && !search.label && <AssignedToYou />}
       {!data && !next.isError && <Loading />}
       {next.isError && <ErrorState error={next.error} onRetry={() => void next.refetch()} />}

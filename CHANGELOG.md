@@ -8,6 +8,9 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- The breadcrumb at the top left links back: every step but the page you are on is a link (keyboard, a
+  middle click opens a new tab). A project page starts with "My todos", which in a shared project goes back
+  to your own todos; a subtask shows its parent (S5#8).
 - Move a todo into a shared project: its Project field lists your shared projects too. The todo is copied
   there with its comments, checklist, subtasks, labels, people, web links and files, assigned to you, and
   the original is marked done with a link to the copy. Inside a shared project the field lists your own
@@ -21,6 +24,31 @@ app shows "Sloppanizer is updating".
 - Projects can open as a board: Settings, Projects, "Open projects as" List or Board. Saved to your
   account, so every device and shared project follows it; the switch on a project still changes the view
   for that visit (S5#3).
+- One-time meetings: in the Planner, Plan time has "Work" and "Meeting"; a meeting there happens once,
+  on that day, and counts as time in meetings. New meeting on the Meetings page has "Repeats" and "Once".
+  A one-time meeting moves with a drag without asking which dates, and removing it deletes it (S5#5).
+- People in meetings: add people (from People, Sloppanizer users, or a new "First Last") to any meeting,
+  in its dialog or on its page. Statistics has "In meetings with whom": the hours in meetings per person
+  (S5#5).
+- MCP: `plan_meeting` plans a one-time meeting with its people, `meeting_people` adds or removes people,
+  `list_meetings` shows them and `work_stats` lists the meeting time per person (S5#5).
+- API: a meeting's `schedule` without `rule` is a one-time meeting; meetings have `oneTime` and `people`
+  (`people`, `addPeople`, `removePeople` on create and update); occurrences have `oneTime`; `/stats/overview`
+  has `meetingPeople` and `meetingMinutesWithoutPeople`. Export format 9 adds `meeting_people` (format 8 and
+  older still restore). Migration 0015 (S5#5).
+- Notifications: a bell in the top bar with the unread count. You hear when someone assigns you a shared
+  todo, mentions you with `@username` in a comment, comments on a shared todo assigned to you (or on an own
+  todo, by one of your API tokens), or marks a todo of yours "action needed". Nothing you do yourself in the
+  browser notifies you; what your tokens (MCP clients, scheduled runs) do does. Opening one marks it read
+  and goes to the todo; "Mark all read" clears them (S5#6).
+- Action needed: a marker with a reason on a todo, for what only you can do (an assistant's scheduled run
+  sets it when it gets stuck). It shows as a badge in lists, as a note at the top of the todo with "Done,
+  remove", in its own group at the top of Next up, and as a filter in the Inbox and project lists (S5#6).
+- MCP: `update_todo` and `create_todo` take `actionNeeded` (a reason, `""`, or `null` to remove it),
+  `list_todos` filters by it, todo lines show `ACTION NEEDED: …`, and `list_notifications` lists (and can
+  mark read) the notifications (S5#6).
+- API: `actionNeeded` on todos (create, update, bulk) and `?actionNeeded=true|false` on `GET /todos`;
+  `GET /notifications` and `POST /notifications/read` (never inside a shared project). Migration 0016 (S5#6).
 
 ## 1.1.1 (2026-11-26)
 

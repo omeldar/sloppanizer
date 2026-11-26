@@ -36,6 +36,8 @@ const MATRIX: [method: string, path: string, access: Access][] = [
   ["PATCH", "/topics/1", "write"],
   ["DELETE", "/topics/1", "write"],
   ["GET", "/teams", "read"],
+  ["GET", "/notifications", "read"],
+  ["POST", "/notifications/read", "write"],
   ["GET", "/next", "read"],
   ["GET", "/todos", "read"],
   ["POST", "/todos", "write"],

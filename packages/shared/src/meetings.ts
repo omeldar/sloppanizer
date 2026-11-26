@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { NoteSummary, ProjectRef, TodoRef } from "./entities.ts";
+import { NoteSummary, PersonBrief, ProjectRef, TodoRef } from "./entities.ts";
+import { PersonRef } from "./inputs.ts";
 import { Instant } from "./planner.ts";
 import {
   CalendarDate,
@@ -53,10 +54,13 @@ const Duration = z
   .min(MIN_MEETING_MINUTES, "A meeting lasts at least 5 minutes.")
   .max(MAX_MEETING_MINUTES, "A meeting lasts at most 24 hours.");
 
-/** The schedule of a new meeting. A rule's `until` becomes the last date (endsOn wins when both are sent). */
+/**
+ * The schedule of a new meeting. A rule's `until` becomes the last date (endsOn wins when both are sent).
+ * Without a rule it is a one-time meeting on startsOn (endsOn left out or the same date).
+ */
 export const SeriesInput = z
   .strictObject({
-    rule: SeriesRule,
+    rule: SeriesRule.optional(),
     /** The first date; also the anchor of the rule. */
     startsOn: CalendarDate,
     /** The last possible date; null or left out = no end. */
@@ -68,6 +72,13 @@ export const SeriesInput = z
     message: "The repeat must not end before its first date.",
     path: ["endsOn"],
   })
+  .refine(
+    (v) => v.rule !== undefined || v.endsOn === undefined || v.endsOn === null || v.endsOn === v.startsOn,
+    {
+      message: "A one-time meeting has one date. Send a rule to make it repeat.",
+      path: ["endsOn"],
+    },
+  )
   .refine(
     (v) =>
       v.endsOn === undefined ||
@@ -105,6 +116,14 @@ export const StandupFilter = z.strictObject({
 });
 export type StandupFilter = z.infer<typeof StandupFilter>;
 
+/** People in one meeting. */
+export const MAX_MEETING_PEOPLE = 50;
+
+/** People of a meeting, by id or name (found or created like a todo's people), or Sloppanizer users. */
+const MeetingPeople = z
+  .array(PersonRef)
+  .max(MAX_MEETING_PEOPLE, `A meeting can have at most ${MAX_MEETING_PEOPLE} people.`);
+
 const MeetingName = z
   .string()
   .trim()
@@ -119,6 +138,8 @@ export const CreateMeeting = z.strictObject({
   filter: StandupFilter.optional(),
   /** The standup list counts activity from the start of this day; left out: from the last meeting date. */
   countFrom: CalendarDate.optional(),
+  /** Who is in the meeting (Statistics counts the time in meetings per person). */
+  people: MeetingPeople.optional(),
 });
 export type CreateMeeting = z.infer<typeof CreateMeeting>;
 export type CreateMeetingInput = z.input<typeof CreateMeeting>;
@@ -129,8 +150,17 @@ export const UpdateMeeting = z
     type: MeetingType.optional(),
     filter: StandupFilter.optional(),
     countFrom: CalendarDate.optional(),
+    /** The full set of people (replaces them); not together with addPeople or removePeople. */
+    people: MeetingPeople.optional(),
+    addPeople: MeetingPeople.optional(),
+    /** Never creates anyone. */
+    removePeople: MeetingPeople.optional(),
   })
-  .refine((v) => Object.values(v).some((x) => x !== undefined), "Send at least one field to change.");
+  .refine((v) => Object.values(v).some((x) => x !== undefined), "Send at least one field to change.")
+  .refine((v) => v.people === undefined || (v.addPeople === undefined && v.removePeople === undefined), {
+    message: "Send people, or addPeople and removePeople, not both.",
+    path: ["people"],
+  });
 export type UpdateMeeting = z.infer<typeof UpdateMeeting>;
 
 export const SERIES_SCOPES = ["this", "following", "all"] as const;
@@ -216,6 +246,8 @@ export const MeetingOccurrence = z.strictObject({
   status: OccurrenceStatus,
   /** The note of this date, if any. */
   noteId: Id.nullable(),
+  /** The meeting happens once (moving it moves its only date; cancelling it is deleting it). */
+  oneTime: z.boolean(),
 });
 export type MeetingOccurrence = z.infer<typeof MeetingOccurrence>;
 
@@ -230,6 +262,10 @@ export const Meeting = z.strictObject({
   schedule: Series,
   /** Every segment, by first date. */
   segments: z.array(Series),
+  /** One date only: planned once, not repeating. */
+  oneTime: z.boolean(),
+  /** Who is in the meeting, by name. */
+  people: z.array(PersonBrief),
   /** The next occurrence that has not ended (cancelled ones skipped), or null. */
   next: MeetingOccurrence.nullable(),
   /**

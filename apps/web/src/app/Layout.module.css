@@ -296,11 +296,19 @@ button.seg:hover {
 }
 
 .breadcrumb a {
+  border-radius: 3px;
   text-decoration: none;
 }
 
 .breadcrumb a:hover {
+  color: var(--text);
   text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* The item clips its overflow, so the focus ring sits inside the link. */
+.breadcrumb a:focus-visible {
+  outline-offset: -2px;
 }
 
 .topActions {

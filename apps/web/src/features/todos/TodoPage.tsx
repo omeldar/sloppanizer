@@ -54,6 +54,7 @@ import { RepeatField } from "./repeat/RepeatField.tsx";
 import { PersonChip } from "../people/PersonChip.tsx";
 import { Activity } from "./Activity.tsx";
 import { chosen, type PickerKind, togglePersonPatch } from "./TodoPickerDialog.tsx";
+import { ActionNeededBanner } from "./ActionNeeded.tsx";
 import styles from "./TodoPage.module.css";
 import { useTodoActions } from "./useTodoActions.ts";
 import { DateInput as DateField } from "../../components/DateTimeInputs.tsx";
@@ -183,6 +184,7 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
 
       <div className={styles.columns}>
         <div className={styles.body}>
+          <ActionNeededBanner todo={todo} />
           <WaitingLine todo={todo} />
           <section aria-label="Description">
             <Description todo={todo} />

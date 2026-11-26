@@ -17,6 +17,7 @@ import {
   type NextUp,
   type Note,
   type NoteSummary,
+  type NotificationList,
   parseChecklist,
   type PeopleStats,
   type Person,
@@ -86,6 +87,8 @@ export const personName = (person: Pick<PersonBrief, "displayName">): string => 
  */
 export function todoLine(todo: Todo, ctx: DateContext, space?: SharedRef): string {
   const parts = [`${todoRefText(todo.id, space)} ${todo.status}`, todo.title];
+  if (todo.actionNeeded)
+    parts.push(`ACTION NEEDED${todo.actionNeeded.reason ? `: ${todo.actionNeeded.reason}` : ""}`);
   if (todo.labels.length > 0) parts.push(todo.labels.map((label) => label.name).join(", "));
   if (space) {
     // The project inside a shared project is named like it; only another one is worth naming.
@@ -158,6 +161,11 @@ export function todoDetail(
           : " Not assigned."),
     );
   }
+  if (todo.actionNeeded)
+    lines.push(
+      `ACTION NEEDED (set by ${todo.actionNeeded.by} on ${formatDate(toLocalDate(todo.actionNeeded.at, ctx.timeZone))})` +
+        (todo.actionNeeded.reason ? `: ${todo.actionNeeded.reason}` : ""),
+    );
   if (todo.parent) lines.push(`Subtask of ${ref(todo.parent.id)} ${todo.parent.title}`);
   lines.push(`created ${local(todo.createdAt, ctx)}`);
   lines.push(`last activity ${local(todo.lastActivityAt, ctx)}`);
@@ -513,6 +521,7 @@ export function meetingLine(meeting: Meeting, timeZone: string): string {
     ? `next ${formatDateTime(meeting.next.startAt, timeZone)}${meeting.next.status === "moved" ? " (moved)" : ""}`
     : "no next date";
   const parts = [`meeting ${meeting.id}`, meeting.name, meeting.type, meeting.schedule.text, next];
+  if (meeting.people.length > 0) parts.push(`with ${meeting.people.map((p) => p.displayName).join(", ")}`);
   if (meeting.openCount !== null) parts.push(`${meeting.openCount} to say`);
   return parts.join(" | ");
 }
@@ -646,3 +655,20 @@ export const statsGroupText = (g: StatsGroup): string =>
     : g.kind === "untitled"
       ? "Blocks with their own title"
       : (g.project?.name ?? "Project");
+
+const NOTIFICATION_TEXT: Record<NotificationList["items"][number]["kind"], string> = {
+  assigned: "assigned it to you",
+  mentioned: "mentioned you",
+  commented: "commented",
+  action_needed: "marked it ACTION NEEDED",
+};
+
+/** `* 26.11.2026 14:05 | S7#12 Book the van | bobo commented: "Done."`; `*` = unread. */
+export function notificationsText(list: NotificationList, timeZone: string): string {
+  if (list.items.length === 0) return "No notifications.";
+  const lines = list.items.map((n) => {
+    const what = `${n.actor} ${NOTIFICATION_TEXT[n.kind]}${n.excerpt ? `: "${n.excerpt}"` : ""}`;
+    return `${n.readAt === null ? "* " : "  "}${formatDateTime(n.createdAt, timeZone)} | ${n.todo.ref} ${n.todo.title} | ${what}`;
+  });
+  return [`${list.unreadCount} unread (* marks them):`, ...lines].join("\n");
+}

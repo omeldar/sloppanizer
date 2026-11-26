@@ -1,0 +1,160 @@
+.bell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-round);
+  background: var(--sunken);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.bell:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.panel {
+  width: min(380px, calc(100vw - 24px));
+  max-height: min(480px, 70vh);
+  overflow-y: auto;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.title {
+  font-weight: 600;
+}
+
+.markAll {
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.markAll:hover {
+  text-decoration: underline;
+}
+
+.empty {
+  margin: 0;
+  padding: 12px 8px;
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.list {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 6px;
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.item:hover {
+  background: var(--sunken);
+}
+
+li[data-unread] .item {
+  color: var(--text);
+}
+
+li[data-unread] .line::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--red);
+  vertical-align: 1px;
+}
+
+.line {
+  font-size: var(--fs-small);
+}
+
+.actor {
+  font-weight: 600;
+}
+
+.when {
+  color: var(--text-3);
+}
+
+.todo {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.space {
+  flex-shrink: 0;
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: var(--fs-small);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+li[data-kind="action_needed"] .line {
+  color: var(--text);
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .bell {
+    width: 44px;
+    height: 44px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+  }
+}

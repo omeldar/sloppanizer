@@ -52,7 +52,7 @@ describe("step 5 contract", () => {
     expect(ok(RestorePreview, { ...preview, source: "other" })).toBe(false);
   });
 
-  it("export manifests are format 8 with the account and its sequences", () => {
+  it("export manifests are format 9 with the account and its sequences", () => {
     const manifest = {
       app: "sloppanizer",
       format: EXPORT_FORMAT,
@@ -64,7 +64,7 @@ describe("step 5 contract", () => {
       sequences: { todos: 7 },
       attachments: { count: 0, bytes: 0, missing: [] },
     };
-    expect(EXPORT_FORMAT).toBe(8);
+    expect(EXPORT_FORMAT).toBe(9);
     expect(ok(ExportManifest, manifest)).toBe(true);
     expect(ok(ExportManifest, { ...manifest, app: "organizer" })).toBe(false);
     expect(ok(ExportManifest, { ...manifest, format: 3 })).toBe(false);

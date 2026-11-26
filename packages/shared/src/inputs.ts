@@ -42,6 +42,19 @@ const PersonRefList = z.array(PersonRef).max(50);
  */
 export const AssigneeInput = z.string().trim().toLowerCase().min(1).max(32).nullable();
 
+/** Longest reason of an "action needed" marker. */
+export const ACTION_REASON_MAX = 500;
+
+/**
+ * Sets the "action needed" marker with what the user has to do (empty: no reason given), or removes it
+ * (null). Meant for assistants and scheduled runs that got stuck on something only the user can do.
+ */
+export const ActionNeededInput = z
+  .string()
+  .trim()
+  .max(ACTION_REASON_MAX, `Keep the reason at ${ACTION_REASON_MAX} characters or fewer.`)
+  .nullable();
+
 /** Two labels of one scope in one request are a mistake (422). */
 function checkScopes(ctx: z.RefinementCtx, names: readonly string[] | undefined, path: string): void {
   if (!names) return;
@@ -98,6 +111,8 @@ export const CreateTodo = z
     urls: UrlList.optional(),
     /** In a shared project: the member it is assigned to (username). */
     assignee: AssigneeInput.optional(),
+    /** The "action needed" marker with its reason. */
+    actionNeeded: ActionNeededInput.optional(),
   })
   .superRefine((value, ctx) => checkScopes(ctx, value.labels, "labels"));
 export type CreateTodo = z.infer<typeof CreateTodo>;
@@ -126,6 +141,8 @@ export const UpdateTodo = z
     recurrence: RecurrenceRule.nullable().optional(),
     /** In a shared project: the member it is assigned to (username); null unassigns it. */
     assignee: AssigneeInput.optional(),
+    /** Sets the "action needed" marker with its reason (shown until someone removes it); null removes it. */
+    actionNeeded: ActionNeededInput.optional(),
   })
   .superRefine((value, ctx) => {
     checkNotEmpty(ctx, value);

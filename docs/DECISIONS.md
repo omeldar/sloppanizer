@@ -251,6 +251,55 @@ project's address still wins, and the List / Board switch on the page only sets 
 choice, so links stay clean. Not done: remembering the last view per project. Two places deciding the view
 would make "why does this one open as a list?" hard to answer; it can follow if one default is not enough.
 
+## 2026-11-26 One-time meetings and people in meetings (S5#5)
+
+omerovie asked for meetings that happen once, planned straight from the planner, and for people on
+meetings, to see with whom the time in meetings went.
+
+**A one-time meeting is a meeting with one single-date segment**, not a new kind of time block. It is a
+meeting in every other respect (a note per date, todos added by hand, a type, a standup list if wanted), and
+Statistics, Plan my day, the MCP tools and the export already read meetings through their series. The API
+says it by leaving out `schedule.rule`: the server stores a daily rule with `endsOn = startsOn`, and
+`oneTime` (on the meeting and its occurrences) is "one segment whose first date is its last". A repeat that
+is later cut down to one date the same way also reads as once, which is what it is. In the planner a drag
+moves its only date with scope "this" (an exception, so the note and marks keep their date key) without
+asking, and "Cancel date" becomes "Delete", because cancelling the only date is deleting the meeting.
+
+**People belong to the meeting, not to each date** (`meeting_people`, cascading from both the meeting and
+the person, at most 50). Per-date attendance would answer "who was there on 12.11." too, but nobody asked
+for it, and every date of a repeating meeting would need ticking. Picking works like a todo's people: a
+person, a Sloppanizer user, or a new "First Last" that is added to People.
+
+**Time per person** counts each meeting date in full for every person of its meeting, cut to the period and
+to now like the rest of the meeting time, and the top 10 are listed. Minutes of meetings without people are
+reported on their own (`meetingMinutesWithoutPeople`) so the list never looks like it covers all meeting
+time.
+
+## 2026-11-26 Notifications and the action needed marker (S5#6)
+
+akotami asked for notifications ("when they get tagged in a shared todo") and for a marker Claude can set
+through MCP that shows until someone removes it, so scheduled runs can flag where the user has to act.
+
+**What notifies whom.** Assigned (the new assignee of a shared todo), mentioned (`@username` of a member in
+a comment), commented (a comment on a shared todo notifies its assignee; on an own todo its owner) and action
+needed (a shared todo's assignee, every member when it is unassigned, an own todo's owner). One notification
+per person and change. Nobody is notified of what they did themselves in the browser, but what their API
+tokens do is: the scheduled runs act through the user's own token, and their comments and markers are the
+news. Edits of a comment, due dates, status changes and the like do not notify; they are in the history.
+
+**Where they live.** `notifications` belongs to the recipient's account but points at the todo in the
+account it lives in (own or a shared project), with a foreign key that removes it with the todo. It is not
+account data: never exported or restored (a restore replaces the todos, which removes their
+notifications). A user keeps the newest 200; notifications of a shared project they left are dropped when
+they next look. The routes are personal (403 inside a shared project); the web app sends them without the
+project header from every tab. The bell polls every minute and on focus; there is no push or e-mail.
+
+**The marker is a field of the todo,** not a label: a label would need to exist in every account and
+shared project, could not hold the reason, and is easily removed by a bulk relabel without anyone noticing.
+`actionNeeded` (reason, who, when) is set and removed through the normal todo update (so MCP, bulk and the
+API get it at once), records an `action_needed_changed` line in the history, and `""` is a marker without a
+reason. Mentions are plain text (`@username`); the comment box has no autocomplete yet.
+
 ## 2026-11-26 Moving todos into shared projects, and who has access (S5#7)
 
 omerovie asked to pick shared projects in a todo's Project field, and for a view like Google's sharing

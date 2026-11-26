@@ -321,3 +321,38 @@
     display: none;
   }
 }
+
+/* The "action needed" marker at the top of a todo. */
+.actionNeeded {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--amber);
+  background: var(--amber-tint);
+}
+
+.actionNeededText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.actionNeededText strong {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.actionNeededReason {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.actionNeededBy {
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}

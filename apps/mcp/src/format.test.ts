@@ -27,6 +27,7 @@ import {
   todoDetail,
   todoLine,
   topicLine,
+  notificationsText,
 } from "./format.ts";
 
 const ctx = { today: "2026-11-11", timeZone: "Europe/Zurich" };
@@ -118,6 +119,7 @@ function todo(overrides: Partial<Todo> = {}): Todo {
     previousOccurrenceId: null,
     nextOccurrence: null,
     assignee: null,
+    actionNeeded: null,
     ...overrides,
   };
 }
@@ -514,6 +516,7 @@ describe("meetings", () => {
     endAt: "2026-11-19T08:15:00.000Z",
     status: "scheduled" as const,
     noteId: null,
+    oneTime: false,
   };
 
   it("writes a meeting date in local time, moved, cancelled or past midnight", () => {
@@ -585,5 +588,47 @@ describe("meetings", () => {
     expect(standupText(empty, "Weekly Standup", ctx.timeZone).split("\n")[1]).toBe("Nothing to say.");
     // Asked only for some kinds while others are open.
     expect(standupText({ ...standup, items: [] }, "S", ctx.timeZone)).toContain("Nothing of these kinds.");
+  });
+});
+
+describe("action needed and notifications (S5#6)", () => {
+  it("puts the ACTION NEEDED marker right after the title", () => {
+    const marked = todo({
+      actionNeeded: { reason: "Sign the form", by: "assistant", at: "2026-11-11T09:00:00.000Z" },
+    });
+    expect(todoLine(marked, ctx).split(" | ").slice(1, 3)).toEqual([
+      marked.title,
+      "ACTION NEEDED: Sign the form",
+    ]);
+    expect(todoLine({ ...marked, actionNeeded: { ...marked.actionNeeded!, reason: "" } }, ctx)).toContain(
+      " | ACTION NEEDED | ",
+    );
+  });
+
+  it("lists notifications with a star for unread ones", () => {
+    const base = {
+      actor: "bobo",
+      excerpt: "",
+      todo: { id: 12, title: "Book the van", status: "open" as const, ref: "S7#12" },
+      space: { id: 7, name: "Home move" },
+      createdAt: "2026-11-11T13:05:00.000Z",
+    };
+    expect(
+      notificationsText(
+        {
+          unreadCount: 1,
+          items: [
+            { ...base, id: 2, kind: "commented", excerpt: "Done.", readAt: null },
+            { ...base, id: 1, kind: "assigned", readAt: "2026-11-11T14:00:00.000Z" },
+          ],
+        },
+        ctx.timeZone,
+      ).split("\n"),
+    ).toEqual([
+      "1 unread (* marks them):",
+      '* 11.11.2026 14:05 | S7#12 Book the van | bobo commented: "Done."',
+      "  11.11.2026 14:05 | S7#12 Book the van | bobo assigned it to you",
+    ]);
+    expect(notificationsText({ unreadCount: 0, items: [] }, ctx.timeZone)).toBe("No notifications.");
   });
 });

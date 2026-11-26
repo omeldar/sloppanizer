@@ -187,7 +187,10 @@ describe("MCP server against the real API", () => {
         "plan_time",
         "list_recurring",
         "work_stats",
+        "list_notifications",
         "list_meetings",
+        "plan_meeting",
+        "meeting_people",
         "standup_list",
         "mark_said",
         "meeting_note",
@@ -556,6 +559,43 @@ describe("step 2 tools against the real API", () => {
     } finally {
       db.close();
     }
+  });
+
+  it("marks a todo ACTION NEEDED, finds it by the marker and tells the user", async () => {
+    const created = await ok("create_todo", { title: "Renew the TLS certificate" });
+    const id = Number(/^Created #(\d+)/.exec(created)?.[1]);
+    const flagged = await ok("update_todo", { id, actionNeeded: "Approve the DNS record in the dashboard" });
+    expect(flagged).toContain("| ACTION NEEDED: Approve the DNS record in the dashboard |");
+    expect(await ok("list_todos", { actionNeeded: true })).toContain(
+      `#${id} open | Renew the TLS certificate`,
+    );
+    expect(await ok("get_todo", { id })).toMatch(/ACTION NEEDED \(set by [^)]+\): Approve the DNS record/);
+    // The token is not the user's browser, so the user hears about it.
+    const inbox = await ok("list_notifications", { unread: true, markRead: true });
+    expect(inbox).toMatch(
+      new RegExp(`#${id} Renew the TLS certificate \\| .+ marked it ACTION NEEDED: "Approve`),
+    );
+    expect(await ok("list_notifications", { unread: true })).toBe("No notifications.");
+    expect(await ok("update_todo", { id, actionNeeded: null })).not.toContain("ACTION NEEDED");
+  });
+
+  it("plans a one-time meeting with people and counts it per person in work_stats", async () => {
+    const planned = await ok("plan_meeting", {
+      name: "Kick-off with Acme",
+      date: "2026-01-05",
+      start: "14:00",
+      end: "15:30",
+      people: ["Cleo Chan"],
+    });
+    expect(planned).toMatch(
+      /^Planned meeting \d+ \| Kick-off with Acme \| other \| once on 05\.01\.2026, 14:00–15:30 \| no next date \| with Cleo Chan$/,
+    );
+    expect(await ok("meeting_people", { meeting: "Kick-off with Acme", add: ["Dan Dorn"] })).toBe(
+      "Kick-off with Acme: with Cleo Chan, Dan Dorn.",
+    );
+    const stats = await ok("work_stats", { from: "2026-01-05", to: "2026-01-11" });
+    expect(stats).toContain("meetings 1.5 h");
+    expect(stats).toContain("- Cleo Chan: 1.5 h in 1 meeting\n- Dan Dorn: 1.5 h in 1 meeting");
   });
 
   it("writes, appends to and lists notes", async () => {

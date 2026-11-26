@@ -132,6 +132,8 @@ export interface TodoListParams {
   plannedTo?: string;
   /** "true": only todos without a planned day. */
   unplanned?: "true";
+  /** "true": only todos marked action needed. */
+  actionNeeded?: "true";
   /** Done todos finished on or after this day; other statuses are not affected. */
   doneAfter?: string;
   sort?: "created" | "updated" | "due" | "priority" | "position";
