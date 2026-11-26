@@ -8,6 +8,9 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- The breadcrumb at the top left links back: every step but the page you are on is a link (keyboard, a
+  middle click opens a new tab). A project page starts with "My todos", which in a shared project goes back
+  to your own todos; a subtask shows its parent (S5#8).
 - Projects can open as a board: Settings, Projects, "Open projects as" List or Board. Saved to your
   account, so every device and shared project follows it; the switch on a project still changes the view
   for that visit (S5#3).
