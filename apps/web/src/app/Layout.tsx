@@ -24,6 +24,7 @@ import { useMeeting } from "../lib/meetings.ts";
 import { useCurrentAccount } from "./account.tsx";
 import { AccountSwitcher } from "./AccountSwitcher.tsx";
 import { useCommands } from "./commands.tsx";
+import { NotificationBell } from "../features/notifications/NotificationBell.tsx";
 import styles from "./Layout.module.css";
 import { StatusBar } from "./StatusBar.tsx";
 import { MoveSignInBanner } from "./MoveSignIn.tsx";
@@ -406,6 +407,7 @@ function TopBar({ onMenu }: { onMenu: () => void }) {
       </button>
       <Breadcrumb />
       <div className={styles.topActions}>
+        <NotificationBell />
         <button type="button" className={styles.search} onClick={() => commands.openPalette()}>
           <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">
             <circle cx="5.5" cy="5.5" r="4.25" fill="none" stroke="currentColor" strokeWidth="1.4" />

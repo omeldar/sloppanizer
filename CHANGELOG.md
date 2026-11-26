@@ -23,6 +23,19 @@ app shows "Sloppanizer is updating".
   (`people`, `addPeople`, `removePeople` on create and update); occurrences have `oneTime`; `/stats/overview`
   has `meetingPeople` and `meetingMinutesWithoutPeople`. Export format 9 adds `meeting_people` (format 8 and
   older still restore). Migration 0015 (S5#5).
+- Notifications: a bell in the top bar with the unread count. You hear when someone assigns you a shared
+  todo, mentions you with `@username` in a comment, comments on a shared todo assigned to you (or on an own
+  todo, by one of your API tokens), or marks a todo of yours "action needed". Nothing you do yourself in the
+  browser notifies you; what your tokens (MCP clients, scheduled runs) do does. Opening one marks it read
+  and goes to the todo; "Mark all read" clears them (S5#6).
+- Action needed: a marker with a reason on a todo, for what only you can do (an assistant's scheduled run
+  sets it when it gets stuck). It shows as a badge in lists, as a note at the top of the todo with "Done,
+  remove", in its own group at the top of Next up, and as a filter in the Inbox and project lists (S5#6).
+- MCP: `update_todo` and `create_todo` take `actionNeeded` (a reason, `""`, or `null` to remove it),
+  `list_todos` filters by it, todo lines show `ACTION NEEDED: …`, and `list_notifications` lists (and can
+  mark read) the notifications (S5#6).
+- API: `actionNeeded` on todos (create, update, bulk) and `?actionNeeded=true|false` on `GET /todos`;
+  `GET /notifications` and `POST /notifications/read` (never inside a shared project). Migration 0016 (S5#6).
 
 ## 1.1.1 (2026-11-26)
 

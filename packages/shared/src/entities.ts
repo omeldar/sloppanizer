@@ -151,6 +151,16 @@ export const TodoAssignee = z.strictObject({
 });
 export type TodoAssignee = z.infer<typeof TodoAssignee>;
 
+/** The "action needed" marker of a todo: what the user has to do, and who set it when. */
+export const ActionNeeded = z.strictObject({
+  /** "" when no reason was given. */
+  reason: z.string(),
+  /** Who set it, as the history names them ("you", a token's name, a member). */
+  by: z.string(),
+  at: Timestamp,
+});
+export type ActionNeeded = z.infer<typeof ActionNeeded>;
+
 export const ProjectRef = z.strictObject({ id: Id, slug: Slug, name: z.string(), color: Color });
 export type ProjectRef = z.infer<typeof ProjectRef>;
 
@@ -216,6 +226,8 @@ export const Todo = z.strictObject({
   nextOccurrence: TodoRef.nullable(),
   /** In a shared project: the member it is assigned to, or null. */
   assignee: TodoAssignee.nullable(),
+  /** Set when someone (usually an assistant) needs the user to do something; stays until removed. */
+  actionNeeded: ActionNeeded.nullable(),
 });
 export type Todo = z.infer<typeof Todo>;
 

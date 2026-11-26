@@ -59,6 +59,8 @@ export const TodoListQuery = z
     plannedTo: CalendarDate.optional(),
     /** true = only todos without a planned date. */
     unplanned: QueryBoolean.optional(),
+    /** true = only todos with the "action needed" marker; false = only those without. */
+    actionNeeded: QueryBoolean.optional(),
     /** Done todos only from the start of that local day on; other statuses are not affected. */
     doneAfter: CalendarDate.optional(),
     sort: z.enum(TODO_SORTS).default("created"),

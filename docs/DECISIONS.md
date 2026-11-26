@@ -274,3 +274,28 @@ person, a Sloppanizer user, or a new "First Last" that is added to People.
 to now like the rest of the meeting time, and the top 10 are listed. Minutes of meetings without people are
 reported on their own (`meetingMinutesWithoutPeople`) so the list never looks like it covers all meeting
 time.
+
+## 2026-11-26 Notifications and the action needed marker (S5#6)
+
+akotami asked for notifications ("when they get tagged in a shared todo") and for a marker Claude can set
+through MCP that shows until someone removes it, so scheduled runs can flag where the user has to act.
+
+**What notifies whom.** Assigned (the new assignee of a shared todo), mentioned (`@username` of a member in
+a comment), commented (a comment on a shared todo notifies its assignee; on an own todo its owner) and action
+needed (a shared todo's assignee, every member when it is unassigned, an own todo's owner). One notification
+per person and change. Nobody is notified of what they did themselves in the browser, but what their API
+tokens do is: the scheduled runs act through the user's own token, and their comments and markers are the
+news. Edits of a comment, due dates, status changes and the like do not notify; they are in the history.
+
+**Where they live.** `notifications` belongs to the recipient's account but points at the todo in the
+account it lives in (own or a shared project), with a foreign key that removes it with the todo. It is not
+account data: never exported or restored (a restore replaces the todos, which removes their
+notifications). A user keeps the newest 200; notifications of a shared project they left are dropped when
+they next look. The routes are personal (403 inside a shared project); the web app sends them without the
+project header from every tab. The bell polls every minute and on focus; there is no push or e-mail.
+
+**The marker is a field of the todo,** not a label: a label would need to exist in every account and
+shared project, could not hold the reason, and is easily removed by a bulk relabel without anyone noticing.
+`actionNeeded` (reason, who, when) is set and removed through the normal todo update (so MCP, bulk and the
+API get it at once), records an `action_needed_changed` line in the history, and `""` is a marker without a
+reason. Mentions are plain text (`@username`); the comment box has no autocomplete yet.

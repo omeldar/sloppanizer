@@ -175,6 +175,7 @@ describe("Todo output", () => {
     previousOccurrenceId: null,
     nextOccurrence: null,
     assignee: { accountId: 2, username: "bobo", name: "Bo Berg" },
+    actionNeeded: { reason: "Sign it", by: "assistant", at: "2026-11-11T09:00:00.000Z" },
   };
 
   it("accepts the documented shape and rejects extra or missing fields", () => {

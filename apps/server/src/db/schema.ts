@@ -1,4 +1,4 @@
-import { MARK_KINDS, MEETING_TYPES, PERSON_ROLES } from "@organizer/shared";
+import { MARK_KINDS, MEETING_TYPES, NOTIFICATION_KINDS, PERSON_ROLES } from "@organizer/shared";
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -230,6 +230,13 @@ export const todos = sqliteTable(
      * only set members of the space and clear it when the member leaves; deleting the account clears it.
      */
     assigneeId: integer("assignee_id").references(() => accounts.id, { onDelete: "set null" }),
+    /**
+     * The "action needed" marker: what the user has to do ("" = no reason given), or null. Set and
+     * removed through the todo's update (an assistant usually sets it); by and at say who and when.
+     */
+    actionNeeded: text("action_needed"),
+    actionNeededBy: text("action_needed_by"),
+    actionNeededAt: text("action_needed_at"),
   },
   (t) => [
     primaryKey({ columns: [t.accountId, t.id] }),
@@ -259,6 +266,8 @@ export const todos = sqliteTable(
     index("todos_activity_idx").on(t.accountId, t.lastActivityAt),
     // "Assigned to me" across shared projects, and clearing a member's todos when they leave.
     index("todos_assignee_idx").on(t.assigneeId, t.accountId),
+    // The "action needed" filter.
+    index("todos_action_needed_idx").on(t.accountId, t.actionNeededAt),
     // One next occurrence per todo, also against double clicks and races.
     uniqueIndex("todos_recurrence_prev_idx")
       .on(t.accountId, t.recurrencePrevId)
@@ -765,6 +774,44 @@ export const meetingPeople = sqliteTable(
       foreignColumns: [people.accountId, people.id],
     }).onDelete("cascade"),
     index("meeting_people_person_idx").on(t.accountId, t.personId),
+  ],
+);
+
+/**
+ * In-app notifications of a user: assigned to a shared todo, mentioned in a comment, a comment on a todo
+ * assigned to them, a todo marked action needed. Not account data (never exported or restored): it
+ * belongs to the recipient's account while the todo may live in a shared project's account
+ * (todo_account_id). Deleting the todo or either account removes it.
+ */
+export const notifications = sqliteTable(
+  "notifications",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    recipientId: integer("recipient_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    /** The account the todo lives in: the recipient's own or a shared project's. */
+    todoAccountId: integer("todo_account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    todoId: integer("todo_id").notNull(),
+    kind: text("kind", { enum: NOTIFICATION_KINDS }).notNull(),
+    /** Who did it, as the history names them. */
+    actor: text("actor").notNull(),
+    /** A short plain text: the comment's start, or the action needed reason. */
+    excerpt: text("excerpt").notNull().default(""),
+    createdAt: text("created_at").notNull(),
+    readAt: text("read_at"),
+  },
+  (t) => [
+    foreignKey({
+      name: "notifications_todo_fk",
+      columns: [t.todoAccountId, t.todoId],
+      foreignColumns: [todos.accountId, todos.id],
+    }).onDelete("cascade"),
+    check("notifications_kind_check", sql`${t.kind} IN ('assigned','mentioned','commented','action_needed')`),
+    index("notifications_recipient_idx").on(t.recipientId, t.createdAt),
+    index("notifications_todo_idx").on(t.todoAccountId, t.todoId),
   ],
 );
 
