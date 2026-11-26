@@ -172,20 +172,27 @@ function membersOf(tx: Tx, space: SpaceRow): SpaceMember[] {
       .where(and(eq(accounts.role, "admin"), eq(accounts.status, "active"), eq(accounts.kind, "user")))
       .orderBy(asc(accounts.username))
       .all()
-      .map((row) => ({ accountId: row.id, username: row.username, name: memberName(row), role: "owner" }));
+      .map((row) => ({
+        accountId: row.id,
+        username: row.username,
+        name: memberName(row),
+        role: "owner",
+        addedAt: null,
+      }));
   }
   return tx
-    .select({ account: accounts, role: spaceMembers.role })
+    .select({ account: accounts, role: spaceMembers.role, addedAt: spaceMembers.addedAt })
     .from(spaceMembers)
     .innerJoin(accounts, eq(accounts.id, spaceMembers.accountId))
     .where(eq(spaceMembers.spaceId, space.accountId))
     .orderBy(sql`${spaceMembers.role} <> 'owner'`, asc(accounts.username))
     .all()
-    .map(({ account, role }) => ({
+    .map(({ account, role, addedAt }) => ({
       accountId: account.id,
       username: account.username,
       name: memberName(account),
       role,
+      addedAt,
     }));
 }
 

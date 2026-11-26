@@ -299,3 +299,37 @@ shared project, could not hold the reason, and is easily removed by a bulk relab
 `actionNeeded` (reason, who, when) is set and removed through the normal todo update (so MCP, bulk and the
 API get it at once), records an `action_needed_changed` line in the history, and `""` is a marker without a
 reason. Mentions are plain text (`@username`); the comment box has no autocomplete yet.
+
+## 2026-11-26 Moving todos into shared projects, and who has access (S5#7)
+
+omerovie asked to pick shared projects in a todo's Project field, and for a view like Google's sharing
+dialog that shows who has access.
+
+**A move is a copy plus a closed original.** Todos never move between accounts (2026-11-25): ids, labels,
+people, files and history are per account, and a shared project is its own account. So "move to a shared
+project" (and back, or between two shared projects) is `POST /todos/{id}/move` with `spaceId` (null: your
+own todos), sent from where the todo is. In one transaction the todo and its subtasks are copied there with
+their comments (authors renamed the way that account names them: "you" in your own todos, "First Last"
+in a shared project), checklist (it is in the description), labels (made there with the same color when
+missing), people (Sloppanizer users by username, others found or made by name), web links, repeat rule and
+the files their text shows (copied into that account's files, links rewritten, its quota checked). The copy
+is assigned to the person who moved it when it lands in a shared project (it was theirs), and its first new
+comment says where it came from and lists the links to other todos, which cannot cross accounts. The
+originals are marked done directly (a repeating one makes no next todo: the copy repeats instead) and get a
+comment naming the copy. Not deleted: their history, planned and worked time stay where they were, nothing
+is lost if the copy was a mistake, and the way back is the same move. Planned time does not follow the
+copy. Any member may move a todo of a shared project out of it, like any other change there; tokens with
+write scope may move too (MCP `move_todo`), with the same membership check as every request.
+
+**The project picker shows the other places.** A todo's Project field (and the `p` picker) lists the shared
+projects after your own projects, marked "shared"; inside a shared project's tab it lists your own projects
+and Inbox, marked "my todos", and the other shared projects. Picking one asks first, then opens the copy in
+its own tab. Notes and New todo keep their pickers: a new todo can already be made in a shared project from
+its tab.
+
+**Sharing is "people with access", and adding is immediate.** There are no invitations to accept: an owner
+adds a member by username and they have access at once (the project shows under Shared in their sidebar).
+The dialog (sidebar, the project's menu, "Share and settings"; in the project's own tab, "Share" under its
+name) lists each person with "(you)", Owner or Member and since when (`members[].addedAt`), suggests users
+as you type, says who was added and who already had access, and shows the server's error for an unknown
+username. Owners remove members, everyone can leave. Adding and removing members stays browser-session only.

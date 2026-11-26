@@ -11,6 +11,16 @@ app shows "Sloppanizer is updating".
 - The breadcrumb at the top left links back: every step but the page you are on is a link (keyboard, a
   middle click opens a new tab). A project page starts with "My todos", which in a shared project goes back
   to your own todos; a subtask shows its parent (S5#8).
+- Move a todo into a shared project: its Project field lists your shared projects too. The todo is copied
+  there with its comments, checklist, subtasks, labels, people, web links and files, assigned to you, and
+  the original is marked done with a link to the copy. Inside a shared project the field lists your own
+  projects and Inbox, to move it back (S5#7).
+- Sharing a project shows who has access: each person with Owner or Member and since when, "(you)", users
+  suggested as you type, and a line saying who was added (or already had access); an unknown username says
+  so. Open it from a shared project's tab ("Share" under its name) or the sidebar menu ("Share and
+  settings") (S5#7).
+- API: `POST /todos/{id}/move` (`spaceId`, `projectId`), and `members[].addedAt` on shared projects. MCP:
+  `move_todo` (S5#7).
 - Projects can open as a board: Settings, Projects, "Open projects as" List or Board. Saved to your
   account, so every device and shared project follows it; the switch on a project still changes the view
   for that visit (S5#3).

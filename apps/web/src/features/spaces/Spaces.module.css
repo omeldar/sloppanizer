@@ -122,3 +122,34 @@
   padding-top: 8px;
   border-top: 1px solid var(--line);
 }
+
+.memberSince {
+  margin-left: 8px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.suggestions {
+  display: flex;
+  flex-direction: column;
+  margin: -4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suggestion {
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: var(--radius-panel);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suggestion:hover,
+.suggestion:focus-visible {
+  background: var(--sunken);
+}

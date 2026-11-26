@@ -38,7 +38,9 @@ they sat untouched, and tells you why each one is where it is.
   (set `OLLAMA_ORIGINS` to the web app's origin for Ollama). Off, Sloppanizer is a plain todo app.
 - Shared projects: a project several users work on together (sidebar, Shared, plus). Members open it in its
   own tab and get the whole app there: list, board, planner, notes, comments; the history names who did what.
-  Owners add members by username, rename and delete it; members can leave. A todo there can be assigned to
+  Owners add members by username (they have access right away; "Share" lists who has access, with their
+  role and since when), rename and delete it; members can leave. A todo's Project field moves it into a
+  shared project and back: it is copied there with its thread, subtasks and files, the original is done. A todo there can be assigned to
   one member ("Assigned to" in the todo); your own Next up lists what is assigned to you under "Assigned to
   you", with the project it comes from.
 - Feedback: "report a bug / request a feature" in the status bar, the sidebar and the palette. Reports land as

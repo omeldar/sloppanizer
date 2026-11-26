@@ -167,8 +167,21 @@ button.navLink {
 }
 
 .spaceMembers {
-  color: var(--text-3);
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
   font-size: var(--fs-small);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.spaceMembers:hover {
+  color: var(--text);
 }
 
 .spaceBack {

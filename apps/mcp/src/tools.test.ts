@@ -1253,8 +1253,8 @@ describe("shared projects", () => {
     openCount: 2,
     role: "owner",
     members: [
-      { accountId: 1, username: "anna", name: "Anna Berg", role: "owner" },
-      { accountId: 2, username: "bobo", name: "bobo", role: "member" },
+      { accountId: 1, username: "anna", name: "Anna Berg", role: "owner", addedAt: at },
+      { accountId: 2, username: "bobo", name: "bobo", role: "member", addedAt: at },
     ],
     createdAt: at,
   };
@@ -1329,6 +1329,40 @@ describe("shared projects", () => {
     await call("update_todo", { id: "S7#3", assignee: null });
     expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ assignee: null });
     expect(calls.some((c) => c.path === "/me")).toBe(false);
+  });
+
+  it("move_todo moves an own todo into a shared project and a shared one back (S5#7)", async () => {
+    const copy = { ...van, id: 9 };
+    const { call, calls } = await connect(({ path, method, space: inSpace }) => {
+      if (path === "/spaces") return [space];
+      if (path === "/spaces/7") return space;
+      if (path === "/projects")
+        return inSpace === 7 ? [{ ...moveProject }] : [{ id: 4, slug: "work", name: "Work" }];
+      if (path === "/todos/142/move" && method === "POST")
+        return { spaceId: 7, todo: copy, ref: "S7#9", original: todo({ status: "done" }) };
+      if (path === "/todos/3/move" && method === "POST")
+        return { spaceId: null, todo: todo({ id: 150, title: "Book van" }), ref: "#150", original: van };
+      return undefined;
+    });
+    const into = await call("move_todo", { todo: 142, to: "S7" });
+    expect(into.text).toBe("Moved #142 to S7#9 Book van. #142 is done and points to it.");
+    expect(calls.find((c) => c.method === "POST")).toEqual({
+      method: "POST",
+      path: "/todos/142/move",
+      body: { spaceId: 7, projectId: 1 },
+      space: undefined,
+    });
+    calls.length = 0;
+    const back = await call("move_todo", { todo: "S7#3", to: "work" });
+    expect(back.text).toBe("Moved S7#3 to #150 Book van. S7#3 is done and points to it.");
+    expect(calls.find((c) => c.method === "POST")).toEqual({
+      method: "POST",
+      path: "/todos/3/move",
+      body: { spaceId: null, projectId: 4 },
+      space: 7,
+    });
+    const same = await call("move_todo", { todo: 142, to: "inbox" });
+    expect(same.isError).toBe(true);
   });
 
   it("says when the shared project is not one of the account's", async () => {

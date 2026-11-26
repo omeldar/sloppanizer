@@ -17,8 +17,9 @@ import { LabelPill } from "../../components/LabelPill.tsx";
 import type { MarkdownEditorHandle } from "../../components/markdown/MarkdownEditor.tsx";
 import { MarkdownField } from "../../components/markdown/MarkdownField.tsx";
 import { Popover } from "../../components/Popover.tsx";
-import { LabelPicker, PeoplePicker, ProjectPicker } from "../../components/pickers/pickers.tsx";
+import { LabelPicker, PeoplePicker } from "../../components/pickers/pickers.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
+import { TodoProjectPicker } from "./TodoProjectPicker.tsx";
 import {
   Button,
   EmptyState,
@@ -248,9 +249,9 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
                 onOpenChange={pick("project")}
                 trigger={<FieldButton empty={!todo.project}>{todo.project?.name ?? "Inbox"}</FieldButton>}
               >
-                <ProjectPicker
-                  value={todo.projectId}
-                  onChange={(projectId) => {
+                <TodoProjectPicker
+                  todo={todo}
+                  onPick={(projectId) => {
                     setPicker(null);
                     if (projectId !== todo.projectId) void patch(todo.id, { projectId });
                   }}

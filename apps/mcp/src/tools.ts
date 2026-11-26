@@ -42,6 +42,7 @@ import {
   SearchQuery,
   type SearchResult,
   type Me,
+  type MovedTodo,
   type Space,
   type Stats,
   type Todo,
@@ -1416,6 +1417,48 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         args.format,
         comment,
         (data) => `Added comment ${data.id} to ${todoRefText(data.todoId, target.space)} as ${data.actor}.`,
+      );
+    },
+  );
+
+  tool(
+    "move_todo",
+    {
+      title: "Move todo",
+      description:
+        "Move a todo with its subtasks to a shared project, back to your own todos, or between shared " +
+        "projects. Todos never change accounts, so it is copied there (comments, checklist, subtasks, " +
+        "labels, people, web links, files) and the original is marked done with a comment naming the copy. " +
+        "Links to other todos stay behind (listed in the copy's first comment). Inside one place, change " +
+        "the project with update_todo instead.",
+      inputSchema: {
+        todo: TodoRefInput,
+        to: ProjectInput.describe(
+          'Where to: a shared project ("S7" or its name), or one of your own projects (id or slug) or "inbox".',
+        ),
+        format,
+      },
+      annotations: WRITE,
+    },
+    async (args) => {
+      const source = await todoTarget(api, args.todo);
+      const where = await createPlace(api, args.to);
+      const spaceId = where.space?.id ?? null;
+      if (spaceId === (source.space?.id ?? null)) {
+        throw new ToolError(
+          "The todo is already there. Use update_todo with project to move it to another project of the same place.",
+        );
+      }
+      const moved = await source.api.post<MovedTodo>(`/todos/${source.id}/move`, {
+        spaceId,
+        ...(where.projectId === undefined ? {} : { projectId: where.projectId }),
+      });
+      return out(
+        args.format,
+        moved,
+        (data) =>
+          `Moved ${todoRefText(source.id, source.space)} to ${data.ref} ${data.todo.title}. ` +
+          `${todoRefText(source.id, source.space)} is done and points to it.`,
       );
     },
   );
