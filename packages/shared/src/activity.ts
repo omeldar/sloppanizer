@@ -134,6 +134,16 @@ function describeAssignee(from: unknown, to: unknown): string {
   return previous ? `removed ${previous} as assignee` : "removed the assignee";
 }
 
+function describeActionNeeded(from: unknown, to: unknown): string {
+  if (typeof to === "string") {
+    const reason = to.trim() === "" ? "" : `: ${to}`;
+    return typeof from === "string"
+      ? `changed the action needed${reason}`
+      : `marked it action needed${reason}`;
+  }
+  return "removed the action needed marker";
+}
+
 /**
  * One plain sentence for a history event, without the actor: "changed status from Open to Done",
  * "added contact Max Muster", "edited the description". `people` maps person ids to their current
@@ -192,5 +202,7 @@ export function describeEvent(event: ActivityEvent, people?: ReadonlyMap<number,
       return describeRecurred(data.next);
     case "assignee_changed":
       return describeAssignee(data.from, data.to);
+    case "action_needed_changed":
+      return describeActionNeeded(data.from, data.to);
   }
 }

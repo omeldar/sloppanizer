@@ -29,6 +29,7 @@ import { blockSeriesRoutes } from "./routes/block-series.ts";
 import { meetingRoutes } from "./routes/meetings.ts";
 import { metaRoutes } from "./routes/meta.ts";
 import { noteRoutes } from "./routes/notes.ts";
+import { notificationRoutes } from "./routes/notifications.ts";
 import { oauthRoutes } from "./routes/oauth.ts";
 import { plannerRoutes } from "./routes/planner.ts";
 import { peopleStatsRoutes } from "./routes/people-stats.ts";
@@ -150,6 +151,7 @@ export async function buildApp(options: BuildOptions) {
   peopleRoutes(app, deps);
   peopleStatsRoutes(app, deps);
   topicRoutes(app, deps);
+  notificationRoutes(app, deps);
   personTagRoutes(app, deps);
   todoRoutes(app, deps);
   todoRelationRoutes(app, deps);

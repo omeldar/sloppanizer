@@ -23,6 +23,9 @@ they sat untouched, and tells you why each one is where it is.
 - Planner: reserve time in a week calendar for a todo or with a title (click a free slot, drag a todo from To
   plan or the Day row onto a day, drag a block to move or resize it); todos planned for a day without a time wait in a row above it. Phones show one day at a time.
   A free slot can also become a one-time meeting (Plan time, Meeting): a name and the people in it.
+- Notifications (the bell): assigned to a shared todo, @mentioned in a comment, comments on your todos,
+  and todos marked "action needed" (a marker with a reason, set by an assistant's run or anyone, shown
+  until removed; filter lists by it, Next up shows them first).
 - Meetings: repeating or once, with the people in them (from People; a new name is added there). Their
   time counts in Statistics, also per person ("In meetings with whom").
   Settings, Calendar feed gives a secret link to subscribe to in Google Calendar, Apple Calendar or Outlook.
@@ -222,6 +225,8 @@ Tools:
   `delete_block`, `list_recurring`, `work_stats` (time per project, requester and week, meeting time per
   person), `plan_meeting` (a one-time meeting with its people), `meeting_people` (add or remove people of
   any meeting).
+- Action needed and notifications: `update_todo` / `create_todo` take `actionNeeded` (what the user has to
+  do; `null` removes it), `list_todos` takes `actionNeeded: true`, `list_notifications` (`markRead`).
 
 - Shared projects: their todos read `S7#12` (todo 12 of shared project 7) with project and assignee.
   `list_todos`, `next_up` (assigned to you, ranked in), `overview`, `search` and `list_projects` include

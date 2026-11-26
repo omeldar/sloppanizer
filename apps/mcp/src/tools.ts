@@ -2,6 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import {
   type Activity,
+  ActionNeededInput,
+  type NotificationList,
   formatDuration,
   type WorkStats,
   type BlockOccurrence,
@@ -94,6 +96,7 @@ import {
   sharedProjectLine,
   todoLine,
   todoLines,
+  notificationsText,
   todoRefText,
   topicLine,
   urlLines,
@@ -161,6 +164,12 @@ const Repeat = RecurrenceRule.nullable().describe(
 );
 
 const NoteId = z.number().int().positive().describe("Note id from list_notes.");
+
+const ActionNeededField = ActionNeededInput.optional().describe(
+  'The "ACTION NEEDED" marker: what the user has to do themselves (e.g. "Approve the DNS change in the ' +
+    'Vercel dashboard"); it shows on the todo until someone removes it, and the user (in a shared project the ' +
+    'assignee, else every member) gets a notification. "" marks it without a reason; null removes it.',
+);
 
 const DateInput = (what: string) =>
   CalendarDate.nullable().describe(`${what} YYYY-MM-DD in the user's local calendar; null clears it.`);
@@ -578,6 +587,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           .boolean()
           .optional()
           .describe("true: only todos without a planned day (not together with plannedFrom/plannedTo)."),
+        actionNeeded: z
+          .boolean()
+          .optional()
+          .describe('true: only todos marked "ACTION NEEDED"; false: only todos without the marker.'),
         sort: TodoListQuery.shape.sort.describe("Sort field."),
         order: TodoListQuery.shape.order.describe("Sort order; priority desc lists critical first."),
         limit: TodoListQuery.shape.limit.unwrap().default(50).describe("Page size (default 50)."),
@@ -602,6 +615,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         plannedFrom: args.plannedFrom,
         plannedTo: args.plannedTo,
         unplanned: args.unplanned,
+        actionNeeded: args.actionNeeded,
         sort: args.sort,
         order: args.order,
         limit: args.limit,
@@ -708,6 +722,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           .max(50)
           .optional()
           .describe("Web links (tickets, docs, pull requests): url and an optional label."),
+        actionNeeded: ActionNeededField,
         format,
       },
       annotations: WRITE,
@@ -730,6 +745,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           parentId: args.parent,
           recurrence: args.repeat,
           urls: args.links,
+          actionNeeded: args.actionNeeded,
         }),
       );
       return out(args.format, todo, (data) => `Created ${todoLine(data, ctx(), where.space)}`);
@@ -745,7 +761,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "requested by, contacts. labels/requestedBy/contacts replace the full set; the add*/remove* fields " +
         "change only those (e.g. addContacts adds a colleague to ask). parent moves it under another todo " +
         "(null: top level again); repeat sets or stops (null) the repeat rule. Send only what changes. In a " +
-        'shared project (S7#12) assignee gives it to a member ("me" or a username) or null unassigns it.',
+        'shared project (S7#12) assignee gives it to a member ("me" or a username) or null unassigns it. ' +
+        'actionNeeded sets the "ACTION NEEDED" marker with what the user must do (when you are stuck on ' +
+        "something only they can do), null removes it.",
       inputSchema: {
         id: TodoRefInput,
         assignee: AssigneeInput.optional(),
@@ -770,6 +788,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           .optional()
           .describe("Make it a subtask of this todo; null: top level again."),
         repeat: Repeat.optional(),
+        actionNeeded: ActionNeededField,
         format,
       },
       annotations: { ...WRITE, idempotentHint: true },
@@ -797,6 +816,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           removeContacts: toPeople(args.removeContacts),
           parentId: args.parent,
           recurrence: args.repeat,
+          actionNeeded: args.actionNeeded,
         }),
       );
       return out(args.format, todo, (data) => `Updated ${todoLine(data, ctx(), target.space)}`);
@@ -1900,6 +1920,32 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         ];
         return lines.join("\n");
       });
+    },
+  );
+
+  tool(
+    "list_notifications",
+    {
+      title: "Notifications",
+      description:
+        "The user's in-app notifications, newest first: assigned to a shared todo, mentioned (@username) in a " +
+        'comment, a comment on a todo of theirs, a todo marked "ACTION NEEDED". markRead: true marks every ' +
+        "one read afterwards (the bell in the app clears too).",
+      inputSchema: {
+        unread: z.boolean().optional().describe("true: unread ones only."),
+        limit: z.number().int().min(1).max(100).default(30).describe("How many (default 30)."),
+        markRead: z.boolean().default(false).describe("true: mark all read after listing them."),
+        format,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => {
+      const list = await api.get<NotificationList>("/notifications", {
+        unread: args.unread === undefined ? undefined : String(args.unread),
+        limit: args.limit,
+      });
+      if (args.markRead && list.unreadCount > 0) await api.post("/notifications/read", { all: true });
+      return out(args.format, list, (data) => notificationsText(data, deps.timeZone));
     },
   );
 

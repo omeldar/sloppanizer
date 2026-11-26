@@ -147,6 +147,7 @@ export function makeTodo(overrides: Partial<Todo> = {}): Todo {
     previousOccurrenceId: null,
     nextOccurrence: null,
     assignee: null,
+    actionNeeded: null,
     ...overrides,
   };
 }

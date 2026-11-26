@@ -19,6 +19,22 @@ function row(props: Partial<Parameters<typeof StripRow>[0]> = {}) {
 }
 
 describe("StripRow", () => {
+  it("marks a todo that needs the user to act, with the reason as its tip (S5#6)", async () => {
+    row({
+      todo: makeTodo({
+        actionNeeded: { reason: "Approve the DNS change", by: "assistant", at: "2026-11-11T09:00:00.000Z" },
+      }),
+    });
+    const badge = await screen.findByText("Action needed");
+    expect(badge.getAttribute("title")).toBe("Action needed: Approve the DNS change");
+  });
+
+  it("has no action needed badge without the marker", async () => {
+    row();
+    await screen.findByRole("link", { name: "Renew SSL certs" });
+    expect(screen.queryByText("Action needed")).toBeNull();
+  });
+
   it("shows the mono id, the title as a link, pills, requesters and the aligned columns", async () => {
     row({
       todo: makeTodo({
