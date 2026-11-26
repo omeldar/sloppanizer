@@ -353,9 +353,16 @@ button.seg:hover {
   padding-bottom: 0;
 }
 
-/* Update banner: one line between the top bar and the page, in the grid so it never covers anything. */
-.banner {
+/* Banners (update, move your sign-in): lines between the top bar and the page, in the grid so they never
+   cover anything. */
+.banners {
   grid-area: banner;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.banner {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -395,6 +402,39 @@ button.seg:hover {
 
 .bannerAction:hover {
   border-color: var(--amber-line);
+}
+
+.bannerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bannerLater {
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.bannerLater:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.moveList {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.moveNote {
+  margin: 0;
+  color: var(--text-2);
 }
 
 @media (max-width: 900px) {

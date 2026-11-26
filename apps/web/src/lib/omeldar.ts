@@ -76,14 +76,22 @@ export function handBackToOpener(search: URLSearchParams): void {
 }
 
 /**
- * "Confirm it is you" at auth.omeldar.com in a popup (the page and its unsaved work stay): a fresh sign-in
- * there, then the API marks this session as just confirmed. Resolves false when it never answers.
+ * A fresh sign-in at auth.omeldar.com in a popup (the page and its unsaved work stay). The callback's
+ * query and the pending sign-in, or null when it never answers.
  */
-export async function confirmWithOmeldar(config: OmeldarConfig): Promise<boolean> {
-  const { url, pending } = await clientFor(config).signIn({ maxAge: 0, prompt: "login" });
+async function signInInPopup(
+  config: OmeldarConfig,
+  loginHint?: string,
+): Promise<{ query: string; pending: OidcPending } | null> {
+  const { url, pending } = await clientFor(config).signIn({
+    maxAge: 0,
+    prompt: "login",
+    ...(loginHint ? { loginHint } : {}),
+  });
   localStorage.setItem(REAUTH_KEY, pending.state);
   const popup = window.open(url, "omeldar-confirm", "popup,width=480,height=760");
   if (!popup) {
+    localStorage.removeItem(REAUTH_KEY);
     throw new Error("The browser blocked the sign-in window. Allow popups for this site and try again.");
   }
   const query = await new Promise<string | null>((resolve) => {
@@ -103,7 +111,29 @@ export async function confirmWithOmeldar(config: OmeldarConfig): Promise<boolean
     });
   });
   localStorage.removeItem(REAUTH_KEY);
-  if (query === null) return false;
-  await apiVoid("/auth/omeldar/reauth", { method: "POST", body: { query, pending } });
+  return query === null ? null : { query, pending };
+}
+
+/**
+ * "Confirm it is you" at auth.omeldar.com in a popup: a fresh sign-in there, then the API marks this
+ * session as just confirmed. Resolves false when it never answers.
+ */
+export async function confirmWithOmeldar(config: OmeldarConfig): Promise<boolean> {
+  const answer = await signInInPopup(config);
+  if (answer === null) return false;
+  await apiVoid("/auth/omeldar/reauth", { method: "POST", body: answer });
+  return true;
+}
+
+/**
+ * Moves the signed-in account's sign-in to omeldar: Sloppanizer checks it is you (its own "confirm it is
+ * you" when the last sign-in is older than 10 minutes), then a fresh sign-in at omeldar in a popup binds
+ * that omeldar account. Resolves false when the popup never answers.
+ */
+export async function moveSignInToOmeldar(config: OmeldarConfig, username: string): Promise<boolean> {
+  await apiVoid("/auth/omeldar/link/start", { method: "POST" });
+  const answer = await signInInPopup(config, username);
+  if (answer === null) return false;
+  await apiVoid("/auth/omeldar/link", { method: "POST", body: answer });
   return true;
 }
