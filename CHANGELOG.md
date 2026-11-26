@@ -8,6 +8,8 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+## 1.1.1 (2026-11-26)
+
 - Date fields on a todo, in New todo and in a repeat's "Ends" no longer show a second border with a
   gap left and right around the field (S5#1).
 - Statistics: "When you work" shows worked time per weekday, as the average of one such day (and the

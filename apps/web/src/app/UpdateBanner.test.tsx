@@ -25,9 +25,12 @@ const unknownRoute = (method: string, path: string) => ({
 });
 
 /** A version of the same major release, `minor` and `patch` steps from the web app's own. */
+/** This build's version moved by `minor` (patch 0), or within its minor release by `patch`. */
 function shifted(minor: number, patch = 0): string {
-  const [major = 0, own = 0] = WEB_VERSION.split(".").map(Number);
-  return minor < 0 && own === 0 ? `${major - 1}.99.0` : `${major}.${own + minor}.${patch}`;
+  const [major = 0, own = 0, ownPatch = 0] = WEB_VERSION.split(".").map(Number);
+  if (minor < 0 && own === 0) return `${major - 1}.99.0`;
+  if (minor === 0) return `${major}.${own}.${ownPatch + patch}`;
+  return `${major}.${own + minor}.0`;
 }
 
 afterEach(() => {
