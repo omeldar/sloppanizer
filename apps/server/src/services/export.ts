@@ -78,6 +78,8 @@ export const LOCAL_COLUMNS: Partial<Record<(typeof EXPORT_TABLES)[number], reado
   topics: ["name_key"],
   person_tags: ["name_key"],
   comments: ["author_token_id"],
+  // An account id of this server (the member a shared project's todo is assigned to).
+  todos: ["assignee_id"],
 };
 
 /** The row without account_id and the local columns of its table. */

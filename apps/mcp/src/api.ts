@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { API_PREFIX, ErrorBody, TOKEN_PATTERN } from "@organizer/shared";
+import { API_PREFIX, ErrorBody, SPACE_HEADER, TOKEN_PATTERN } from "@organizer/shared";
 import type { McpConfig } from "./config.ts";
 
 /** A problem the user (or the assistant) can fix; the message says how. */
@@ -32,6 +32,8 @@ export interface Api {
   post<T>(path: string, body: unknown): Promise<T>;
   patch<T>(path: string, body: unknown): Promise<T>;
   delete(path: string, query?: Query): Promise<void>;
+  /** The same calls inside a shared project the account is a member of (its id). */
+  inSpace(spaceId: number): Api;
 }
 
 function readToken(file: string): string {
@@ -62,7 +64,7 @@ function toSearch(query: Query | undefined): string {
 }
 
 /** REST client for /api/v1 with the token from the token file. */
-export function createApi(config: McpConfig, fetchImpl: typeof fetch = fetch): Api {
+export function createApi(config: McpConfig, fetchImpl: typeof fetch = fetch, spaceId?: number): Api {
   async function request<T>(method: string, path: string, body?: unknown, query?: Query): Promise<T> {
     const token = config.token ?? readToken(config.tokenFile);
     let response: Response;
@@ -73,6 +75,7 @@ export function createApi(config: McpConfig, fetchImpl: typeof fetch = fetch): A
           authorization: `Bearer ${token}`,
           accept: "application/json",
           ...(body === undefined ? {} : { "content-type": "application/json" }),
+          ...(spaceId === undefined ? {} : { [SPACE_HEADER]: String(spaceId) }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -113,5 +116,6 @@ export function createApi(config: McpConfig, fetchImpl: typeof fetch = fetch): A
     post: (path, body) => request("POST", path, body),
     patch: (path, body) => request("PATCH", path, body),
     delete: (path, query) => request("DELETE", path, undefined, query),
+    inSpace: (id) => createApi(config, fetchImpl, id),
   };
 }

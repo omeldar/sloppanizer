@@ -146,6 +146,7 @@ export function makeTodo(overrides: Partial<Todo> = {}): Todo {
     recurrence: null,
     previousOccurrenceId: null,
     nextOccurrence: null,
+    assignee: null,
     ...overrides,
   };
 }
@@ -155,6 +156,11 @@ export interface RecordedCall {
   path: string;
   body: unknown;
 }
+
+const sentHeaders = new WeakMap<RecordedCall, Record<string, string>>();
+
+/** The headers a recorded call was sent with (kept apart, so calls still compare as plain objects). */
+export const headersOf = (call: RecordedCall): Record<string, string> => sentHeaders.get(call) ?? {};
 
 /** Replaces fetch with a handler; returns the calls made, in order. */
 export function mockApi(handler: (call: RecordedCall) => { status?: number; body?: unknown }) {
@@ -167,6 +173,7 @@ export function mockApi(handler: (call: RecordedCall) => { status?: number; body
         path: input,
         body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
       };
+      sentHeaders.set(call, (init?.headers ?? {}) as Record<string, string>);
       calls.push(call);
       const { status = 200, body } = handler(call);
       return new Response(body === undefined ? null : JSON.stringify(body), {

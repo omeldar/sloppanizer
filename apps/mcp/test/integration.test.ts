@@ -809,3 +809,49 @@ describe("meeting tools against the real API", () => {
     expect(await ok("meeting_todos", { meeting: meetingId })).toMatch(/has no todos added by hand/);
   });
 });
+
+describe("shared projects against the real API", () => {
+  it("reads and assigns todos of a shared project through each member's own token", async () => {
+    const made = await rest("session", "POST", "/spaces", { name: "Flat move", members: ["bobby"] });
+    expect(made.status).toBe(201);
+    const spaceId = Number(made.json?.id);
+    const bo = await connect({
+      SLOPPANIZER_URL: baseUrl,
+      SLOPPANIZER_TOKEN_FILE: boTokenFile,
+      SLOPPANIZER_TZ: TZ,
+    });
+
+    const created = await ok("create_todo", {
+      title: "Book the van",
+      project: "Flat move",
+      assignee: "bobby",
+    });
+    expect(created).toMatch(
+      new RegExp(
+        `^Created S${spaceId}#\\d+ open \\| Book the van \\| shared Flat move \\| assigned to bobby`,
+      ),
+    );
+    const ref = /^Created (S\d+#\d+)/.exec(created)?.[1] ?? "";
+
+    // Bo sees it as assigned to him, in his lists and in Next up; anna's own todos stay out of his.
+    const mine = (await call("list_todos", { assignee: "me", scope: "shared" }, bo)).text;
+    expect(mine).toContain(`${ref} open | Book the van`);
+    expect((await call("next_up", {}, bo)).text).toContain(`${ref} open | Book the van`);
+    expect((await call("list_todos", { status: "all" }, bo)).text).not.toContain("Renew SSL certs");
+
+    // Bo hands it to anna; the history names him and his token.
+    expect((await call("update_todo", { id: ref, assignee: "anna" }, bo)).text).toContain("assigned to anna");
+    const activity = await ok("get_activity", { todo: ref });
+    expect(activity).toContain("bobby via bo-planner");
+    expect(activity).toContain("assigned it to anna");
+    expect(await ok("list_projects")).toContain(`S${spaceId} Flat move`);
+
+    // Once bo leaves, his token no longer reaches the project.
+    const members = made.json?.members as { accountId: number; username: string }[];
+    const boId = members.find((m) => m.username === "bobby")?.accountId;
+    expect((await rest("session", "DELETE", `/spaces/${spaceId}/members/${boId}`)).status).toBe(204);
+    const after = await call("get_todo", { id: ref }, bo);
+    expect(after.isError).toBe(true);
+    expect(after.text).toContain(`no shared project S${spaceId}`);
+  });
+});

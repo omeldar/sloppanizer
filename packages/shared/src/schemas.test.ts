@@ -174,6 +174,7 @@ describe("Todo output", () => {
     recurrence: null,
     previousOccurrenceId: null,
     nextOccurrence: null,
+    assignee: { accountId: 2, username: "bobo", name: "Bo Berg" },
   };
 
   it("accepts the documented shape and rejects extra or missing fields", () => {

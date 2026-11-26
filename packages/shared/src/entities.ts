@@ -139,6 +139,18 @@ export const UserBrief = z.strictObject({
 });
 export type UserBrief = z.infer<typeof UserBrief>;
 
+/**
+ * Who a todo in a shared project is assigned to: one member of that project. Todos outside shared
+ * projects are never assigned (always null).
+ */
+export const TodoAssignee = z.strictObject({
+  accountId: Id,
+  username: z.string(),
+  /** "First Last" when set, else the username. */
+  name: z.string(),
+});
+export type TodoAssignee = z.infer<typeof TodoAssignee>;
+
 export const ProjectRef = z.strictObject({ id: Id, slug: Slug, name: z.string(), color: Color });
 export type ProjectRef = z.infer<typeof ProjectRef>;
 
@@ -202,6 +214,8 @@ export const Todo = z.strictObject({
   previousOccurrenceId: Id.nullable(),
   /** The todo created from this one when it was marked done. */
   nextOccurrence: TodoRef.nullable(),
+  /** In a shared project: the member it is assigned to, or null. */
+  assignee: TodoAssignee.nullable(),
 });
 export type Todo = z.infer<typeof Todo>;
 

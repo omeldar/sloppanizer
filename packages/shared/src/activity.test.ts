@@ -28,6 +28,17 @@ describe("describeEvent", () => {
     );
   });
 
+  it("names who a todo of a shared project was assigned to, and who was taken off", () => {
+    const member = { accountId: 1, name: "Anna Berg" };
+    expect(describeEvent(event("assignee_changed", { from: null, to: member }))).toBe(
+      "assigned it to Anna Berg",
+    );
+    expect(describeEvent(event("assignee_changed", { from: member, to: null }))).toBe(
+      "removed Anna Berg as assignee",
+    );
+    expect(describeEvent(event("assignee_changed", {}))).toBe("removed the assignee");
+  });
+
   it("names statuses the way people read them", () => {
     expect(describeEvent(event("status_changed", { from: "open", to: "done" }))).toBe(
       "changed status from Open to Done",

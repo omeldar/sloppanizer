@@ -36,6 +36,12 @@ export const PersonRef = z.union([
 export type PersonRef = z.infer<typeof PersonRef>;
 const PersonRefList = z.array(PersonRef).max(50);
 
+/**
+ * The member a todo in a shared project is assigned to, by username; null clears it. Only members of
+ * that shared project can be assigned (422 otherwise, and outside shared projects).
+ */
+export const AssigneeInput = z.string().trim().toLowerCase().min(1).max(32).nullable();
+
 /** Two labels of one scope in one request are a mistake (422). */
 function checkScopes(ctx: z.RefinementCtx, names: readonly string[] | undefined, path: string): void {
   if (!names) return;
@@ -90,6 +96,8 @@ export const CreateTodo = z
     recurrence: RecurrenceRule.nullable().optional(),
     /** Web links, in this order. */
     urls: UrlList.optional(),
+    /** In a shared project: the member it is assigned to (username). */
+    assignee: AssigneeInput.optional(),
   })
   .superRefine((value, ctx) => checkScopes(ctx, value.labels, "labels"));
 export type CreateTodo = z.infer<typeof CreateTodo>;
@@ -116,6 +124,8 @@ export const UpdateTodo = z
     parentId: Id.nullable().optional(),
     /** null stops repeating; a rule needs dueOn or plannedOn. */
     recurrence: RecurrenceRule.nullable().optional(),
+    /** In a shared project: the member it is assigned to (username); null unassigns it. */
+    assignee: AssigneeInput.optional(),
   })
   .superRefine((value, ctx) => {
     checkNotEmpty(ctx, value);

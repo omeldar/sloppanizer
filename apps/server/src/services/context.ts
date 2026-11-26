@@ -11,6 +11,11 @@ export interface Ctx {
   clock: Clock;
   timeZone: string;
   accountId: number;
+  /**
+   * The caller's own user account (also inside a shared project, where accountId is the space's). Only
+   * filters read it ("assigned to me"); left out by internal callers, where "me" matches nothing.
+   */
+  callerId?: number;
 }
 
 /** A database handle inside or outside a transaction. */

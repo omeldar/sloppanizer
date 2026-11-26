@@ -124,6 +124,16 @@ function describeRecurred(next: unknown): string {
     : `created the next one, #${next.id}`;
 }
 
+const assigneeName = (value: unknown): string | null =>
+  isRecord(value) && typeof value.name === "string" ? value.name : null;
+
+function describeAssignee(from: unknown, to: unknown): string {
+  const next = assigneeName(to);
+  if (next) return `assigned it to ${next}`;
+  const previous = assigneeName(from);
+  return previous ? `removed ${previous} as assignee` : "removed the assignee";
+}
+
 /**
  * One plain sentence for a history event, without the actor: "changed status from Open to Done",
  * "added contact Max Muster", "edited the description". `people` maps person ids to their current
@@ -180,5 +190,7 @@ export function describeEvent(event: ActivityEvent, people?: ReadonlyMap<number,
       return describeRecurrenceChange(data.from, data.to);
     case "recurred":
       return describeRecurred(data.next);
+    case "assignee_changed":
+      return describeAssignee(data.from, data.to);
   }
 }

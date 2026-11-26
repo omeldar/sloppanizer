@@ -180,8 +180,9 @@ export function allowedInSpace(route: string | undefined, method: string): boole
 }
 
 /**
- * Scopes a request to a shared project: a browser session of a member, on a route that works there.
- * The account becomes the space's; the actor is the member's name, so the history says who did it.
+ * Scopes a request to a shared project: a member (browser session, or an API token of the member's own
+ * account, with the token's scope), on a route that works there. The account becomes the space's; the
+ * actor is the member's name, so the history says who did it.
  */
 function enterSpace(
   db: Db,
@@ -191,13 +192,6 @@ function enterSpace(
 ): { auth: Auth } | { status: 403 | 404; code: "forbidden" | "not_found"; message: string } {
   const raw = Array.isArray(header) ? header[0] : header;
   const id = raw !== undefined && /^[1-9]\d{0,9}$/.test(raw) ? Number(raw) : null;
-  if (auth.via !== "session") {
-    return {
-      status: 403,
-      code: "forbidden",
-      message: "Shared projects work from the Sloppanizer web app only.",
-    };
-  }
   if (!allowedInSpace(request.routeOptions.url, request.method)) {
     return { status: 403, code: "forbidden", message: "This is not available inside a shared project." };
   }
@@ -214,7 +208,8 @@ function enterSpace(
     auth: {
       ...auth,
       accountId: opened.space.id,
-      actor: memberName(member),
+      // A token (an MCP client, a script) acts for its member: "Anna Berg via assistant".
+      actor: auth.via === "token" ? `${memberName(member)} via ${auth.actor}` : memberName(member),
       space: { id: opened.space.id, role: opened.role, memberId: member.id },
     },
   };
