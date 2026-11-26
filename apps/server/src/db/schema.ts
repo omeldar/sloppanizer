@@ -740,6 +740,34 @@ export const meetingTodos = sqliteTable(
   ],
 );
 
+/**
+ * A person in a meeting (every date of it). Statistics counts the meeting's time for each of its people.
+ * Deleting the meeting or the person removes the link.
+ */
+export const meetingPeople = sqliteTable(
+  "meeting_people",
+  {
+    accountId: accountId(),
+    meetingId: integer("meeting_id").notNull(),
+    personId: integer("person_id").notNull(),
+    addedAt: text("added_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.meetingId, t.personId] }),
+    foreignKey({
+      name: "meeting_people_meeting_fk",
+      columns: [t.accountId, t.meetingId],
+      foreignColumns: [meetings.accountId, meetings.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "meeting_people_person_fk",
+      columns: [t.accountId, t.personId],
+      foreignColumns: [people.accountId, people.id],
+    }).onDelete("cascade"),
+    index("meeting_people_person_idx").on(t.accountId, t.personId),
+  ],
+);
+
 /** Every table with a per-account id (counted in account_sequences). */
 export const ID_TABLES = [
   "projects",

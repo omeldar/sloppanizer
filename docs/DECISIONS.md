@@ -250,3 +250,27 @@ tabs (the web app always asks for the account as the person's own, never through
 project's address still wins, and the List / Board switch on the page only sets it when it differs from the
 choice, so links stay clean. Not done: remembering the last view per project. Two places deciding the view
 would make "why does this one open as a list?" hard to answer; it can follow if one default is not enough.
+
+## 2026-11-26 One-time meetings and people in meetings (S5#5)
+
+omerovie asked for meetings that happen once, planned straight from the planner, and for people on
+meetings, to see with whom the time in meetings went.
+
+**A one-time meeting is a meeting with one single-date segment**, not a new kind of time block. It is a
+meeting in every other respect (a note per date, todos added by hand, a type, a standup list if wanted), and
+Statistics, Plan my day, the MCP tools and the export already read meetings through their series. The API
+says it by leaving out `schedule.rule`: the server stores a daily rule with `endsOn = startsOn`, and
+`oneTime` (on the meeting and its occurrences) is "one segment whose first date is its last". A repeat that
+is later cut down to one date the same way also reads as once, which is what it is. In the planner a drag
+moves its only date with scope "this" (an exception, so the note and marks keep their date key) without
+asking, and "Cancel date" becomes "Delete", because cancelling the only date is deleting the meeting.
+
+**People belong to the meeting, not to each date** (`meeting_people`, cascading from both the meeting and
+the person, at most 50). Per-date attendance would answer "who was there on 12.11." too, but nobody asked
+for it, and every date of a repeating meeting would need ticking. Picking works like a todo's people: a
+person, a Sloppanizer user, or a new "First Last" that is added to People.
+
+**Time per person** counts each meeting date in full for every person of its meeting, cut to the period and
+to now like the rest of the meeting time, and the top 10 are listed. Minutes of meetings without people are
+reported on their own (`meetingMinutesWithoutPeople`) so the list never looks like it covers all meeting
+time.

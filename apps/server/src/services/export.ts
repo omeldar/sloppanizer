@@ -57,6 +57,7 @@ export const EXPORT_TABLES = [
   "meeting_notes",
   "standup_marks",
   "meeting_todos",
+  "meeting_people",
   "comments",
   "attachments",
   "events",
@@ -235,6 +236,15 @@ interface MeetingTodoRow {
   todo_id: number;
   added_at: string;
 }
+interface MeetingPersonRow {
+  meeting_id: number;
+  person_id: number;
+}
+interface PersonNameRow {
+  id: number;
+  first_name: string;
+  last_name: string;
+}
 interface MarkRow {
   meeting_id: number;
   todo_id: number;
@@ -335,6 +345,10 @@ function meetingFiles(
   const exceptionsOf = groupBy(rows<ExceptionRow>("series_exceptions"), (e) => e.series_id);
   const notesOf = groupBy(rows<MeetingNoteRow>("meeting_notes"), (n) => n.meeting_id);
   const todosOf = groupBy(rows<MeetingTodoRow>("meeting_todos"), (m) => m.meeting_id);
+  const personNames = new Map(
+    rows<PersonNameRow>("people").map((p) => [p.id, `${p.first_name} ${p.last_name}`.trim()]),
+  );
+  const peopleOf = groupBy(rows<MeetingPersonRow>("meeting_people"), (m) => m.meeting_id);
   const saidOf = groupBy(
     rows<MarkRow>("standup_marks").filter((m) => m.kind === "said"),
     (m) => m.meeting_id,
@@ -385,6 +399,9 @@ function meetingFiles(
           name: meeting.name,
           type: meeting.type,
           schedule: segments.map(segmentText),
+          people: (peopleOf.get(meeting.id) ?? [])
+            .flatMap((m) => personNames.get(m.person_id) ?? [])
+            .toSorted((a, b) => a.localeCompare(b)),
           cancelled: exceptions.filter((e) => e.kind === "cancelled").map((e) => e.occurs_on),
           moved: exceptions
             .filter((e) => e.kind === "moved" && e.start_at !== null)

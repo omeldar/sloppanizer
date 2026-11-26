@@ -513,6 +513,7 @@ export function meetingLine(meeting: Meeting, timeZone: string): string {
     ? `next ${formatDateTime(meeting.next.startAt, timeZone)}${meeting.next.status === "moved" ? " (moved)" : ""}`
     : "no next date";
   const parts = [`meeting ${meeting.id}`, meeting.name, meeting.type, meeting.schedule.text, next];
+  if (meeting.people.length > 0) parts.push(`with ${meeting.people.map((p) => p.displayName).join(", ")}`);
   if (meeting.openCount !== null) parts.push(`${meeting.openCount} to say`);
   return parts.join(" | ");
 }

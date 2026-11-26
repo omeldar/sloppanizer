@@ -240,6 +240,11 @@ export const MEETING_CANCEL_SCOPES: readonly ScopeOption[] = [
   { scope: "all", hint: "Deletes the meeting, with what you marked as said" },
 ];
 
+/** A one-time meeting has one date: removing it deletes the meeting. */
+export const ONE_TIME_CANCEL_SCOPES: readonly ScopeOption[] = [
+  { scope: "all", label: "Delete the meeting", hint: "It happens only once. A note of it stays in Notes." },
+];
+
 /** The next full quarter hour after now, as "HH:mm" (for a new block's start). */
 export function nextQuarter(now: Date, timeZone: string): string {
   const [h = 0, m = 0] = toLocalTime(now, timeZone).split(":").map(Number);

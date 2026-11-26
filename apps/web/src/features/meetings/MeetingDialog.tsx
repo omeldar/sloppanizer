@@ -27,7 +27,10 @@ import { dayLabel, formatDayMonth, timeZone, toDate, today as localToday } from 
 import { useChangeSchedule, useCreateMeeting, useUpdateMeeting } from "../../lib/meetings.ts";
 import { useLabels, useProjects } from "../../lib/queries.ts";
 import { lengthMinutes } from "../planner/planner.ts";
+import type { PersonChoice } from "../../components/pickers/pickers.tsx";
+import { personRef } from "../todos/TodoPickerDialog.tsx";
 import { RepeatField } from "../todos/repeat/RepeatField.tsx";
+import { MeetingPeopleField } from "./MeetingPeopleField.tsx";
 import styles from "./Meetings.module.css";
 import { DateInput, TimeInput } from "../../components/DateTimeInputs.tsx";
 
@@ -93,6 +96,9 @@ function MeetingForm({ draft, onClose }: { draft: MeetingDraft; onClose: () => v
   const initialCount = editing ? toDate(editing.since) : null;
   const [countFrom, setCountFrom] = useState<string | null>(initialCount);
   const [repeatOpen, setRepeatOpen] = useState(false);
+  // A one-time meeting has one date and no repeat; an existing one stays one-time.
+  const [once, setOnce] = useState(editing?.oneTime ?? false);
+  const [people, setPeople] = useState<PersonChoice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [askScope, setAskScope] = useState<ScheduleChange | null>(null);
 
@@ -159,7 +165,9 @@ function MeetingForm({ draft, onClose }: { draft: MeetingDraft; onClose: () => v
     if (duration < 5) return setError("A meeting lasts at least 5 minutes.");
     if (editing) {
       const change = scheduleChange();
-      if (change) setAskScope({ ...change, scope: "following" });
+      // A one-time meeting's only date is all of it, so there is nothing to ask.
+      if (change && editing.oneTime) void saveEdit("all");
+      else if (change) setAskScope({ ...change, scope: "following" });
       else void saveEdit(null);
       return;
     }
@@ -168,13 +176,16 @@ function MeetingForm({ draft, onClose }: { draft: MeetingDraft; onClose: () => v
       {
         name: name.trim(),
         type,
-        schedule: {
-          rule: plain,
-          startsOn,
-          endsOn: until ?? null,
-          startTime: start,
-          durationMinutes: duration,
-        },
+        schedule: once
+          ? { startsOn, startTime: start, durationMinutes: duration }
+          : {
+              rule: plain,
+              startsOn,
+              endsOn: until ?? null,
+              startTime: start,
+              durationMinutes: duration,
+            },
+        ...(people.length > 0 && { people: people.map(personRef) }),
         ...(standup && { filter }),
         ...(standup && countFrom !== null && { countFrom }),
       },
@@ -225,7 +236,7 @@ function MeetingForm({ draft, onClose }: { draft: MeetingDraft; onClose: () => v
         </div>
 
         <div className={styles.timeRow}>
-          <Field label={editing ? "From the date" : "First date"}>
+          <Field label={once ? "Date" : editing ? "From the date" : "First date"}>
             <DateInput
               value={startsOn}
               onChange={(value) => changeStart(value)}
@@ -240,21 +251,44 @@ function MeetingForm({ draft, onClose }: { draft: MeetingDraft; onClose: () => v
             <TimeInput step={300} value={end} onChange={(value) => setEnd(value)} required />
           </Field>
         </div>
-        <div className={styles.repeatRow}>
-          <span className={styles.label}>Repeats</span>
-          <RepeatField
-            value={rule}
-            anchor={startsOn || null}
-            open={repeatOpen}
-            onOpenChange={setRepeatOpen}
-            scheduleOnly
-            onChange={(picked) => {
-              if (!picked) return;
-              setRule(picked);
-              setRuleTouched(true);
-            }}
-          />
-        </div>
+        {!editing && (
+          <div className={styles.typeRow} role="radiogroup" aria-label="How often">
+            {([false, true] as const).map((value) => (
+              <button
+                key={String(value)}
+                type="button"
+                role="radio"
+                aria-checked={once === value}
+                className={styles.typeChoice}
+                onClick={() => setOnce(value)}
+              >
+                {value ? "Once" : "Repeats"}
+              </button>
+            ))}
+          </div>
+        )}
+        {once ? (
+          editing && (
+            <p className={styles.fieldHint}>Once, not repeating. Move it to another day in the Planner.</p>
+          )
+        ) : (
+          <div className={styles.repeatRow}>
+            <span className={styles.label}>Repeats</span>
+            <RepeatField
+              value={rule}
+              anchor={startsOn || null}
+              open={repeatOpen}
+              onOpenChange={setRepeatOpen}
+              scheduleOnly
+              onChange={(picked) => {
+                if (!picked) return;
+                setRule(picked);
+                setRuleTouched(true);
+              }}
+            />
+          </div>
+        )}
+        {!editing && <MeetingPeopleField value={people} onChange={setPeople} />}
 
         {standup && (
           <>

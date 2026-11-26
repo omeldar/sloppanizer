@@ -87,9 +87,17 @@ export const useStandup = (id: number, on: string | null, kind: StandupKind | nu
 function invalidateMeetings(client: QueryClient): Promise<void> {
   return client.invalidateQueries({
     predicate: (query) =>
-      ["meetings", "occurrences", "standup", "meetingNotes", "meetingTodos", "todoMeetings"].includes(
-        String(query.queryKey[0]),
-      ),
+      // Stats count meeting time (also per person); a meeting's people can add someone to People.
+      [
+        "meetings",
+        "occurrences",
+        "standup",
+        "meetingNotes",
+        "meetingTodos",
+        "todoMeetings",
+        "stats",
+        "people",
+      ].includes(String(query.queryKey[0])),
   });
 }
 

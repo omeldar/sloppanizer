@@ -1,5 +1,6 @@
 import type {
   BackupFile,
+  Meeting,
   MeetingTodos,
   Person,
   RestorePreview,
@@ -70,10 +71,10 @@ describe("restore upload and preview", () => {
     expect(preview).toMatchObject({
       fileName: "sloppanizer-export-20261111.zip",
       source: "sloppanizer",
-      format: 8,
+      format: 9,
       exportedAt: "2026-11-11T10:00:00.000Z",
       appVersion: VERSION,
-      schemaVersion: 23,
+      schemaVersion: 24,
       attachments: { count: 1, bytes: 11, missing: [] },
       warnings: [],
       expiresAt: "2026-11-11T11:00:00.000Z",
@@ -122,8 +123,8 @@ describe("restore upload and preview", () => {
       /Sloppanizer export/,
     );
     await check(
-      rework(zip, (m) => (m.format = 9)),
-      /format 9 of app "sloppanizer" is not known/,
+      rework(zip, (m) => (m.format = 10)),
+      /format 10 of app "sloppanizer" is not known/,
     );
     await check(
       rework(zip, (m) => (m.schemaVersion = 99)),
@@ -470,6 +471,7 @@ describe("restore apply", () => {
       "meeting_notes",
       "standup_marks",
       "meeting_todos",
+      "meeting_people",
     ];
     const format5 = rework(zip, (m, d) => {
       m.format = 5;
@@ -511,8 +513,10 @@ describe("restore apply", () => {
     const format6 = rework(zip, (m, d) => {
       m.format = 6;
       m.schemaVersion = 15;
-      delete d.meeting_todos;
-      delete m.counts.meeting_todos;
+      for (const table of ["meeting_todos", "meeting_people"]) {
+        delete d[table];
+        delete m.counts[table];
+      }
     });
     const preview = json<RestorePreview>(await upload(t, format6));
     expect(preview).toMatchObject({ format: 6, source: "sloppanizer", warnings: [] });
@@ -540,6 +544,34 @@ describe("restore apply", () => {
     expect(problems(missing)).toContain('data.json misses the table "meeting_todos".');
   });
 
+  it("restores a format 8 export, which has no people in meetings, and refuses them in it", async () => {
+    const t = await makeApp();
+    const { meeting } = await fillEveryTable(t);
+    const zip = await exportZip(t);
+    const format8 = rework(zip, (m, d) => {
+      m.format = 8;
+      m.schemaVersion = 23;
+      delete d.meeting_people;
+      delete m.counts.meeting_people;
+    });
+    const preview = json<RestorePreview>(await upload(t, format8));
+    expect(preview).toMatchObject({ format: 8, source: "sloppanizer", warnings: [] });
+    const applied = await t.call("POST", `/api/v1/restore/${preview.uploadId}/apply`, { confirm: "replace" });
+    expect(applied.statusCode).toBe(200);
+    expect(json<Meeting>(await t.call("GET", `/api/v1/meetings/${meeting.id}`)).people).toEqual([]);
+
+    const withPeople = await upload(
+      t,
+      rework(zip, (m) => {
+        m.format = 8;
+      }),
+    );
+    expect(withPeople.statusCode).toBe(422);
+    expect(problems(withPeople)).toContain(
+      'data.json has a table "meeting_people" that format 8 does not have.',
+    );
+  });
+
   it("restores a format 4 export, which has no web links, time blocks or meetings", async () => {
     const t = await makeApp();
     await fillEveryTable(t);
@@ -556,6 +588,7 @@ describe("restore apply", () => {
         "meeting_notes",
         "standup_marks",
         "meeting_todos",
+        "meeting_people",
       ]) {
         delete d[table];
         delete m.counts[table];
@@ -612,6 +645,11 @@ describe("restore apply", () => {
       const [link] = d.meeting_todos;
       d.meeting_todos = Array.from({ length: 101 }, (_, i) => ({ ...link, todo_id: 1000 + i }));
     }, /meeting_todos: meeting \d+ has more than 100 todos/);
+    await check((d) => (d.meeting_people[0].added_at = "yesterday"), /added_at is not a UTC time/);
+    await check((d) => {
+      const [link] = d.meeting_people;
+      d.meeting_people = Array.from({ length: 51 }, (_, i) => ({ ...link, person_id: 1000 + i }));
+    }, /meeting_people: meeting \d+ has more than 50 people/);
     await check((d) => {
       const [meeting] = d.meetings;
       d.meetings = Array.from({ length: 101 }, (_, i) => ({ ...meeting, id: 1000 + i }));
@@ -661,6 +699,7 @@ describe("restore apply", () => {
         "meeting_notes",
         "standup_marks",
         "meeting_todos",
+        "meeting_people",
       ])
         delete d[table];
       for (const row of d.todos) {

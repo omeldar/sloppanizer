@@ -11,6 +11,18 @@ app shows "Sloppanizer is updating".
 - Projects can open as a board: Settings, Projects, "Open projects as" List or Board. Saved to your
   account, so every device and shared project follows it; the switch on a project still changes the view
   for that visit (S5#3).
+- One-time meetings: in the Planner, Plan time has "Work" and "Meeting"; a meeting there happens once,
+  on that day, and counts as time in meetings. New meeting on the Meetings page has "Repeats" and "Once".
+  A one-time meeting moves with a drag without asking which dates, and removing it deletes it (S5#5).
+- People in meetings: add people (from People, Sloppanizer users, or a new "First Last") to any meeting,
+  in its dialog or on its page. Statistics has "In meetings with whom": the hours in meetings per person
+  (S5#5).
+- MCP: `plan_meeting` plans a one-time meeting with its people, `meeting_people` adds or removes people,
+  `list_meetings` shows them and `work_stats` lists the meeting time per person (S5#5).
+- API: a meeting's `schedule` without `rule` is a one-time meeting; meetings have `oneTime` and `people`
+  (`people`, `addPeople`, `removePeople` on create and update); occurrences have `oneTime`; `/stats/overview`
+  has `meetingPeople` and `meetingMinutesWithoutPeople`. Export format 9 adds `meeting_people` (format 8 and
+  older still restore). Migration 0015 (S5#5).
 
 ## 1.1.1 (2026-11-26)
 

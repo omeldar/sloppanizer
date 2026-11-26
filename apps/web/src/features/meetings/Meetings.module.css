@@ -810,3 +810,15 @@
   flex-direction: column;
   gap: 8px;
 }
+
+.peopleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.peopleRow .peopleEdit {
+  width: auto;
+  color: var(--text-3);
+}

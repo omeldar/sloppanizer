@@ -36,6 +36,7 @@ export function makeOccurrence(overrides: Partial<MeetingOccurrence> = {}): Meet
     endAt: "2026-11-19T08:15:00.000Z",
     status: "scheduled",
     noteId: null,
+    oneTime: false,
     ...overrides,
   };
 }
@@ -50,6 +51,8 @@ export function makeMeeting(overrides: Partial<Meeting> = {}): Meeting {
     since: "2026-11-12T08:00:00.000Z",
     schedule: series,
     segments: [series],
+    oneTime: false,
+    people: [],
     next: makeOccurrence(),
     openCount: 3,
     createdAt: T,

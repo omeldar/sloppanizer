@@ -57,6 +57,7 @@ import {
   blockTitle,
   HOUR_PX,
   MEETING_CANCEL_SCOPES,
+  ONE_TIME_CANCEL_SCOPES,
   REPEAT_CANCEL_SCOPES,
   repeatItem,
   meetingItem,
@@ -260,15 +261,33 @@ export function PlannerPage() {
     toast.show({ message: `Planned ${chosen.length} block${chosen.length === 1 ? "" : "s"}` });
   };
 
+  /**
+   * A meeting date change: asks which dates it is for. A one-time meeting has only one date, so a move
+   * applies right away (the card stays where it was dropped meanwhile); removing it asks before deleting.
+   */
+  const startMeetingChange = (pending: MeetingChange) => {
+    setChangeError(null);
+    setMeetingChange(pending);
+    if (pending.occurrence.oneTime && pending.action === "move") applyMeetingChange(pending, "this");
+  };
+  const askingScope =
+    meetingChange !== null && !(meetingChange.occurrence.oneTime && meetingChange.action === "move");
+
   const applyMeetingChange = (pending: MeetingChange, scope: SeriesScope) => {
     const { occurrence } = pending;
+    const failed = (failure: unknown) => {
+      if (occurrence.oneTime && pending.action === "move") {
+        setMeetingChange(null);
+        toast.show({ message: errorMessage(failure) });
+      } else setChangeError(errorMessage(failure));
+    };
     if (pending.action === "cancel" && scope === "all") {
       deleteMeeting.mutate(occurrence.meetingId, {
         onSuccess: () => {
           setMeetingChange(null);
           toast.show({ message: `Deleted ${occurrence.name}` });
         },
-        onError: (failure) => setChangeError(errorMessage(failure)),
+        onError: failed,
       });
       return;
     }
@@ -295,7 +314,7 @@ export function PlannerPage() {
               },
             });
         },
-        onError: (failure) => setChangeError(errorMessage(failure)),
+        onError: failed,
       },
     );
   };
@@ -588,14 +607,13 @@ export function PlannerPage() {
                         meeting
                         onOpen={() => setOpenMeeting(item.occurrence)}
                         // A meeting date asks which dates the move is for; Cancel puts it back.
-                        onDrop={(deltaMin, dayOffset, mode) => {
-                          setChangeError(null);
-                          setMeetingChange({
+                        onDrop={(deltaMin, dayOffset, mode) =>
+                          startMeetingChange({
                             action: "move",
                             occurrence: item.occurrence,
                             ...movedSpan(item, deltaMin, dayOffset, mode, timeZone),
-                          });
-                        }}
+                          })
+                        }
                       />
                     );
                   }
@@ -684,13 +702,11 @@ export function PlannerPage() {
         onClose={() => setOpenMeeting(null)}
         onMove={(occurrence, span) => {
           setOpenMeeting(null);
-          setChangeError(null);
-          setMeetingChange({ action: "move", occurrence, ...span });
+          startMeetingChange({ action: "move", occurrence, ...span });
         }}
         onCancel={(occurrence) => {
           setOpenMeeting(null);
-          setChangeError(null);
-          setMeetingChange({ action: "cancel", occurrence });
+          startMeetingChange({ action: "cancel", occurrence });
         }}
       />
       <PlannedDateDialog
@@ -732,23 +748,33 @@ export function PlannerPage() {
         onCancel={() => setRepeatChange(null)}
       />
       <SeriesScopeDialog
-        open={meetingChange !== null}
+        open={askingScope}
         title={
           meetingChange?.action === "cancel"
-            ? `Cancel ${meetingChange.occurrence.name} on ${dayLabel(meetingChange.occurrence.occursOn)}`
+            ? meetingChange.occurrence.oneTime
+              ? `Delete ${meetingChange.occurrence.name} on ${dayLabel(meetingChange.occurrence.occursOn)}`
+              : `Cancel ${meetingChange.occurrence.name} on ${dayLabel(meetingChange.occurrence.occursOn)}`
             : `Move ${meetingChange?.occurrence.name ?? "the meeting"}`
         }
         options={
-          meetingChange?.action === "move"
-            ? seriesMoveScopes(
-                meetings.data?.find((m) => m.id === meetingChange.occurrence.meetingId)?.segments ?? [],
-                meetingChange.occurrence,
-                meetingChange.startAt,
-                timeZone,
-              )
-            : MEETING_CANCEL_SCOPES
+          meetingChange?.action === "cancel" && meetingChange.occurrence.oneTime
+            ? ONE_TIME_CANCEL_SCOPES
+            : meetingChange?.action === "move"
+              ? seriesMoveScopes(
+                  meetings.data?.find((m) => m.id === meetingChange.occurrence.meetingId)?.segments ?? [],
+                  meetingChange.occurrence,
+                  meetingChange.startAt,
+                  timeZone,
+                )
+              : MEETING_CANCEL_SCOPES
         }
-        confirmLabel={meetingChange?.action === "cancel" ? "Cancel dates" : "Move"}
+        confirmLabel={
+          meetingChange?.action === "cancel"
+            ? meetingChange.occurrence.oneTime
+              ? "Delete"
+              : "Cancel dates"
+            : "Move"
+        }
         danger={meetingChange?.action === "cancel"}
         busy={changeOccurrence.isPending || deleteMeeting.isPending}
         error={changeError}

@@ -1,6 +1,7 @@
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import {
   CalendarDate,
+  type CreateMeetingInput,
   formatDate,
   type Meeting,
   type MeetingNote,
@@ -9,11 +10,13 @@ import {
   type Note,
   type Standup,
   StandupKind,
+  TimeOfDay,
   type Todo,
 } from "@organizer/shared";
 import { z } from "zod";
 import { type Api, ToolError } from "./api.ts";
 import { meetingLine, meetingTodosText, standupText } from "./format.ts";
+import { People, toPeople } from "./people-input.ts";
 
 /** Registers a tool whose handler returns text (the helper of tools.ts). */
 export type ToolRegistrar = <S extends z.ZodRawShape>(
@@ -65,9 +68,17 @@ const TodoIds = z
   .max(100)
   .describe("Todo ids, the numbers after #.");
 
+const toMinutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+
+/** Minutes from start to end on one day; an end at or before the start runs past midnight. */
+export function minutesBetween(start: string, end: string): number {
+  const minutes = toMinutes(end) - toMinutes(start);
+  return minutes > 0 ? minutes : minutes + 24 * 60;
+}
+
 /**
- * Meetings (list_meetings, standup_list, mark_said, meeting_note, meeting_todos, add_to_meeting,
- * remove_from_meeting). Creating meetings stays in the web app.
+ * Meetings (list_meetings, plan_meeting, meeting_people, standup_list, mark_said, meeting_note,
+ * meeting_todos, add_to_meeting, remove_from_meeting). Repeating meetings are set up in the web app.
  */
 export function registerMeetingTools(tool: ToolRegistrar, deps: { api: Api; timeZone: string }): void {
   const { api, timeZone } = deps;
@@ -77,8 +88,8 @@ export function registerMeetingTools(tool: ToolRegistrar, deps: { api: Api; time
     {
       title: "List meetings",
       description:
-        "The user's meetings with their repeat, next date and, for standups, how many items are still to say. " +
-        "Meetings are created and changed in the web app.",
+        'The user\'s meetings with their repeat (or "once on" a date), next date, people and, for standups, how ' +
+        "many items are still to say. Repeating meetings are set up in the web app; plan_meeting plans a one-time one.",
       inputSchema: { format },
       annotations: READ,
     },
@@ -88,6 +99,68 @@ export function registerMeetingTools(tool: ToolRegistrar, deps: { api: Api; time
       return meetings.length === 0
         ? "No meetings yet."
         : meetings.map((m) => meetingLine(m, timeZone)).join("\n");
+    },
+  );
+
+  tool(
+    "plan_meeting",
+    {
+      title: "Plan a one-time meeting",
+      description:
+        "Put a meeting that happens once into the user's planner: a name, a day, from start to end (local " +
+        "HH:MM) or from start for minutes, and the people in it. It counts as meeting time in Statistics, also " +
+        "per person. Check list_plan first so it does not clash.",
+      inputSchema: {
+        name: z.string().trim().min(1).max(200).describe('What the meeting is, e.g. "Kick-off with Acme".'),
+        date: CalendarDate.describe("Day YYYY-MM-DD."),
+        start: TimeOfDay.describe("Local start time HH:MM."),
+        end: TimeOfDay.optional().describe("Local end time HH:MM; or give minutes."),
+        minutes: z.number().int().min(5).max(1440).optional().describe("Length in minutes (instead of end)."),
+        people: People("Who is in the meeting.").optional(),
+        format,
+      },
+      annotations: WRITE,
+    },
+    async (args) => {
+      let durationMinutes: number;
+      if (args.end !== undefined) durationMinutes = minutesBetween(args.start, args.end);
+      else if (args.minutes !== undefined) durationMinutes = args.minutes;
+      else throw new ToolError("Give end (HH:MM) or minutes.");
+      const body: CreateMeetingInput = {
+        name: args.name,
+        schedule: { startsOn: args.date, startTime: args.start, durationMinutes },
+        ...(args.people && args.people.length > 0 && { people: toPeople(args.people) }),
+      };
+      const meeting = await api.post<Meeting>("/meetings", body);
+      return args.format === "json" ? JSON.stringify(meeting) : `Planned ${meetingLine(meeting, timeZone)}`;
+    },
+  );
+
+  tool(
+    "meeting_people",
+    {
+      title: "People in a meeting",
+      description:
+        "Add people to a meeting or take them off (every date of it, one-time or repeating). Statistics " +
+        "counts the meeting's time for each of its people (work_stats).",
+      inputSchema: {
+        meeting: MeetingInput,
+        add: People("People to add.").optional(),
+        remove: People("People to take off (never creates anyone).").optional(),
+        format,
+      },
+      annotations: WRITE,
+    },
+    async (args) => {
+      if (!args.add?.length && !args.remove?.length) throw new ToolError("Give people to add or to remove.");
+      const meeting = await resolveMeeting(api, args.meeting);
+      const updated = await api.patch<Meeting>(`/meetings/${meeting.id}`, {
+        ...(args.add?.length && { addPeople: toPeople(args.add) }),
+        ...(args.remove?.length && { removePeople: toPeople(args.remove) }),
+      });
+      if (args.format === "json") return JSON.stringify(updated);
+      const names = updated.people.map((p) => p.displayName).join(", ");
+      return `${updated.name}: ${names === "" ? "nobody added" : `with ${names}`}.`;
     },
   );
 

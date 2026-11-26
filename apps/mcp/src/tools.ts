@@ -30,7 +30,6 @@ import {
   type PeopleStats,
   PeopleStatsQuery,
   type Person,
-  PersonRef,
   PersonTagName,
   type PersonTag,
   PeopleQuery,
@@ -66,6 +65,7 @@ import {
 import { z } from "zod";
 import { type Api, ApiError, ToolError } from "./api.ts";
 import { registerMeetingTools } from "./meeting-tools.ts";
+import { People, PersonInput, toPeople, toPersonRef } from "./people-input.ts";
 import {
   activityLine,
   type DateContext,
@@ -143,23 +143,6 @@ const Labels = (what: string) =>
       `${what} Names must exist (list_labels). Scoped labels like "priority::high" replace the other label of the same scope.`,
     );
 
-const PersonInput = z.union([
-  z.number().int().positive().describe("Person id from list_people."),
-  z
-    .string()
-    .trim()
-    .min(3)
-    .describe('"First Last". The last word is the last name; use the object form for multi-word last names.'),
-  PersonRef.options[1],
-]);
-const People = (what: string) =>
-  z
-    .array(PersonInput)
-    .max(50)
-    .describe(
-      `${what} By name, the person is found (case-insensitive) or created if missing. If several people share the name, pass the person id instead.`,
-    );
-
 const TopicNames = (what: string) =>
   CreatePerson.shape.topics
     .unwrap()
@@ -186,18 +169,6 @@ const DateInput = (what: string) =>
 
 const READ: ToolAnnotations = { readOnlyHint: true, openWorldHint: false };
 const WRITE: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
-
-function toPersonRef(input: z.infer<typeof PersonInput>): PersonRef {
-  if (typeof input === "number") return { personId: input };
-  if (typeof input === "object") return input;
-  const words = input.split(/\s+/);
-  if (words.length < 2) {
-    throw new ToolError(`"${input}" needs a first and a last name, e.g. "Anna Meier", or pass a person id.`);
-  }
-  return { firstName: words.slice(0, -1).join(" "), lastName: words.at(-1) ?? "" };
-}
-
-const toPeople = (list: readonly z.infer<typeof PersonInput>[] | undefined) => list?.map(toPersonRef);
 
 /** Same text ignoring case (accents still count, like the server's name match). */
 const sameName = (a: string, b: string): boolean =>
@@ -1873,6 +1844,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       title: "Work statistics",
       description:
         "How much the user worked in a period, per project, per requester and per week, with meeting time " +
+        "(also per person in the meetings) " +
         "and todos created and done. Worked time is planned time that has already happened (there is no " +
         "timer). Default: the last 4 weeks.",
       inputSchema: {
@@ -1906,6 +1878,17 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
             ? [
                 `- ${s.otherRequesters.people} others: ${hoursText(s.otherRequesters.minutes)}, ${s.otherRequesters.done} done`,
               ]
+            : []),
+          "",
+          "Time in meetings per person (a meeting counts for each of its people):",
+          ...(s.meetingPeople.length === 0
+            ? ["- nobody added to meetings"]
+            : s.meetingPeople.map(
+                (p) =>
+                  `- ${p.person.name}: ${hoursText(p.minutes)} in ${p.dates} meeting${p.dates === 1 ? "" : "s"}`,
+              )),
+          ...(s.meetingMinutesWithoutPeople > 0
+            ? [`- without people: ${hoursText(s.meetingMinutesWithoutPeople)}`]
             : []),
           "",
           "Weeks:",

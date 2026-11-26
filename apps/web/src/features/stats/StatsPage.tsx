@@ -116,6 +116,7 @@ function Overview({ stats }: { stats: WorkStats }) {
       <div className={styles.grid}>
         <ProjectsCard stats={stats} />
         <RequestersCard stats={stats} />
+        <MeetingPeopleCard stats={stats} />
         <WeeksCard stats={stats} />
         <TrendCard stats={stats} />
         <WeekdaysCard stats={stats} />
@@ -216,6 +217,42 @@ function RequestersCard({ stats }: { stats: WorkStats }) {
       }}
     >
       <BarList rows={rows} empty="No time for todos with a requester in this period." />
+    </ChartCard>
+  );
+}
+
+const datesText = (n: number): string => `${n} meeting${n === 1 ? "" : "s"}`;
+
+function MeetingPeopleCard({ stats }: { stats: WorkStats }) {
+  const rows: BarRow[] = stats.meetingPeople.map((p) => ({
+    key: `m${p.person.id}`,
+    label: p.person.name,
+    to: { to: "/people/$id", params: { id: String(p.person.id) } },
+    value: p.minutes,
+    text: `${hoursText(p.minutes)} · ${datesText(p.dates)}`,
+    tip: {
+      title: p.person.name,
+      rows: [
+        { label: "in meetings", value: hoursText(p.minutes) },
+        { label: "meetings", value: String(p.dates) },
+      ],
+    },
+  }));
+  const alone = stats.meetingMinutesWithoutPeople;
+  return (
+    <ChartCard
+      title="In meetings with whom"
+      subtitle={
+        alone > 0
+          ? `Add people to a meeting on its page; ${hoursText(alone)} were in meetings without people`
+          : "Add people to a meeting on its page; a meeting counts for each of its people"
+      }
+      table={{
+        head: ["Person", "Hours", "Meetings"],
+        rows: stats.meetingPeople.map((p) => [p.person.name, hours(p.minutes), p.dates]),
+      }}
+    >
+      <BarList rows={rows} empty="No meetings with people in this period." />
     </ChartCard>
   );
 }

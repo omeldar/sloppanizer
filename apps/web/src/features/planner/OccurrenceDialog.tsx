@@ -79,7 +79,8 @@ function OccurrenceBody({
       <p className={styles.occurrenceWhen}>
         <span>{dayLabel(toLocalDate(occurrence.startAt, timeZone))}</span>
         <span className={styles.occurrenceTime}>{spanText(occurrence, timeZone)}</span>
-        {occurrence.status === "moved" && (
+        {occurrence.oneTime && <span className={styles.occurrenceMoved}>once</span>}
+        {!occurrence.oneTime && occurrence.status === "moved" && (
           <span className={styles.occurrenceMoved}>moved from {dayLabel(occurrence.occursOn)}</span>
         )}
       </p>
@@ -132,7 +133,7 @@ function OccurrenceBody({
       ) : (
         <div className={styles.actions}>
           <Button variant="danger" onClick={() => onCancel(occurrence)}>
-            Cancel date
+            {occurrence.oneTime ? "Delete" : "Cancel date"}
           </Button>
           <span className={styles.spacer} />
           <Button onClick={() => setMoving(true)}>Move</Button>
