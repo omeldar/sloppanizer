@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { heatStep, hoursText, niceScale, periodOf, presetRange } from "./stats.ts";
+import { heatStep, hoursText, niceScale, periodOf, presetRange, weekdayStats } from "./stats.ts";
 
 describe("periods", () => {
   // Wednesday.
@@ -37,5 +37,22 @@ describe("scales and labels", () => {
 
   it("shows hours with one decimal below ten", () => {
     expect([0, 30, 270, 754].map(hoursText)).toEqual(["0 h", "0.5 h", "4.5 h", "13 h"]);
+  });
+});
+
+describe("worked time per weekday", () => {
+  it("averages each weekday over its days up to today, so a day never reads more than it held", () => {
+    const days = [
+      { date: "2026-11-04", workedMinutes: 120 }, // Wednesday
+      { date: "2026-11-11", workedMinutes: 0 }, // Wednesday
+      { date: "2026-11-16", workedMinutes: 30 }, // Monday
+      { date: "2026-11-18", workedMinutes: 60 }, // Wednesday, today
+      { date: "2026-11-23", workedMinutes: 600 }, // next Monday: after today, left out
+    ];
+    const rows = weekdayStats(days, "2026-11-18");
+    expect(rows).toHaveLength(7);
+    expect(rows[0]).toEqual({ weekday: 0, days: 1, minutes: 30, average: 30 });
+    expect(rows[2]).toEqual({ weekday: 2, days: 3, minutes: 180, average: 60 });
+    expect(rows[6]).toEqual({ weekday: 6, days: 0, minutes: 0, average: 0 });
   });
 });
