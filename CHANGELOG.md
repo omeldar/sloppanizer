@@ -8,6 +8,9 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- Date fields on a todo, in New todo and in a repeat's "Ends" no longer show a second border with a
+  gap left and right around the field (S5#1).
+
 ## 1.1.0 (2026-11-26)
 
 - Move your sign-in to omeldar: accounts that still sign in with their Sloppanizer password see a line

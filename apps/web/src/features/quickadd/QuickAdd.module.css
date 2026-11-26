@@ -28,6 +28,13 @@
   font-size: var(--fs-small);
 }
 
+/* Size and font only: DateInput and TimeInput draw their own field (a border here makes a second box). */
+.dateField {
+  width: 170px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
 .date {
   height: 30px;
   width: 170px;

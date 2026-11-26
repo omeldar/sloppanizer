@@ -97,6 +97,12 @@
   font-family: var(--font-mono);
 }
 
+/* Size and font only: DateInput draws its own field. */
+.untilDate {
+  width: 140px;
+  font-family: var(--font-mono);
+}
+
 .number:focus-visible,
 .select:focus-visible,
 .text:focus-visible {
