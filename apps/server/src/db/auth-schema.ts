@@ -2,6 +2,7 @@ import {
   ACCOUNT_KINDS,
   DATE_FORMATS,
   TIME_FORMATS,
+  PROJECT_VIEWS,
   ACCOUNT_ROLES,
   ACCOUNT_STATUSES,
   REVOKE_REASONS,
@@ -47,6 +48,8 @@ export const accounts = sqliteTable(
     /** How the web app shows dates and times (packages/shared/src/formats.ts); preset from the region at sign-up. */
     dateFormat: text("date_format", { enum: DATE_FORMATS }).notNull().default("dmy."),
     timeFormat: text("time_format", { enum: TIME_FORMATS }).notNull().default("24h"),
+    /** How project pages open without ?view= (S5#3). */
+    projectView: text("project_view", { enum: PROJECT_VIEWS }).notNull().default("list"),
     /** The person's permanent id at auth.omeldar.com (`sub`, "usr_..."); null until they sign in there. */
     authSubject: text("auth_subject").unique(),
     color: text("color").notNull().default("#8B95A5"),

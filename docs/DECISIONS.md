@@ -240,3 +240,13 @@ take `S7#12`; `create_todo` takes a shared project as `project` ("S7" or its nam
 tools (subtasks, links, web links, planning) stay on own todos for now. `next_up` ranks in only todos
 assigned to the user by default. JSON answers keep their old shape and add a `shared` key when the account
 is in shared projects.
+
+## 2026-11-26 How project pages open (S5#3)
+
+lueoeng asked to make "Board" the standard view of projects. It is one choice per account, in Settings,
+Projects ("Open projects as List / Board"), stored on the account (`accounts.project_view`, like the date
+formats) rather than in the browser, so it follows the person to every device and into the shared projects'
+tabs (the account page is personal, `X-Sloppanizer-Space` does not change it). `?view=list|board` in a
+project's address still wins, and the List / Board switch on the page only sets it when it differs from the
+choice, so links stay clean. Not done: remembering the last view per project. Two places deciding the view
+would make "why does this one open as a list?" hard to answer; it can follow if one default is not enough.

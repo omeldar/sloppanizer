@@ -293,6 +293,11 @@ export const Reauth = z.union([
 ]);
 export type Reauth = z.infer<typeof Reauth>;
 
+/** How a project page opens when its address does not say (S5#3): the list or the board. */
+export const PROJECT_VIEWS = ["list", "board"] as const;
+export const ProjectView = z.enum(PROJECT_VIEWS);
+export type ProjectView = z.infer<typeof ProjectView>;
+
 /** First or last name on the account (optional, "" clears it). */
 export const AccountName = z.string().trim().max(60, "Keep the name at 60 characters or fewer.");
 
@@ -303,6 +308,7 @@ export const UpdateAccount = z
     lastName: AccountName.optional(),
     dateFormat: DateFormat.optional(),
     timeFormat: TimeFormat.optional(),
+    projectView: ProjectView.optional(),
     color: AccountColor.optional(),
     timeZone: TimeZone.optional(),
   })
@@ -427,6 +433,8 @@ export const AccountProfile = z.strictObject({
   lastName: z.string(),
   dateFormat: DateFormat,
   timeFormat: TimeFormat,
+  /** How project pages open (Settings, Projects). */
+  projectView: ProjectView,
   /** Signed in through auth.omeldar.com at least once (it confirms "it is you" there). */
   omeldarLinked: z.boolean(),
   timeZone: z.string(),
