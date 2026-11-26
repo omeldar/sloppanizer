@@ -10,6 +10,9 @@ app shows "Sloppanizer is updating".
 
 - Date fields on a todo, in New todo and in a repeat's "Ends" no longer show a second border with a
   gap left and right around the field (S5#1).
+- Statistics: "When you work" shows worked time per weekday, as the average of one such day (and the
+  total and number of days in the table), instead of a weekday-by-hour grid. That grid added up every
+  Wednesday of the period in one cell, so a single hour could read "2 h" (S5#4).
 
 ## 1.1.0 (2026-11-26)
 

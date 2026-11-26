@@ -1,7 +1,7 @@
 import { addDays, formatDuration, type WorkStats } from "@organizer/shared";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
-import { dayLabel, formatDate, formatDayMonth, formatHour, today } from "../../lib/format.ts";
+import { dayLabel, formatDate, formatDayMonth, today } from "../../lib/format.ts";
 import {
   type BarRow,
   BarList,
@@ -12,7 +12,15 @@ import {
   Heatmap,
   Lines,
 } from "./charts.tsx";
-import { BUCKET_LABELS, hoursText, periodOf, PRESETS, useWorkStats, WEEKDAY_SHORT } from "./stats.ts";
+import {
+  BUCKET_LABELS,
+  hoursText,
+  periodOf,
+  PRESETS,
+  useWorkStats,
+  WEEKDAY_SHORT,
+  weekdayStats,
+} from "./stats.ts";
 import styles from "./Stats.module.css";
 import { DateInput } from "../../components/DateTimeInputs.tsx";
 
@@ -110,7 +118,7 @@ function Overview({ stats }: { stats: WorkStats }) {
         <RequestersCard stats={stats} />
         <WeeksCard stats={stats} />
         <TrendCard stats={stats} />
-        <HoursCard stats={stats} />
+        <WeekdaysCard stats={stats} />
         <DaysCard stats={stats} />
         <DurationsCard stats={stats} />
       </div>
@@ -291,45 +299,45 @@ function TrendCard({ stats }: { stats: WorkStats }) {
   );
 }
 
-const hourText = (hour: number): string => formatHour(hour);
-
-function HoursCard({ stats }: { stats: WorkStats }) {
-  const cells: HeatCell[] = stats.hours.flatMap((row, day) =>
-    row.map((minutes, hour) => ({
-      key: `${day}-${hour}`,
-      row: day,
-      col: hour,
-      value: minutes,
-      tip: {
-        title: `${WEEKDAY_SHORT[day]} ${hourText(hour)}–${hourText((hour + 1) % 24)}`,
-        rows: [{ label: "worked in this period", value: hoursText(minutes) }],
-      },
-    })),
-  );
-  const busiest = stats.hours
-    .flatMap((row, day) => row.map((m, hour) => ({ day, hour, m })))
-    .toSorted((a, b) => b.m - a.m)[0];
+/**
+ * Worked time per weekday, as the average of one such day (S5#4). It replaced a weekday-by-hour grid that
+ * added up every Wednesday of the period into one cell, so a single hour could read "2 h".
+ */
+function WeekdaysCard({ stats }: { stats: WorkStats }) {
+  const rows = weekdayStats(stats.days, today());
+  const busiest = rows.toSorted((a, b) => b.average - a.average)[0];
   return (
     <ChartCard
       title="When you work"
       subtitle={
-        busiest && busiest.m > 0
-          ? `Busiest: ${WEEKDAY_SHORT[busiest.day]} around ${hourText(busiest.hour)}`
-          : "Worked time by weekday and hour"
+        busiest && busiest.average > 0
+          ? `Busiest: ${WEEKDAY_SHORT[busiest.weekday]}, ${hoursText(busiest.average)} on an average day`
+          : "Worked time on an average day of each weekday"
       }
       table={{
-        head: ["Day", ...Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0"))],
-        rows: stats.hours.map((row, day) => [WEEKDAY_SHORT[day] as string, ...row.map(hours)]),
+        head: ["Day", "Days", "Worked h", "Average h"],
+        rows: rows.map((r) => [
+          WEEKDAY_SHORT[r.weekday] as string,
+          r.days,
+          hours(r.minutes),
+          hours(r.average),
+        ]),
       }}
     >
-      <Heatmap
-        label="Worked hours by weekday and hour"
-        cells={cells}
-        rows={7}
-        cols={24}
-        cell={16}
-        rowLabels={[...WEEKDAY_SHORT]}
-        colLabels={[0, 6, 12, 18].map((h) => ({ col: h, text: String(h).padStart(2, "0") }))}
+      <Columns
+        color={VIZ_1}
+        items={rows.map((r) => ({
+          key: String(r.weekday),
+          label: WEEKDAY_SHORT[r.weekday] as string,
+          value: hours(r.average),
+          tip: {
+            title: `${WEEKDAY_SHORT[r.weekday]}, on average`,
+            rows: [
+              { label: "worked on one day", value: hoursText(r.average) },
+              { label: `in total, ${r.days} ${r.days === 1 ? "day" : "days"}`, value: hoursText(r.minutes) },
+            ],
+          },
+        }))}
       />
     </ChartCard>
   );
