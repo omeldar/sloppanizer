@@ -8,6 +8,8 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+## 1.1.0 (2026-11-26)
+
 - Move your sign-in to omeldar: accounts that still sign in with their Sloppanizer password see a line
   under the top bar and a section on the Account page; "Move my sign-in" binds their omeldar account
   (auth.omeldar.com) after a fresh sign-in there. "Later" hides it for a day. With
