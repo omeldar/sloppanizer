@@ -26,6 +26,7 @@ import { AccountSwitcher } from "./AccountSwitcher.tsx";
 import { useCommands } from "./commands.tsx";
 import styles from "./Layout.module.css";
 import { StatusBar } from "./StatusBar.tsx";
+import { MoveSignInBanner } from "./MoveSignIn.tsx";
 import { UpdateBanner } from "./UpdateBanner.tsx";
 
 export function Layout() {
@@ -113,7 +114,10 @@ export function Layout() {
         aria-hidden="true"
       />
       <TopBar onMenu={() => setDrawer(true)} />
-      <UpdateBanner />
+      <div className={styles.banners}>
+        <UpdateBanner />
+        {!inSpace && <MoveSignInBanner />}
+      </div>
       <main className={styles.main} id="main">
         <Outlet />
       </main>

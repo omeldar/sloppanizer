@@ -8,7 +8,7 @@ import { Color, Id, PROJECT_COLORS, Slug, Timestamp } from "./primitives.ts";
  * requests from every user; all admins are its members.
  */
 
-/** Names the space a request acts in (its id). Only browser sessions of members may send it. */
+/** Names the space a request acts in (its id). Members send it from the web app, or with an API token of their own account (MCP). */
 export const SPACE_HEADER = "x-sloppanizer-space";
 
 export const SPACE_ROLES = ["owner", "member"] as const;

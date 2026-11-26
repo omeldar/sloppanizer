@@ -16,12 +16,16 @@ import {
 } from "../src/services/export.ts";
 import { makeApp } from "./helpers.ts";
 
-/** Rows as data.json holds them: name keys and comment token ids are left out (a restore links them again). */
+/**
+ * Rows as data.json holds them: name keys and comment token ids are left out (a restore links them
+ * again), and so are assignees (account ids of this server; shared projects are never exported).
+ */
 const LEFT_OUT: Record<string, string> = {
   labels: "name_key",
   topics: "name_key",
   person_tags: "name_key",
   comments: "author_token_id",
+  todos: "assignee_id",
 };
 const asExported = (table: string, rows: unknown[]) => {
   const column = LEFT_OUT[table];
@@ -71,7 +75,7 @@ describe("GET /export.zip", () => {
       format: 8,
       exportedAt: "2026-11-14T13:04:05.000Z",
       appVersion: VERSION,
-      schemaVersion: 21,
+      schemaVersion: 22,
       account: { username: "anna" },
       attachments: { count: 0, bytes: 0, missing: [] },
     });

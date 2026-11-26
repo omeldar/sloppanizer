@@ -29,7 +29,8 @@ import {
   TitleInput,
 } from "../../components/ui.tsx";
 import { type KeyBinding, useKeyHold, useKeys } from "../../keyboard/KeyboardProvider.tsx";
-import { ApiError, errorMessage } from "../../lib/api.ts";
+import { ApiError, currentSpace, errorMessage } from "../../lib/api.ts";
+import { useCurrentSpace } from "../../lib/spaces.ts";
 import { absoluteTime, dueText, relativeTime } from "../../lib/format.ts";
 import {
   childrenParams,
@@ -203,6 +204,7 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
             <span className={styles.detailsSummary}>
               {STATUS_LABELS[todo.status]}
               {todo.project ? ` · ${todo.project.name}` : " · Inbox"}
+              {todo.assignee ? ` · @${todo.assignee.username}` : ""}
               {todo.dueOn ? ` · ${dueText(todo.dueOn)}` : ""}
               {todo.labels.length > 0
                 ? ` · ${todo.labels.length} ${todo.labels.length === 1 ? "label" : "labels"}`
@@ -227,6 +229,15 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
                 ))}
               </select>
             </dd>
+
+            {currentSpace() !== null && (
+              <>
+                <dt>Assigned to</dt>
+                <dd>
+                  <AssigneeSelect todo={todo} onChange={(assignee) => void patch(todo.id, { assignee })} />
+                </dd>
+              </>
+            )}
 
             <dt>Project</dt>
             <dd>
@@ -396,6 +407,33 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
         </DialogBody>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * In a shared project: which member the todo is assigned to (one or nobody). It then shows on that
+ * member's own Next up too.
+ */
+function AssigneeSelect({ todo, onChange }: { todo: Todo; onChange: (username: string | null) => void }) {
+  const space = useCurrentSpace();
+  const members = space.data?.members ?? [];
+  const current = todo.assignee;
+  // Someone who left keeps showing until the todo is given to someone else (the server took them off).
+  const stale = current && !members.some((m) => m.accountId === current.accountId) ? [current] : [];
+  return (
+    <select
+      className={styles.status}
+      value={current?.username ?? ""}
+      aria-label="Assigned to"
+      onChange={(event) => onChange(event.target.value || null)}
+    >
+      <option value="">Nobody</option>
+      {[...members, ...stale].map((m) => (
+        <option key={m.accountId} value={m.username}>
+          {m.name === m.username ? m.username : `${m.name} (${m.username})`}
+        </option>
+      ))}
+    </select>
   );
 }
 

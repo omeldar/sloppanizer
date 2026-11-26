@@ -117,6 +117,7 @@ function todo(overrides: Partial<Todo> = {}): Todo {
     recurrence: null,
     previousOccurrenceId: null,
     nextOccurrence: null,
+    assignee: null,
     ...overrides,
   };
 }

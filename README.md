@@ -31,7 +31,9 @@ they sat untouched, and tells you why each one is where it is.
   (set `OLLAMA_ORIGINS` to the web app's origin for Ollama). Off, Sloppanizer is a plain todo app.
 - Shared projects: a project several users work on together (sidebar, Shared, plus). Members open it in its
   own tab and get the whole app there: list, board, planner, notes, comments; the history names who did what.
-  Owners add members by username, rename and delete it; members can leave.
+  Owners add members by username, rename and delete it; members can leave. A todo there can be assigned to
+  one member ("Assigned to" in the todo); your own Next up lists what is assigned to you under "Assigned to
+  you", with the project it comes from.
 - Feedback: "report a bug / request a feature" in the status bar, the sidebar and the palette. Reports land as
   todos in the Sloppanizer shared project (all admins are members), labelled `type::bug` or `type::feature`,
   requested by the sender ("First Last" from the account page, else the username).
@@ -117,8 +119,11 @@ Settings (environment of the service, all optional): `ORGANIZER_PORT` (4711), `O
 - Web links: `POST /api/v1/todos/{id}/urls` (`{ urls: [{ url, label? }] }`), `PATCH`/`DELETE`
   `/api/v1/todos/{id}/urls/{urlId}`; `urls` on `POST /api/v1/todos` too.
 - Shared projects: `GET`/`POST /api/v1/spaces`, `PATCH`/`DELETE /api/v1/spaces/{id}`,
-  `POST /api/v1/spaces/{id}/members` (`{ username }`), `DELETE /api/v1/spaces/{id}/members/{accountId}` (browser
-  session only). Every other route acts inside a shared project with the header `X-Sloppanizer-Space: <id>`.
+  `POST /api/v1/spaces/{id}/members` (`{ username }`), `DELETE /api/v1/spaces/{id}/members/{accountId}`
+  (browser session only; listing works with tokens too). Every other route acts inside a shared project with
+  the header `X-Sloppanizer-Space: <id>`, from the session or a token of a member (with the token's scope).
+  Assignees there: `assignee` (a member's username, `null` clears it) on `POST`/`PATCH /api/v1/todos`, and
+  `assignee=me|none|<username>` on `GET /api/v1/todos` and `GET /api/v1/next`.
 - Feedback: `POST /api/v1/feedback` (`{ kind: "bug" | "feature", title, description? }`).
 - Users: `GET /api/v1/users?q=` finds users; `{ username }` works wherever a person reference does.
 - Statistics: `GET /api/v1/stats/overview?from=YYYY-MM-DD&to=YYYY-MM-DD` (at most a year).
@@ -147,6 +152,20 @@ Settings: `SLOPPANIZER_AUTH_CLIENT_SECRET` (required with `both`/`oidc` in produ
 sign-in at omeldar in a popup. Auth's back-channel logout (`POST /api/v1/auth/backchannel-logout`) ends the
 session of that sign-in. The web app serves `/.well-known/webauthn` so passkeys made on organizer.omeldar.com
 work at auth.omeldar.com. Rollback: set `SLOPPANIZER_AUTH=local`; the own credentials were never changed.
+
+**Moving people over, with an end date.** With `both`, everyone who still signs in with their Sloppanizer
+password sees a line under the top bar (and a section on the Account page): "Move my sign-in" explains it,
+asks them to confirm it is them here when the last sign-in is older than 10 minutes, then opens a fresh
+sign-in at omeldar in a popup and binds that omeldar account to theirs (`POST /api/v1/auth/omeldar/link`;
+never an omeldar account that already belongs to, or was imported from, another Sloppanizer account).
+"Later" hides it for a day. Accounts that moved never see it.
+
+`SLOPPANIZER_LOCAL_LOGIN_UNTIL=YYYY-MM-DD` (optional, only with `both`) is the day the own login stops, from
+00:00 that day in `SLOPPANIZER_DEFAULT_TZ`. Before it, the banner and the login page name the day; from it,
+the own login, passkey login, sign-up, setup and reset answer 410 and point to omeldar, and the login page
+offers only "Sign in with omeldar". Sessions that are still open keep working and can still move. Unset (the
+default): no end, nothing changes. For "30 days from now", set it to the date 30 days after the release
+ships. With `local` it is ignored, so rollback stays one switch.
 
 ## MCP server
 
@@ -197,6 +216,12 @@ Tools:
 - Planner (local time): `list_plan` (blocks, planned dates of repeating todos, meetings), `plan_time` (a
   todo or a title, a day, start and end or minutes; `repeat` for a repeating todo), `move_block`,
   `delete_block`, `list_recurring`, `work_stats` (time per project, requester and week).
+
+- Shared projects: their todos read `S7#12` (todo 12 of shared project 7) with project and assignee.
+  `list_todos`, `next_up` (assigned to you, ranked in), `overview`, `search` and `list_projects` include
+  them; `scope` (all, own, shared) and `assignee` ("me", "none", "anyone", a username) filter them.
+  `get_todo`, `update_todo` (`assignee`), `mark_done`, `add_comment`, `get_activity` and `check_item` take
+  `S7#12`; `create_todo` takes a shared project as `project` ("S7" or its name).
 
 Restore, settings and tokens are not offered as tools.
 

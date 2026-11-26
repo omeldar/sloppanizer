@@ -28,6 +28,8 @@ import {
 } from "@organizer/shared";
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
 import { insertUrls, urlsByTodo } from "./urls.ts";
+import { accounts } from "../db/auth-schema.ts";
+import { assigneesById, assigneeSummary, isAssignable, resolveAssignee } from "./assignees.ts";
 import { comments, events, labels, people, todoLabels, todoLinks, todoPeople, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, inTx, now, type Scoped } from "./context.ts";
@@ -93,6 +95,10 @@ export function hydrate(sc: Scoped, rows: readonly TodoRow[]): Todo[] {
   );
   const relations = todoRelations(sc, rows);
   const urls = urlsByTodo(sc, ids);
+  const assignees = assigneesById(
+    sc.db,
+    rows.map((r) => r.assigneeId),
+  );
   return rows.map((row) => ({
     id: row.id,
     projectId: row.projectId,
@@ -123,6 +129,7 @@ export function hydrate(sc: Scoped, rows: readonly TodoRow[]): Todo[] {
     recurrence: parseRecurrence(row.recurrence),
     previousOccurrenceId: row.recurrencePrevId,
     nextOccurrence: relations.next.get(row.id) ?? null,
+    assignee: row.assigneeId === null ? null : (assignees.get(row.assigneeId) ?? null),
   }));
 }
 
@@ -197,6 +204,8 @@ export interface NewTodoExtra {
   position?: number;
   recurrence?: string | null;
   recurrencePrevId?: number | null;
+  /** An assignee already checked (a repeat's next todo keeps it); input.assignee is checked here. */
+  assigneeId?: number | null;
 }
 
 /**
@@ -218,6 +227,8 @@ export function insertTodo(
     ...resolvePeople(sc, at, input.contacts ?? [], true).map((p) => ({ p, role: "contact" as const })),
   ];
   const status = input.status ?? "open";
+  const assigneeId =
+    extra.assigneeId !== undefined ? extra.assigneeId : resolveAssignee(sc, input.assignee ?? null);
   const id = insertOwnedRow(sc, todos, {
     title: input.title,
     descriptionMd: input.descriptionMd ?? "",
@@ -233,6 +244,7 @@ export function insertTodo(
     lastActivityAt: at,
     recurrence: extra.recurrence ?? null,
     recurrencePrevId: extra.recurrencePrevId ?? null,
+    assigneeId,
   });
   const row = todoRow(sc, id);
   const accountId = sc.accountId;
@@ -266,6 +278,7 @@ export function insertTodo(
           contacts: todo.contacts.map(personSummary),
           ...(row.parentId === null ? {} : { parentId: row.parentId }),
           ...(row.recurrencePrevId === null ? {} : { previousOccurrenceId: row.recurrencePrevId }),
+          ...(todo.assignee === null ? {} : { assignee: assigneeSummary(todo.assignee) }),
         },
       },
     },
@@ -400,7 +413,15 @@ function createNextOccurrence(sc: Scoped, at: string, actor: string, id: number,
       contacts: todo.contacts.map((p) => ({ personId: p.id })),
       urls: todo.urls.map((u) => ({ url: u.url, label: u.label })),
     },
-    { recurrence: JSON.stringify(todo.recurrence), recurrencePrevId: todo.id },
+    {
+      recurrence: JSON.stringify(todo.recurrence),
+      recurrencePrevId: todo.id,
+      // The next one stays with the same member while they are still in the project.
+      assigneeId:
+        todo.assignee !== null && isAssignable(sc.db, sc.accountId, todo.assignee.accountId)
+          ? todo.assignee.accountId
+          : null,
+    },
   );
   moveRepeatPlan(sc, todo.id, next.id, at);
   recordEvents(sc, actor, at, [
@@ -659,6 +680,15 @@ function applyChange(
     }
   }
 
+  if (change.assignee !== undefined) {
+    const assigneeId = resolveAssignee(sc, change.assignee);
+    if (assigneeId !== (current.assignee?.accountId ?? null)) {
+      set.assigneeId = assigneeId;
+      const to = assigneeId === null ? null : (assigneesById(sc.db, [assigneeId]).get(assigneeId) ?? null);
+      event("assignee_changed", { from: assigneeSummary(current.assignee), to: assigneeSummary(to) });
+    }
+  }
+
   const requesters = applyPeopleChange(sc, at, current, "requester", {
     set: change.requestedBy,
     add: change.addRequestedBy,
@@ -814,8 +844,25 @@ export function projectCondition(projectId: number | "inbox" | undefined): SQL |
   return projectId === "inbox" ? isNull(todos.projectId) : eq(todos.projectId, projectId);
 }
 
-function listConditions(sc: Scoped, query: TodoListQuery, timeZone: string): SQL {
-  const conditions: (SQL | undefined)[] = [];
+/**
+ * The assignee filter: "me" is the caller's own account (callerId), "none" unassigned, else the
+ * account with that username. Unknown names and a missing caller match nothing.
+ */
+export function assigneeCondition(
+  sc: Pick<Scoped, "db"> & { callerId?: number },
+  filter: TodoListQuery["assignee"],
+): SQL | undefined {
+  if (filter === undefined) return undefined;
+  if (filter === "none") return isNull(todos.assigneeId);
+  const id =
+    filter === "me"
+      ? sc.callerId
+      : sc.db.select({ id: accounts.id }).from(accounts).where(eq(accounts.username, filter)).get()?.id;
+  return id === undefined ? sql`0` : eq(todos.assigneeId, id);
+}
+
+function listConditions(sc: Scoped & { callerId?: number }, query: TodoListQuery, timeZone: string): SQL {
+  const conditions: (SQL | undefined)[] = [assigneeCondition(sc, query.assignee)];
   if (query.status !== "all") conditions.push(inArray(todos.status, query.status));
   conditions.push(projectCondition(query.projectId));
   for (const name of query.label ?? []) conditions.push(hasLabel(name));
@@ -846,7 +893,10 @@ function listConditions(sc: Scoped, query: TodoListQuery, timeZone: string): SQL
  * Filtered, sorted page of todos. sort=due puts todos without a due date last in both orders;
  * sort=priority with order=desc lists critical first.
  */
-export function listTodos(ctx: Pick<Ctx, "db" | "timeZone" | "accountId">, query: TodoListQuery): TodoPage {
+export function listTodos(
+  ctx: Pick<Ctx, "db" | "timeZone" | "accountId" | "callerId">,
+  query: TodoListQuery,
+): TodoPage {
   const where = listConditions(ctx, query, ctx.timeZone);
   const dir = query.order === "asc" ? asc : desc;
   const orderBy: SQL[] = [];
@@ -885,6 +935,7 @@ export function nextUp(ctx: Ctx, query: NextQuery): NextUp {
   const conditions: (SQL | undefined)[] = [
     inArray(todos.status, [...ACTIVE_STATUSES]),
     projectCondition(query.projectId),
+    assigneeCondition(ctx, query.assignee),
   ];
   for (const name of query.label ?? []) conditions.push(hasLabel(name));
   const rows = ctx.db

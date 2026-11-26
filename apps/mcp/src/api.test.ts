@@ -36,6 +36,17 @@ describe("createApi", () => {
     expect(headers.authorization).toBe(`Bearer ${TOKEN}`);
   });
 
+  it("sends the shared project header only from inSpace", async () => {
+    const seen: { url?: string; init?: RequestInit } = {};
+    const api = createApi(config, fakeFetch(200, { ok: true }, seen));
+    await api.get("/todos");
+    expect((seen.init?.headers ?? {}) as Record<string, string>).not.toHaveProperty("x-sloppanizer-space");
+    await api.inSpace(7).patch("/todos/3", { assignee: "bo" });
+    expect(((seen.init?.headers ?? {}) as Record<string, string>)["x-sloppanizer-space"]).toBe("7");
+    await api.get("/todos");
+    expect((seen.init?.headers ?? {}) as Record<string, string>).not.toHaveProperty("x-sloppanizer-space");
+  });
+
   it("turns a failed connection into the start hint", async () => {
     const failing = (async () => {
       throw new TypeError("fetch failed");

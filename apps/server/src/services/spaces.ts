@@ -25,6 +25,7 @@ import { owned, seedAccount } from "./owned.ts";
 import { createProject, listProjects, updateProject } from "./projects.ts";
 import { foldCase } from "./text.ts";
 import { createTodo } from "./todos.ts";
+import { unassignMember } from "./assignees.ts";
 
 /**
  * Shared projects. A shared project is a space: a hidden account (kind "space", username "~..." that no
@@ -349,6 +350,7 @@ export function addSpaceMember(
 export function removeSpaceMember(
   db: Db,
   config: Config,
+  clock: () => Date,
   member: AccountRow,
   id: number,
   accountId: number,
@@ -372,9 +374,13 @@ export function removeSpaceMember(
     deleteSpace(db, config, member, id);
     return;
   }
-  db.delete(spaceMembers)
-    .where(and(eq(spaceMembers.spaceId, id), eq(spaceMembers.accountId, accountId)))
-    .run();
+  db.transaction((tx) => {
+    tx.delete(spaceMembers)
+      .where(and(eq(spaceMembers.spaceId, id), eq(spaceMembers.accountId, accountId)))
+      .run();
+    // Their todos in the project are nobody's now (a line in each history says so).
+    unassignMember(tx, id, accountId, memberName(member), clock().toISOString());
+  });
 }
 
 /** Deletes the space with all its todos, notes and files. */

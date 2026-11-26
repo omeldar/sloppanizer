@@ -25,6 +25,7 @@ import {
   type PersonTag,
   type Project,
   type SearchHit,
+  type Space,
   type SearchResult,
   type Standup,
   type StandupItem,
@@ -37,6 +38,21 @@ import {
   toLocalTime,
   waitingReason,
 } from "@organizer/shared";
+
+/**
+ * A shared project as the tools name it. Its todos are numbered on their own, so the tools write them as
+ * S<project id>#<todo id> ("S7#12"); #12 alone is always one of the account's own todos.
+ */
+export interface SharedRef {
+  id: number;
+  name: string;
+}
+
+export const sharedTodoRef = (spaceId: number, todoId: number): string => `S${spaceId}#${todoId}`;
+
+/** "#12" for an own todo, "S7#12" for one in shared project 7. */
+export const todoRefText = (id: number, space?: SharedRef): string =>
+  space ? sharedTodoRef(space.id, id) : `#${id}`;
 
 /** What "today" means for relative dates. */
 export interface DateContext {
@@ -68,10 +84,18 @@ export const personName = (person: Pick<PersonBrief, "displayName">): string => 
  * `#142 open | Renew SSL certs | priority::high, homelab | project homelab | due 09.11.2026 (overdue 2d) | open 41d | req: Anna Meier`
  * and, when they apply, `| 2/5 subtasks | checklist 3/7 | waiting on #12 | repeats every week`.
  */
-export function todoLine(todo: Todo, ctx: DateContext): string {
-  const parts = [`#${todo.id} ${todo.status}`, todo.title];
+export function todoLine(todo: Todo, ctx: DateContext, space?: SharedRef): string {
+  const parts = [`${todoRefText(todo.id, space)} ${todo.status}`, todo.title];
   if (todo.labels.length > 0) parts.push(todo.labels.map((label) => label.name).join(", "));
-  parts.push(todo.project ? `project ${todo.project.slug}` : "inbox");
+  if (space) {
+    // The project inside a shared project is named like it; only another one is worth naming.
+    const inner = todo.project && todo.project.name !== space.name ? ` / ${todo.project.slug}` : "";
+    parts.push(`shared ${space.name}${inner}`);
+  } else {
+    parts.push(todo.project ? `project ${todo.project.slug}` : "inbox");
+  }
+  if (todo.assignee) parts.push(`assigned to ${todo.assignee.name}`);
+  else if (space) parts.push("unassigned");
   const done = todo.status === "done";
   if (todo.dueOn)
     parts.push(
@@ -97,10 +121,16 @@ export function todoLine(todo: Todo, ctx: DateContext): string {
   return parts.join(" | ");
 }
 
-const refText = (ref: TodoRef): string => `#${ref.id} ${ref.title} (${ref.status})`;
+const refText = (ref: TodoRef, space?: SharedRef): string =>
+  `${todoRefText(ref.id, space)} ${ref.title} (${ref.status})`;
 
-export function todoLines(todos: readonly Todo[], ctx: DateContext, empty = "No todos match."): string {
-  return todos.length === 0 ? empty : todos.map((todo) => todoLine(todo, ctx)).join("\n");
+export function todoLines(
+  todos: readonly Todo[],
+  ctx: DateContext,
+  empty = "No todos match.",
+  space?: SharedRef,
+): string {
+  return todos.length === 0 ? empty : todos.map((todo) => todoLine(todo, ctx, space)).join("\n");
 }
 
 const local = (instant: string, ctx: DateContext): string => {
@@ -112,9 +142,23 @@ const contactRef = (p: PersonBrief): string =>
   `${p.displayName} (person ${p.id}${p.team ? `, ${p.team}` : ""})`;
 
 /** Everything about one todo (with its subtasks when given), the description last. */
-export function todoDetail(todo: Todo, ctx: DateContext, subtasks: readonly Todo[] = []): string {
-  const lines = [todoLine(todo, ctx)];
-  if (todo.parent) lines.push(`Subtask of #${todo.parent.id} ${todo.parent.title}`);
+export function todoDetail(
+  todo: Todo,
+  ctx: DateContext,
+  subtasks: readonly Todo[] = [],
+  space?: SharedRef,
+): string {
+  const ref = (id: number) => todoRefText(id, space);
+  const lines = [todoLine(todo, ctx, space)];
+  if (space) {
+    lines.push(
+      `In shared project ${space.name} (S${space.id}); its todos are S${space.id}#<id>.` +
+        (todo.assignee
+          ? ` Assigned to ${todo.assignee.name} (${todo.assignee.username}).`
+          : " Not assigned."),
+    );
+  }
+  if (todo.parent) lines.push(`Subtask of ${ref(todo.parent.id)} ${todo.parent.title}`);
   lines.push(`created ${local(todo.createdAt, ctx)}`);
   lines.push(`last activity ${local(todo.lastActivityAt, ctx)}`);
   if (todo.plannedOn) lines.push(`planned ${formatDate(todo.plannedOn)} (${ago(todo.plannedOn, ctx.today)})`);
@@ -130,18 +174,24 @@ export function todoDetail(todo: Todo, ctx: DateContext, subtasks: readonly Todo
     lines.push(`comments: ${todo.commentCount} (get_activity shows the thread)`);
   }
   const { links } = todo;
-  if (links.blockedBy.length > 0) lines.push(`blocked by: ${links.blockedBy.map(refText).join(", ")}`);
-  if (links.blocks.length > 0) lines.push(`blocks: ${links.blocks.map(refText).join(", ")}`);
-  if (links.relatesTo.length > 0) lines.push(`relates to: ${links.relatesTo.map(refText).join(", ")}`);
+  const refs = (list: readonly TodoRef[]) => list.map((r) => refText(r, space)).join(", ");
+  if (links.blockedBy.length > 0) lines.push(`blocked by: ${refs(links.blockedBy)}`);
+  if (links.blocks.length > 0) lines.push(`blocks: ${refs(links.blocks)}`);
+  if (links.relatesTo.length > 0) lines.push(`relates to: ${refs(links.relatesTo)}`);
   if (todo.urls.length > 0) lines.push("web links:", urlLines(todo));
   if (todo.recurrence) {
-    const next = todo.nextOccurrence ? ` (next: #${todo.nextOccurrence.id})` : "";
+    const next = todo.nextOccurrence ? ` (next: ${ref(todo.nextOccurrence.id)})` : "";
     lines.push(`Repeats ${describeRecurrence(todo.recurrence)}${next}`);
   }
-  if (todo.previousOccurrenceId !== null) lines.push(`previous occurrence: #${todo.previousOccurrenceId}`);
+  if (todo.previousOccurrenceId !== null)
+    lines.push(`previous occurrence: ${ref(todo.previousOccurrenceId)}`);
   if (subtasks.length > 0) {
     const { done, total } = todo.progress.subtasks;
-    lines.push("", `Subtasks (${done}/${total} done):`, ...subtasks.map((t) => `- ${todoLine(t, ctx)}`));
+    lines.push(
+      "",
+      `Subtasks (${done}/${total} done):`,
+      ...subtasks.map((t) => `- ${todoLine(t, ctx, space)}`),
+    );
   }
   const items = parseChecklist(todo.descriptionMd);
   if (items.length > 0) {
@@ -155,20 +205,57 @@ export function todoDetail(todo: Todo, ctx: DateContext, subtasks: readonly Todo
   return lines.join("\n");
 }
 
-export function nextUpText(next: NextUp, timeZone: string): string {
+/** Next up of a shared project, as next_up adds it to the account's own ranking. */
+export interface SharedNextUp {
+  space: SharedRef;
+  next: NextUp;
+}
+
+/**
+ * The ranking, with todos from shared projects (S7#12) ranked in by the same score: everything is
+ * scored by one function on the same day, so the scores compare.
+ */
+export function nextUpText(
+  next: NextUp,
+  timeZone: string,
+  shared: readonly SharedNextUp[] = [],
+  limit = next.items.length,
+): string {
   const ctx = { today: next.today, timeZone };
+  const ranked = [
+    ...next.items.map((item) => ({ item, space: undefined as SharedRef | undefined })),
+    ...shared.flatMap((s) => s.next.items.map((item) => ({ item, space: s.space as SharedRef | undefined }))),
+  ]
+    .toSorted((a, b) => b.item.score - a.item.score)
+    .slice(0, limit);
   const lines = [`Next up (${next.mode}), today ${formatDate(next.today)}:`];
-  if (next.items.length === 0) lines.push("Nothing open. Add todos with create_todo.");
-  next.items.forEach((item, index) => {
+  if (ranked.length === 0) lines.push("Nothing open. Add todos with create_todo.");
+  ranked.forEach(({ item, space }, index) => {
     const why = item.reasons.map((reason) => reason.label).join(", ");
     lines.push(
-      `${index + 1}. ${todoLine(item.todo, ctx)} | score ${item.score}${why ? ` | why: ${why}` : ""}`,
+      `${index + 1}. ${todoLine(item.todo, ctx, space)} | score ${item.score}${why ? ` | why: ${why}` : ""}`,
     );
   });
-  if (next.blocked.length > 0) {
-    lines.push("", `Blocked (${next.blocked.length}):`, todoLines(next.blocked, ctx));
-  }
+  const blocked = [
+    ...next.blocked.map((todo) => todoLine(todo, ctx)),
+    ...shared.flatMap((s) => s.next.blocked.map((todo) => todoLine(todo, ctx, s.space))),
+  ];
+  if (blocked.length > 0) lines.push("", `Blocked (${blocked.length}):`, ...blocked);
   return lines.join("\n");
+}
+
+/** "S7 Home move | 5 open | you: owner | members: anna (Anna Berg, owner), bobo". */
+export function sharedProjectLine(space: Space): string {
+  const members = space.members.map((m) => {
+    const notes = [...(m.name === m.username ? [] : [m.name]), ...(m.role === "owner" ? ["owner"] : [])];
+    return notes.length > 0 ? `${m.username} (${notes.join(", ")})` : m.username;
+  });
+  return [
+    `S${space.id} ${space.name}`,
+    `${space.openCount} open`,
+    `you: ${space.role}`,
+    `members: ${members.join(", ")}`,
+  ].join(" | ");
 }
 
 export function projectLine(project: Project): string {
@@ -341,18 +428,18 @@ export function highlight(snippet: string, ranges: readonly (readonly [number, n
   return oneLine(text + snippet.slice(at));
 }
 
-export function searchHitLine(hit: SearchHit): string {
+export function searchHitLine(hit: SearchHit, space?: SharedRef): string {
   const snippet = highlight(hit.snippet, hit.highlights);
   const parts: string[] = [];
   switch (hit.kind) {
     case "todo":
-      parts.push(`#${hit.id}${hit.status ? ` ${hit.status}` : ""}`, hit.title);
+      parts.push(`${todoRefText(hit.id, space)}${hit.status ? ` ${hit.status}` : ""}`, hit.title);
       break;
     case "note":
       parts.push(`note ${hit.id}`, hit.title);
       break;
     case "comment":
-      parts.push(`comment ${hit.id} on #${hit.todoId ?? "?"}`);
+      parts.push(`comment ${hit.id} on ${hit.todoId === null ? "?" : todoRefText(hit.todoId, space)}`);
       break;
     case "person":
       parts.push(`person ${hit.id}`, hit.title);
@@ -365,6 +452,25 @@ export function searchHitLine(hit: SearchHit): string {
 }
 
 const KIND_HEADINGS = { todo: "Todos", note: "Notes", comment: "Comments", person: "People" } as const;
+
+/** Hits in a shared project (todos and comments only), as search adds them under the own hits. */
+export interface SharedSearch {
+  space: SharedRef;
+  result: SearchResult;
+}
+
+/** The hits of shared projects, one block per project with hits. */
+export function sharedSearchText(shared: readonly SharedSearch[]): string {
+  const lines: string[] = [];
+  for (const { space, result } of shared) {
+    if (result.items.length === 0) continue;
+    const total = result.counts.todo + result.counts.comment;
+    const more = total > result.items.length ? ` (showing ${result.items.length} of ${total})` : "";
+    lines.push("", `In shared project ${space.name} (S${space.id})${more}:`);
+    lines.push(...result.items.map((hit) => searchHitLine(hit, space)));
+  }
+  return lines.join("\n");
+}
 
 /** Hits grouped by kind with the total per kind (the totals ignore the limit). */
 export function searchText(result: SearchResult): string {
@@ -379,7 +485,7 @@ export function searchText(result: SearchResult): string {
     const hits = result.items.filter((hit) => hit.kind === kind);
     if (hits.length === 0) continue;
     const more = counts[kind] > hits.length ? ` (showing ${hits.length} of ${counts[kind]})` : "";
-    lines.push("", `${KIND_HEADINGS[kind]}${more}:`, ...hits.map(searchHitLine));
+    lines.push("", `${KIND_HEADINGS[kind]}${more}:`, ...hits.map((hit) => searchHitLine(hit)));
   }
   return lines.join("\n");
 }

@@ -198,6 +198,28 @@
   white-space: nowrap;
 }
 
+/* "from <shared project>" on a todo that a list of your own shows from a shared project. */
+.source {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 0 6px;
+  line-height: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-2);
+  font-size: var(--fs-pill);
+  white-space: nowrap;
+}
+
+.assignee {
+  flex-shrink: 0;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  white-space: nowrap;
+}
+
 .reasons {
   display: flex;
   gap: 6px;
@@ -297,6 +319,11 @@
 
 .group {
   margin-top: 28px;
+}
+
+/* A group above the main list (Next up's "Assigned to you"). */
+.groupLead {
+  margin-bottom: 28px;
 }
 
 .groupTitle {

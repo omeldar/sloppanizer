@@ -3,6 +3,7 @@ import { Button } from "../../components/ui.tsx";
 import { saveSession, TooManyAccountsError } from "../../lib/accounts.ts";
 import { errorMessage } from "../../lib/api.ts";
 import { afterLogin } from "../../lib/entry.ts";
+import { formatDate } from "../../lib/format.ts";
 import {
   callbackKind,
   finishOmeldarSignIn,
@@ -119,10 +120,13 @@ export function OmeldarLoginPage({
   config,
   search,
   create = false,
+  endedOn = null,
 }: {
   config: OmeldarConfig;
   search: URLSearchParams;
   create?: boolean;
+  /** The day Sloppanizer's own login stopped, when it did (SLOPPANIZER_LOCAL_LOGIN_UNTIL). */
+  endedOn?: string | null;
 }) {
   const account = search.get("account") ?? "";
   const next = search.get("next");
@@ -132,6 +136,12 @@ export function OmeldarLoginPage({
       lede="Sloppanizer signs in with your omeldar account, the same one for every omeldar site."
     >
       <div className={styles.form}>
+        {endedOn && (
+          <p className={styles.info} role="status">
+            Sign-in with your Sloppanizer password ended on {formatDate(endedOn)}. If you never moved your
+            sign-in, try your Sloppanizer username and password at omeldar, or ask the admin.
+          </p>
+        )}
         <OmeldarButton
           config={config}
           create={create}

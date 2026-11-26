@@ -105,20 +105,20 @@ describe("shared projects", () => {
     expect(todo.statusCode).toBe(201);
     expect((await t.call("GET", "/api/v1/todos", undefined, { [H]: id })).statusCode).toBe(200);
     expect((await cy.call("GET", "/api/v1/todos", undefined, { [H]: id })).statusCode).toBe(404);
+    // A token enters as its own member (assignees.test.ts has the rules); never a project it is not in.
+    const outsider = await t.app.inject({
+      method: "GET",
+      url: "/api/v1/todos",
+      headers: { authorization: `Bearer ${cy.token("script", "write")}`, [H]: id },
+    });
+    expect(outsider.statusCode).toBe(404);
 
-    // Members cannot manage, owners can; tokens never enter a space.
+    // Members cannot manage, owners can.
     expect((await bo.call("POST", `/api/v1/spaces/${id}/members`, { username: "cyra" })).statusCode).toBe(
       403,
     );
     expect((await t.call("POST", `/api/v1/spaces/${id}/members`, { username: "cyra" })).statusCode).toBe(200);
     expect((await cy.call("GET", "/api/v1/todos", undefined, { [H]: id })).statusCode).toBe(200);
-    const raw = t.token("script", "write");
-    const viaToken = await t.app.inject({
-      method: "GET",
-      url: "/api/v1/todos",
-      headers: { authorization: `Bearer ${raw}`, [H]: id },
-    });
-    expect(viaToken.statusCode).toBe(403);
 
     // Leaving, and the last owner deleting it.
     expect((await bo.call("DELETE", `/api/v1/spaces/${id}/members/${bo.account.id}`)).statusCode).toBe(204);

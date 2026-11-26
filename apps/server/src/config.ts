@@ -1,4 +1,10 @@
-import { type AuthMode, isValidTimeZone, normalizeOneTimeCode } from "@organizer/shared";
+import {
+  type AuthMode,
+  isCalendarDate,
+  isValidTimeZone,
+  normalizeOneTimeCode,
+  startOfLocalDay,
+} from "@organizer/shared";
 import { BlockList, isIP } from "node:net";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -48,6 +54,11 @@ export interface Config {
     clientSecret: string | null;
     /** The web app's callback page, registered at auth (matched exactly). */
     redirectUri: string;
+    /**
+     * SLOPPANIZER_LOCAL_LOGIN_UNTIL: the day Sloppanizer's own login stops working (from 00:00 that day in
+     * SLOPPANIZER_DEFAULT_TZ), with `at` that instant. Only counts with SLOPPANIZER_AUTH=both; null: no end.
+     */
+    localLoginEnds: { on: string; at: Date } | null;
   };
   production: boolean;
 }
@@ -244,6 +255,16 @@ export function loadConfig(env: Env = process.env): Config {
     throw new ConfigError(`SLOPPANIZER_AUTH_REDIRECT_URI must be a full URL, got "${redirectUri}".`);
   }
 
+  const untilRaw = (env.SLOPPANIZER_LOCAL_LOGIN_UNTIL ?? "").trim();
+  if (untilRaw !== "" && !(/^\d{4}-\d{2}-\d{2}$/.test(untilRaw) && isCalendarDate(untilRaw))) {
+    throw new ConfigError(
+      `SLOPPANIZER_LOCAL_LOGIN_UNTIL must be a date like 2026-12-31 (the day the own login stops), got "${untilRaw}".`,
+    );
+  }
+  // With "local" there is nothing to sign in with instead, with "oidc" the own login is already off.
+  const localLoginEnds =
+    untilRaw !== "" && mode === "both" ? { on: untilRaw, at: startOfLocalDay(untilRaw, timeZone) } : null;
+
   const dataDir = resolve(env.SLOPPANIZER_DATA_DIR || join(homedir(), ".local", "share", "sloppanizer"));
   return {
     port,
@@ -273,6 +294,7 @@ export function loadConfig(env: Env = process.env): Config {
       clientId: env.SLOPPANIZER_AUTH_CLIENT_ID || "sloppanizer",
       clientSecret,
       redirectUri,
+      localLoginEnds,
     },
   };
 }

@@ -171,3 +171,72 @@ Cross-Origin-Opener-Policy, which cuts `window.opener`.
 lint and formatting) so it can be updated by copying. The server adds the two Web Crypto types it expects
 from the DOM lib (`src/webcrypto-types.d.ts`).
 
+## 2026-11-25 Moving to omeldar, and the end of the own login
+
+**A signed-in account binds its omeldar account itself.** Until now an account was bound only on a sign-in
+with omeldar, through the `legacy_id` auth's import sets. That needs the import to have run for that
+person; otherwise the sign-in makes a new, empty account. "Move my sign-in" binds from inside the session
+instead: Sloppanizer's own "confirm it is you" first (within 10 minutes), so a stolen session cannot bind
+someone else's omeldar account and keep the account after the session is revoked; then a fresh sign-in at
+omeldar (`max_age=0`, in a popup like "confirm it is you", the username as `login_hint`). It refuses an
+omeldar account that is bound to another account or whose `legacy_id` names another account, and an account
+that is already bound. It binds `auth_subject` only: name and role follow at the next sign-in with omeldar,
+like everyone's, so the move itself changes nothing else (an admin is not demoted mid-session). The own
+credentials stay, for rollback. Each move is a `move_signin` line in the admin log.
+
+**The end is a date the admin sets, not a fixed 30 days.** `SLOPPANIZER_LOCAL_LOGIN_UNTIL=YYYY-MM-DD`, the
+day the own login stops (from 00:00 in `SLOPPANIZER_DEFAULT_TZ`). Unset means no end, so shipping this
+changes nothing until the date is set; "30 days after the prompt ships" is the date 30 days after the
+release. A date, not a duration from start, so restarts and redeploys never move it.
+
+**From that day the own login stops for everyone, bound or not.** The login, passkey login, sign-up, setup
+and reset answer 410 with a pointer to omeldar, before the credentials are checked, so the answer says
+nothing about whether an account exists or moved. Refusing only unbound accounts would keep a second way in
+for bound ones and would need the password checked first. Sessions that are still open keep working, and
+"confirm it is you" with the own password or passkey still works for them, so someone who did not move in
+time can still move before signing out. People who never moved and have no open session sign in with
+omeldar: if auth imported them, with their old username and password (the `legacy_id` binding); otherwise
+the admin helps. It only counts with `both`: with `local` there is nothing to sign in with instead (and
+rollback must stay one switch), with `oidc` the own login is already off. The banner shows only with
+`both`; with `oidc` an unbound account is bound at its next sign-in with omeldar.
+
+**Shown once a day after "Later", never once it ended.** "Later" is remembered per account in this browser
+for 24 hours. From 7 days before the end the line is amber; after the end it stays and has no "Later".
+
+## 2026-11-25 Assignees in shared projects, "Assigned to you", shared todos in MCP (#15)
+
+**One assignee per todo, only in shared projects.** `todos.assignee_id` points at a user account (ON DELETE
+SET NULL). The server sets it only when the todo's account is a space and the user is a member of it
+(active admins in the Sloppanizer project); anything else, also on personal todos, is a 422 with the same
+answer for unknown names and non-members. A member who leaves or is removed is taken off every todo of that
+project in the same transaction, with an `assignee_changed` line in each history by whoever removed them.
+Todos never move between accounts, so a todo cannot leave its shared project with an assignee; moving it to
+another project inside the shared project keeps it. A repeat's next todo keeps the assignee while they are
+still a member. Assignees are left out of exports (`LOCAL_COLUMNS`), like comment token ids: they are
+account ids of this server, and shared projects are not exported anyway.
+
+**"My list" is Next up, worked out per project, not copied.** Your own tab's Next up shows "Assigned to you"
+above the ranking (left out while a project or label filter is set): each shared project's own `/next` with
+`assignee=me`, merged by score (one scoring function, same day, so scores compare), each row with a
+"from <project>" badge in the project's color. The title opens the todo in that project's tab, where every
+change is made; the box marks it done right there through the project (the `space` option of `api()`, so
+the same membership check as a project tab). Nothing is stored on your own account, so there is nothing to
+keep in sync. Inbox, Week and Board stay your own todos only; filters select own projects and labels.
+
+**API tokens may enter shared projects.** Replaces "shared projects work from the web app only" (2026-11-23):
+MCP clients are tokens, and the feature is to read and assign shared todos through them. A token of a
+member's own account may send `X-Sloppanizer-Space` on the same routes a session may, with the token's
+scope (a read token only reads); the history names "Member via <token name>". `GET /spaces` and
+`GET /spaces/{id}` accept tokens (read); creating, renaming, members and deleting stay browser-session only.
+Membership is checked on every request exactly as for sessions, so a token never reaches a project its
+account is not in (tests: assignees.test.ts, "no path leaks").
+
+**MCP: shared todos are `S<project>#<n>`.** Todo numbers are per account, so `#12` stays an own todo and
+`S7#12` is todo 12 of shared project 7. `list_todos`, `next_up`, `overview`, `search` and `list_projects`
+add the shared projects (each under its own heading, or ranked in for `next_up`), with `scope`
+(all, own, shared) and `assignee` ("me", "none", "anyone", a username; own todos count as "me").
+`get_todo`, `update_todo` (with `assignee`), `mark_done`, `add_comment`, `get_activity` and `check_item`
+take `S7#12`; `create_todo` takes a shared project as `project` ("S7" or its name) and `assignee`. The other
+tools (subtasks, links, web links, planning) stay on own todos for now. `next_up` ranks in only todos
+assigned to the user by default. JSON answers keep their old shape and add a `shared` key when the account
+is in shared projects.

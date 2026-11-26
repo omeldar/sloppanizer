@@ -41,6 +41,7 @@ import {
   SearchQuery,
   type SearchResult,
   type Me,
+  type Space,
   type Stats,
   type Todo,
   TodoListQuery,
@@ -75,6 +76,10 @@ import {
   occurrenceLine,
   hoursText,
   plannedLine,
+  type SharedNextUp,
+  type SharedRef,
+  type SharedSearch,
+  sharedSearchText,
   statsGroupText,
   recurringLine,
   noteLine,
@@ -86,11 +91,29 @@ import {
   searchText,
   statsLine,
   todoDetail,
+  sharedProjectLine,
   todoLine,
   todoLines,
+  todoRefText,
   topicLine,
   urlLines,
 } from "./format.ts";
+import {
+  AssigneeFilterInput,
+  AssigneeInput,
+  assigneeName,
+  assigneeQuery,
+  findShared,
+  isSharedProjectId,
+  ownMatches,
+  parseTodoRef,
+  refOf,
+  ScopeInput,
+  sharedProjects,
+  placeOf,
+  TodoRefInput,
+  todoTarget,
+} from "./shared-projects.ts";
 
 export interface ToolDeps {
   api: Api;
@@ -212,6 +235,55 @@ async function resolveProject(api: Api, input: number | string): Promise<number 
   return match.id;
 }
 
+/**
+ * A project input of the lists: an own project, or a shared project ("S7", its name or slug). Own
+ * projects win a name clash; "S7" is always the shared one.
+ */
+async function listPlace(
+  api: Api,
+  spaces: readonly Space[],
+  input: number | string | undefined,
+): Promise<{ own?: number | "inbox"; shared?: Space }> {
+  if (input === undefined) return {};
+  if (!isSharedProjectId(input)) {
+    try {
+      return { own: await projectFilter(api, input) };
+    } catch (error) {
+      const shared = findShared(spaces, input);
+      if (shared) return { shared };
+      throw error;
+    }
+  }
+  const shared = findShared(spaces, input);
+  if (!shared) throw new ToolError(`No shared project ${input}. list_projects shows them.`);
+  return { shared };
+}
+
+/** Where create_todo makes the todo: the account (project id or Inbox) or a shared project's project. */
+async function createPlace(
+  api: Api,
+  input: number | string | undefined,
+): Promise<{ api: Api; projectId: number | null | undefined; space?: SharedRef }> {
+  if (input === undefined) return { api, projectId: undefined };
+  let shared: Space | null = null;
+  if (isSharedProjectId(input)) {
+    shared = findShared(await sharedProjects(api), input);
+    if (!shared) throw new ToolError(`No shared project ${input}. list_projects shows them.`);
+  } else {
+    try {
+      return { api, projectId: await projectField(api, input) };
+    } catch (error) {
+      // Not an own project: maybe a shared project's name (only looked up then).
+      shared = findShared(await sharedProjects(api), input);
+      if (!shared) throw error;
+    }
+  }
+  const inSpace = api.inSpace(shared.id);
+  const projects = await inSpace.get<Project[]>("/projects");
+  const project = projects.find((p) => p.slug === shared.projectSlug) ?? null;
+  return { api: inSpace, projectId: project?.id ?? null, space: refOf(shared) };
+}
+
 async function projectFilter(
   api: Api,
   input: number | string | undefined,
@@ -308,6 +380,13 @@ async function openDescendants(api: Api, ids: readonly number[]): Promise<number
   return found;
 }
 
+/** "2 of 5 todos (next page: offset 2):" and the lines. */
+function pageText(data: TodoPage, what: string, c: DateContext, space?: SharedRef): string {
+  const end = data.offset + data.items.length;
+  const more = end < data.total ? ` (next page: offset ${end})` : "";
+  return `${data.items.length} of ${data.total} ${what}${more}:\n${todoLines(data.items, c, "", space)}`;
+}
+
 const out = <T>(fmt: "text" | "json", data: T, text: (data: T) => string): string =>
   fmt === "json" ? JSON.stringify(data) : text(data);
 
@@ -343,24 +422,58 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       description:
         "The ranked list of what to work on next, with the reasons (priority, overdue, due soon, planned, age, untouched). " +
         "Start here when the user asks what to do now or wants help prioritizing. Blocked todos are listed apart. " +
-        "Modes: smart (default, weighs everything), oldest, priority, due.",
+        "Modes: smart (default, weighs everything), oldest, priority, due. Todos assigned to the user in shared " +
+        "projects are ranked in (S7#12, with the project); assignee widens that to others' or unassigned ones.",
       inputSchema: {
         mode: NextQuery.shape.mode.describe("Ranking mode."),
-        project: ProjectInput.optional(),
+        project: ProjectInput.optional().describe(
+          'Project id or slug, "inbox", or a shared project ("S7" or its name).',
+        ),
         labels: Labels("Only todos with all of these labels.").optional(),
+        scope: ScopeInput,
+        assignee: AssigneeFilterInput.describe(
+          'Shared projects: "me" (default), "none", "anyone" or a username. Own todos are ranked for "me" and "anyone".',
+        ),
         limit: NextQuery.shape.limit.unwrap().default(20).describe("How many ranked todos (default 20)."),
         format,
       },
       annotations: READ,
     },
     async (args) => {
-      const next = await api.get<NextUp>("/next", {
-        mode: args.mode,
-        projectId: await projectFilter(api, args.project),
-        label: args.labels,
-        limit: args.limit,
-      });
-      return out(args.format, next, (data) => nextUpText(data, deps.timeZone));
+      const spaces = args.scope === "own" ? [] : await sharedProjects(api);
+      const place = await listPlace(api, spaces, args.project);
+      const assignee = args.assignee ?? "me";
+      const withOwn = args.scope !== "shared" && place.shared === undefined && ownMatches(assignee);
+      const inShared =
+        place.own !== undefined ? [] : place.shared ? [place.shared] : args.scope === "own" ? [] : spaces;
+      const query = { mode: args.mode, label: args.labels, limit: args.limit };
+      const [own, ...shared] = await Promise.all([
+        withOwn
+          ? api.get<NextUp>("/next", { ...query, projectId: place.own })
+          : Promise.resolve<NextUp>({
+              mode: args.mode,
+              today: ctx().today,
+              generatedAt: now().toISOString(),
+              items: [],
+              blocked: [],
+            }),
+        ...inShared.map((space) =>
+          api
+            .inSpace(space.id)
+            .get<NextUp>("/next", { ...query, assignee: assigneeQuery(assignee) })
+            .then((next): SharedNextUp => ({ space: refOf(space), next })),
+        ),
+      ]);
+      const data = own as NextUp;
+      const sharedNext = shared as SharedNextUp[];
+      if (args.format === "json") {
+        return JSON.stringify(
+          sharedNext.length === 0
+            ? data
+            : { ...data, shared: sharedNext.map((s) => ({ ...s.next, space: s.space })) },
+        );
+      }
+      return nextUpText(data, deps.timeZone, sharedNext, args.limit);
     },
   );
 
@@ -371,7 +484,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       description:
         "A snapshot for planning: counts (open, overdue, due today, planned today, inbox, done last 7 days), " +
         "open todos per project, the oldest open todos and the open todos without a priority label. " +
-        "Use it at the start of a planning or review session. Includes today's planned time blocks.",
+        "Use it at the start of a planning or review session. Includes today's planned time blocks and, per " +
+        "shared project, its open count and the open todos assigned to the user.",
       inputSchema: {
         oldest: z.number().int().min(1).max(50).default(10).describe("How many oldest open todos to list."),
         format,
@@ -380,14 +494,23 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     },
     async (args) => {
       const day = ctx().today;
-      const [me, stats, projects, page, plan] = await Promise.all([
+      const [me, stats, projects, page, plan, spaces] = await Promise.all([
         api.get<Me>("/me"),
         api.get<Stats>("/stats"),
         api.get<Project[]>("/projects"),
         api.get<TodoPage>("/todos", { sort: "created", order: "asc", limit: 500 }),
         // Today's planner; an older server without it just leaves the section out.
         api.get<TimeBlock[]>("/blocks", { from: day, to: day }).catch(() => null),
+        sharedProjects(api),
       ]);
+      const shared = await Promise.all(
+        spaces.map(async (space) => ({
+          space,
+          assigned: await api
+            .inSpace(space.id)
+            .get<TodoPage>("/todos", { assignee: "me", sort: "due", order: "asc", limit: 50 }),
+        })),
+      );
       const active = projects.filter((p) => !p.archivedAt);
       const oldest = page.items.slice(0, args.oldest);
       const withoutPriority = page.items.filter((todo) => priorityOf(todo.labels) === null);
@@ -400,6 +523,13 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           withoutPriority,
           activeTotal: page.total,
           plannedToday: plan,
+          shared: shared.map(({ space, assigned }) => ({
+            id: space.id,
+            name: space.name,
+            openCount: space.openCount,
+            assignedToMe: assigned.items,
+            assignedToMeTotal: assigned.total,
+          })),
         });
       }
       const c = ctx();
@@ -417,6 +547,15 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       if (page.total > page.items.length) {
         lines.push(`(only the oldest ${page.items.length} of ${page.total} active todos were checked)`);
       }
+      if (shared.length > 0) {
+        lines.push("", "Shared projects (todos there are S<id>#<n>):");
+        for (const { space, assigned } of shared) {
+          lines.push(
+            `- S${space.id} ${space.name}: ${space.openCount} open, ${assigned.total} assigned to you`,
+            ...assigned.items.map((todo) => `  ${todoLine(todo, c, refOf(space))}`),
+          );
+        }
+      }
       return lines.join("\n");
     },
   );
@@ -428,7 +567,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       description:
         "Search and filter todos. Without a status filter it lists the active ones (open, in progress, blocked). " +
         "Use it to find todos by project, label, person (requester or contact), title text or dates, e.g. before a " +
-        "bulk_update. For a week plan, use plannedFrom/plannedTo; unplanned lists what has no day yet.",
+        "bulk_update. For a week plan, use plannedFrom/plannedTo; unplanned lists what has no day yet. Todos of " +
+        "shared projects the user is a member of follow under their own heading (S7#12, with the assignee); " +
+        "scope and assignee narrow that down.",
       inputSchema: {
         status: z
           .union([z.literal("all"), z.array(TodoStatus).min(1)])
@@ -436,14 +577,20 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           .describe(
             'Statuses to include, e.g. ["open","blocked"], or "all". Default: open, in_progress, blocked.',
           ),
-        project: ProjectInput.optional(),
+        project: ProjectInput.optional().describe(
+          'Project id or slug, "inbox", or a shared project ("S7" or its name).',
+        ),
         labels: Labels("Only todos with all of these labels.").optional(),
+        scope: ScopeInput,
+        assignee: AssigneeFilterInput,
         personId: z
           .number()
           .int()
           .positive()
           .optional()
-          .describe("Only todos linked to this person (as requester unless personRole says otherwise)."),
+          .describe(
+            "Only todos linked to this person (as requester unless personRole says otherwise). Own todos only: people are per account.",
+          ),
         parent: TodoListQuery.shape.parentId.describe(
           'Only the subtasks of this todo id, or "none" for top-level todos only.',
         ),
@@ -469,13 +616,15 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       annotations: READ,
     },
     async (args) => {
-      const page = await api.get<TodoPage>("/todos", {
+      // People and parents are numbered per account: with them the list is about own todos.
+      const ownOnly = args.scope === "own" || args.personId !== undefined || args.parent !== undefined;
+      const spaces = ownOnly ? [] : await sharedProjects(api);
+      const place = await listPlace(api, spaces, args.project);
+      const withOwn = args.scope !== "shared" && place.shared === undefined && ownMatches(args.assignee);
+      const inShared = place.own !== undefined ? [] : place.shared ? [place.shared] : spaces;
+      const query = {
         status: args.status === undefined ? undefined : args.status === "all" ? "all" : args.status,
-        projectId: await projectFilter(api, args.project),
         label: args.labels,
-        personId: args.personId,
-        parentId: args.parent,
-        personRole: args.personRole,
         q: args.q,
         dueBefore: args.dueBefore,
         plannedOn: args.plannedOn,
@@ -486,15 +635,43 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         order: args.order,
         limit: args.limit,
         offset: args.offset,
-      });
-      return out(args.format, page, (data) => {
-        const end = data.offset + data.items.length;
-        const header =
-          data.total === 0
-            ? "No todos match."
-            : `${data.items.length} of ${data.total} todos${end < data.total ? ` (next page: offset ${end})` : ""}:`;
-        return data.total === 0 ? header : `${header}\n${todoLines(data.items, ctx())}`;
-      });
+      };
+      const empty: TodoPage = { items: [], total: 0, limit: args.limit, offset: args.offset ?? 0 };
+      const [page, ...shared] = await Promise.all([
+        withOwn
+          ? api.get<TodoPage>("/todos", {
+              ...query,
+              projectId: place.own,
+              personId: args.personId,
+              parentId: args.parent,
+              personRole: args.personRole,
+            })
+          : Promise.resolve(empty),
+        ...inShared.map((space) =>
+          api
+            .inSpace(space.id)
+            .get<TodoPage>("/todos", { ...query, assignee: assigneeQuery(args.assignee) })
+            .then((sharedPage) => ({ space: refOf(space), page: sharedPage })),
+        ),
+      ]);
+      const own = page as TodoPage;
+      const others = shared as { space: SharedRef; page: TodoPage }[];
+      if (args.format === "json") {
+        // Without shared projects the answer is the plain page, as before.
+        return JSON.stringify(
+          spaces.length === 0 ? own : { ...own, shared: others.map((o) => ({ ...o.page, space: o.space })) },
+        );
+      }
+      const lines: string[] = [];
+      if (withOwn && own.total > 0) lines.push(pageText(own, "todos", ctx()));
+      for (const { space, page: sharedPage } of others) {
+        if (sharedPage.total === 0) continue;
+        if (lines.length > 0) lines.push("");
+        lines.push(
+          pageText(sharedPage, `todos in shared project ${space.name} (S${space.id})`, ctx(), space),
+        );
+      }
+      return lines.length === 0 ? "No todos match." : lines.join("\n");
     },
   );
 
@@ -504,17 +681,19 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       title: "Get todo",
       description:
         "One todo with all details: parent, subtasks, checklist items with their numbers, links (blocks, " +
-        "blocked by, relates to), repeat rule and its Markdown description. Use it before editing a todo's text.",
-      inputSchema: { id: TodoId, format },
+        "blocked by, relates to), repeat rule and its Markdown description. Use it before editing a todo's text. " +
+        "In a shared project also the assignee.",
+      inputSchema: { id: TodoRefInput, format },
       annotations: READ,
     },
     async (args) => {
-      const todo = await api.get<Todo>(`/todos/${args.id}`);
+      const target = await todoTarget(api, args.id);
+      const todo = await target.api.get<Todo>(`/todos/${target.id}`);
       const subtasks =
         todo.progress.subtasks.total === 0
           ? []
           : (
-              await api.get<TodoPage>("/todos", {
+              await target.api.get<TodoPage>("/todos", {
                 parentId: todo.id,
                 status: "all",
                 sort: "position",
@@ -522,7 +701,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
                 limit: 500,
               })
             ).items;
-      return out(args.format, todo, (data) => todoDetail(data, ctx(), subtasks));
+      return out(args.format, todo, (data) => todoDetail(data, ctx(), subtasks, target.space));
     },
   );
 
@@ -534,12 +713,16 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "Add a todo. Without a project it lands in the Inbox. Set a priority with a label like priority::high " +
         "(critical, high, medium, low). requestedBy records who asked for it, contacts who to ask about it; " +
         "names are found or created. parent makes it a subtask; repeat makes it come back (a new todo is " +
-        "created for the next date when it is marked done).",
+        'created for the next date when it is marked done). project can be a shared project ("S7" or its ' +
+        "name): the todo is made there, and assignee gives it to one of its members.",
       inputSchema: {
         title: CreateTodo.shape.title.describe("Short title, what needs doing."),
         description: CreateTodo.shape.descriptionMd.describe("Details in Markdown."),
         status: TodoStatus.optional().describe("Default open."),
-        project: ProjectInput.optional(),
+        project: ProjectInput.optional().describe(
+          'Project id or slug, "inbox", or a shared project ("S7" or its name).',
+        ),
+        assignee: AssigneeInput.optional(),
         dueOn: DateInput("Deadline.").optional(),
         plannedOn: DateInput("Day the user plans to work on it.").optional(),
         labels: Labels("Labels to set.").optional(),
@@ -559,13 +742,15 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       annotations: WRITE,
     },
     async (args) => {
-      const todo = await api.post<Todo>(
+      const where = await createPlace(api, args.project);
+      const todo = await where.api.post<Todo>(
         "/todos",
         compact({
           title: args.title,
           descriptionMd: args.description,
           status: args.status,
-          projectId: await projectField(api, args.project),
+          projectId: where.projectId,
+          assignee: await assigneeName(api, args.assignee),
           dueOn: args.dueOn,
           plannedOn: args.plannedOn,
           labels: args.labels,
@@ -576,7 +761,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           urls: args.links,
         }),
       );
-      return out(args.format, todo, (data) => `Created ${todoLine(data, ctx())}`);
+      return out(args.format, todo, (data) => `Created ${todoLine(data, ctx(), where.space)}`);
     },
   );
 
@@ -588,9 +773,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "Change one todo: title, description, status (open, in_progress, blocked, done), project, dates, labels, " +
         "requested by, contacts. labels/requestedBy/contacts replace the full set; the add*/remove* fields " +
         "change only those (e.g. addContacts adds a colleague to ask). parent moves it under another todo " +
-        "(null: top level again); repeat sets or stops (null) the repeat rule. Send only what changes.",
+        "(null: top level again); repeat sets or stops (null) the repeat rule. Send only what changes. In a " +
+        'shared project (S7#12) assignee gives it to a member ("me" or a username) or null unassigns it.',
       inputSchema: {
-        id: TodoId,
+        id: TodoRefInput,
+        assignee: AssigneeInput.optional(),
         title: UpdateTodo.shape.title,
         description: UpdateTodo.shape.descriptionMd.describe("New Markdown description (replaces it)."),
         status: TodoStatus.optional(),
@@ -617,13 +804,15 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       annotations: { ...WRITE, idempotentHint: true },
     },
     async (args) => {
-      const todo = await api.patch<Todo>(
-        `/todos/${args.id}`,
+      const target = await todoTarget(api, args.id);
+      const todo = await target.api.patch<Todo>(
+        `/todos/${target.id}`,
         compact({
           title: args.title,
           descriptionMd: args.description,
           status: args.status,
-          projectId: await projectField(api, args.project),
+          projectId: await projectField(target.api, args.project),
+          assignee: await assigneeName(api, args.assignee),
           dueOn: args.dueOn,
           plannedOn: args.plannedOn,
           labels: args.labels,
@@ -639,7 +828,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           recurrence: args.repeat,
         }),
       );
-      return out(args.format, todo, (data) => `Updated ${todoLine(data, ctx())}`);
+      return out(args.format, todo, (data) => `Updated ${todoLine(data, ctx(), target.space)}`);
     },
   );
 
@@ -691,27 +880,61 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       description:
         "Mark one or more todos done; the result shows how long each took and the next occurrence of a " +
         "repeating todo. withSubtasks also marks their open subtasks done. To reopen, use update_todo with " +
-        "status open.",
+        "status open. Todos of shared projects (S7#12) work too, also mixed with own ones.",
       inputSchema: {
-        ids: TodoIds,
+        ids: z
+          .array(TodoRefInput)
+          .min(1)
+          .max(200)
+          .describe('Todos (1 to 200): numbers for own todos, "S7#12" for shared projects.'),
         withSubtasks: z.boolean().default(false).describe("Also mark the open subtasks (all levels) done."),
         format,
       },
       annotations: { ...WRITE, idempotentHint: true },
     },
     async (args) => {
-      const ids = args.withSubtasks
-        ? [...new Set([...args.ids, ...(await openDescendants(api, args.ids))])]
-        : args.ids;
-      if (ids.length > 200) {
-        throw new ToolError(`With their subtasks these are ${ids.length} todos; mark at most 200 at once.`);
+      // One bulk call per place: the account itself and each shared project named.
+      const groups = new Map<number | null, number[]>();
+      for (const input of args.ids) {
+        const { spaceId, id } = parseTodoRef(input);
+        const list = groups.get(spaceId) ?? [];
+        if (!list.includes(id)) list.push(id);
+        groups.set(spaceId, list);
       }
-      const result = await api.post<BulkUpdateResult>("/todos/bulk", { ids, patch: { status: "done" } });
-      const nextRefs = result.updated.flatMap((todo) => (todo.nextOccurrence ? [todo.nextOccurrence] : []));
-      const next = await Promise.all(nextRefs.map((ref) => api.get<Todo>(`/todos/${ref.id}`)));
-      return out(args.format, { ...result, nextOccurrences: next }, (data) => {
-        const lines = [`Done:`, todoLines(data.updated, ctx())];
-        if (next.length > 0) lines.push("Next occurrence:", todoLines(next, ctx()));
+      const places = await Promise.all(
+        [...groups].map(async ([spaceId, ids]) => {
+          const target = await placeOf(api, spaceId);
+          const all = args.withSubtasks
+            ? [...new Set([...ids, ...(await openDescendants(target.api, ids))])]
+            : ids;
+          return { target, ids: all };
+        }),
+      );
+      const count = places.reduce((n, p) => n + p.ids.length, 0);
+      if (count > 200) {
+        throw new ToolError(`With their subtasks these are ${count} todos; mark at most 200 at once.`);
+      }
+      const results = await Promise.all(
+        places.map(async ({ target, ids }) => {
+          const result = await target.api.post<BulkUpdateResult>("/todos/bulk", {
+            ids,
+            patch: { status: "done" },
+          });
+          const nextRefs = result.updated.flatMap((todo) =>
+            todo.nextOccurrence ? [todo.nextOccurrence] : [],
+          );
+          const next = await Promise.all(nextRefs.map((ref) => target.api.get<Todo>(`/todos/${ref.id}`)));
+          return { space: target.space, updated: result.updated, next };
+        }),
+      );
+      const updated = results.flatMap((r) => r.updated);
+      const next = results.flatMap((r) => r.next);
+      return out(args.format, { updated, nextOccurrences: next }, () => {
+        const lines = [`Done:`, ...results.map((r) => todoLines(r.updated, ctx(), "", r.space))];
+        if (next.length > 0) {
+          lines.push("Next occurrence:");
+          for (const r of results) if (r.next.length > 0) lines.push(todoLines(r.next, ctx(), "", r.space));
+        }
         return lines.join("\n");
       });
     },
@@ -750,7 +973,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "Tick or untick one checklist item (a Markdown task list line like - [ ] Order cables) in a todo's " +
         "description. get_todo lists the items with their numbers. Only that one item changes.",
       inputSchema: {
-        todo: TodoId,
+        todo: TodoRefInput,
         item: z
           .union([z.number().int().min(0), z.string().trim().min(1)])
           .describe("The item number from get_todo, or its exact text."),
@@ -760,9 +983,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       annotations: { ...WRITE, idempotentHint: true },
     },
     async (args) => {
-      const current = await api.get<Todo>(`/todos/${args.todo}`);
+      const target = await todoTarget(api, args.todo);
+      const name = todoRefText(target.id, target.space);
+      const current = await target.api.get<Todo>(`/todos/${target.id}`);
       const items = parseChecklist(current.descriptionMd);
-      if (items.length === 0) throw new ToolError(`#${args.todo} has no checklist in its description.`);
+      if (items.length === 0) throw new ToolError(`${name} has no checklist in its description.`);
       const wanted = args.item;
       let matches: ChecklistItem[];
       if (typeof wanted === "number") {
@@ -779,10 +1004,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         const problem =
           matches.length > 1
             ? `Several items read "${String(wanted)}"; pass the number.`
-            : `No item ${typeof wanted === "number" ? wanted : `"${wanted}"`} on #${args.todo}.`;
+            : `No item ${typeof wanted === "number" ? wanted : `"${wanted}"`} on ${name}.`;
         throw new ToolError([problem, "The checklist reads:", ...items.map(checklistLine)].join("\n"));
       }
-      const todo = await api.post<Todo>(`/todos/${args.todo}/checklist`, {
+      const todo = await target.api.post<Todo>(`/todos/${target.id}/checklist`, {
         index: item.index,
         checked: args.checked,
         text: item.text,
@@ -790,7 +1015,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       return out(
         args.format,
         todo,
-        (data) => `${args.checked ? "Checked" : "Unchecked"} "${item.text}" on ${todoLine(data, ctx())}`,
+        (data) =>
+          `${args.checked ? "Checked" : "Unchecked"} "${item.text}" on ${todoLine(data, ctx(), target.space)}`,
       );
     },
   );
@@ -846,7 +1072,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     {
       title: "List projects",
       description:
-        "Projects with id, slug, name and number of open todos. Slugs work wherever a project is asked for.",
+        "Projects with id, slug, name and number of open todos. Slugs work wherever a project is asked for. " +
+        "Then the shared projects the user is a member of (S7), with their members (the usernames assignee takes).",
       inputSchema: {
         includeArchived: z.boolean().default(false).describe("Also list archived projects."),
         format,
@@ -854,11 +1081,18 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       annotations: READ,
     },
     async (args) => {
-      const all = await api.get<Project[]>("/projects");
+      const [all, spaces] = await Promise.all([api.get<Project[]>("/projects"), sharedProjects(api)]);
       const projects = args.includeArchived ? all : all.filter((p) => !p.archivedAt);
-      return out(args.format, projects, (data) =>
-        data.length === 0 ? "No projects yet. create_project adds one." : data.map(projectLine).join("\n"),
-      );
+      if (args.format === "json") {
+        // The plain list, as before, when there is nothing shared.
+        return JSON.stringify(spaces.length === 0 ? projects : { projects, shared: spaces });
+      }
+      const lines =
+        projects.length === 0 ? ["No projects yet. create_project adds one."] : projects.map(projectLine);
+      if (spaces.length > 0) {
+        lines.push("", "Shared projects (todos there are S<id>#<n>):", ...spaces.map(sharedProjectLine));
+      }
+      return lines.join("\n");
     },
   );
 
@@ -1148,20 +1382,22 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "The thread of one todo, oldest first: every change (status, labels, people, dates, ...) and every " +
         "comment with its text, one line each with local time and who did it.",
       inputSchema: {
-        todo: TodoId,
+        todo: TodoRefInput,
         limit: z.number().int().min(1).max(2000).optional().describe("Only the newest N items."),
         format,
       },
       annotations: READ,
     },
     async (args) => {
-      const activity = await api.get<Activity>(`/todos/${args.todo}/activity`);
+      const target = await todoTarget(api, args.todo);
+      const activity = await target.api.get<Activity>(`/todos/${target.id}/activity`);
       const items = args.limit === undefined ? activity.items : activity.items.slice(-args.limit);
+      const name = todoRefText(activity.todoId, target.space);
       return out(args.format, { ...activity, items }, (data) => {
-        if (data.items.length === 0) return `#${data.todoId} has no activity yet.`;
+        if (data.items.length === 0) return `${name} has no activity yet.`;
         const shown = items.length < activity.items.length ? `, the newest ${items.length}` : "";
         return [
-          `#${data.todoId} activity (${activity.items.length} items${shown}):`,
+          `${name} activity (${activity.items.length} items${shown}):`,
           ...data.items.map((item) => activityLine(item, deps.timeZone)),
         ].join("\n");
       });
@@ -1176,18 +1412,19 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "Add a comment to a todo's thread (Markdown), e.g. a status update or what was found out. It is signed " +
         "with this connection's name. #123 in the text links to todo 123.",
       inputSchema: {
-        todo: TodoId,
+        todo: TodoRefInput,
         text: CreateComment.shape.bodyMd.describe("The comment in Markdown."),
         format,
       },
       annotations: WRITE,
     },
     async (args) => {
-      const comment = await api.post<Comment>(`/todos/${args.todo}/comments`, { bodyMd: args.text });
+      const target = await todoTarget(api, args.todo);
+      const comment = await target.api.post<Comment>(`/todos/${target.id}/comments`, { bodyMd: args.text });
       return out(
         args.format,
         comment,
-        (data) => `Added comment ${data.id} to #${data.todoId} as ${data.actor}.`,
+        (data) => `Added comment ${data.id} to ${todoRefText(data.todoId, target.space)} as ${data.actor}.`,
       );
     },
   );
@@ -1198,22 +1435,49 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       title: "Search",
       description:
         "Full-text search over todos (title and description), notes, comments and people (name, team, email, " +
-        "topics). Ignores case and accents. #123 finds todo 123 first. Results are grouped by kind with snippets.",
+        "topics). Ignores case and accents. #123 finds todo 123 first. Results are grouped by kind with snippets. " +
+        "Todos and comments of the shared projects the user is a member of follow per project (S7#12).",
       inputSchema: {
         q: SearchQuery.shape.q.describe("Words to find; all of them must match."),
         kinds: z.array(SearchKind).min(1).optional().describe("Only these kinds (default all)."),
         limit: SearchQuery.shape.limit.unwrap().default(10).describe("Hits per kind (default 10)."),
+        scope: ScopeInput,
         format,
       },
       annotations: READ,
     },
     async (args) => {
-      const result = await api.get<SearchResult>("/search", {
-        q: args.q,
-        kinds: args.kinds,
-        limit: args.limit,
-      });
-      return out(args.format, result, searchText);
+      // In shared projects only todos and comments: their notes and people are not reachable by the tools.
+      const sharedKinds = (args.kinds ?? ["todo", "comment"]).filter((k) => k === "todo" || k === "comment");
+      const spaces = args.scope === "own" || sharedKinds.length === 0 ? [] : await sharedProjects(api);
+      const query = { q: args.q, limit: args.limit };
+      const [result, ...shared] = await Promise.all([
+        args.scope === "shared"
+          ? Promise.resolve(null)
+          : api.get<SearchResult>("/search", { ...query, kinds: args.kinds }),
+        ...spaces.map((space) =>
+          api
+            .inSpace(space.id)
+            .get<SearchResult>("/search", { ...query, kinds: sharedKinds })
+            .then((found): SharedSearch => ({ space: refOf(space), result: found })),
+        ),
+      ]);
+      const own = result as SearchResult | null;
+      const others = shared as SharedSearch[];
+      if (args.format === "json") {
+        return JSON.stringify(
+          spaces.length === 0 && own
+            ? own
+            : { ...own, shared: others.map((o) => ({ ...o.result, space: o.space })) },
+        );
+      }
+      const sharedText = sharedSearchText(others);
+      if (!own)
+        return sharedText.trim() === ""
+          ? `Nothing found for "${args.q}" in shared projects.`
+          : sharedText.trim();
+      const ownText = searchText(own);
+      return sharedText === "" ? ownText : `${ownText}\n${sharedText}`;
     },
   );
 

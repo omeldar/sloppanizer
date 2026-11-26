@@ -36,6 +36,8 @@ const UsersQuery = z.strictObject({
 export function spaceRoutes(app: App, deps: Deps, config: Config): void {
   const tags = ["shared projects"];
   const session = { access: "session" as const };
+  /** Listing works with API tokens too (read), so MCP clients find the shared projects to read in. */
+  const readable = { access: "auto" as const };
   /** The caller's own account row (never a space: these routes are refused inside one). */
   const me = (request: Parameters<typeof authOf>[0]): AccountRow => {
     const auth = authOf(request);
@@ -47,7 +49,7 @@ export function spaceRoutes(app: App, deps: Deps, config: Config): void {
   app.get(
     `${API_PREFIX}/spaces`,
     {
-      config: session,
+      config: readable,
       schema: { tags, summary: "Shared projects you can open", response: { 200: z.array(Space) } },
     },
     async (request) => listSpaces(deps.db, deps.clock, me(request)),
@@ -63,7 +65,7 @@ export function spaceRoutes(app: App, deps: Deps, config: Config): void {
   );
   app.get(
     `${API_PREFIX}/spaces/:id`,
-    { config: session, schema: { tags, params: IdParams, response: { 200: Space } } },
+    { config: readable, schema: { tags, params: IdParams, response: { 200: Space } } },
     async (request) => getSpace(deps.db, deps.clock, me(request), request.params.id),
   );
   app.patch(
@@ -113,7 +115,14 @@ export function spaceRoutes(app: App, deps: Deps, config: Config): void {
       },
     },
     async (request, reply) => {
-      removeSpaceMember(deps.db, config, me(request), request.params.id, request.params.accountId);
+      removeSpaceMember(
+        deps.db,
+        config,
+        deps.clock,
+        me(request),
+        request.params.id,
+        request.params.accountId,
+      );
       return reply.status(204).send();
     },
   );

@@ -54,6 +54,7 @@ export function ctxOf(request: { auth: Auth | null }, deps: Deps): Ctx {
     clock: deps.clock,
     timeZone: isValidTimeZone(zone) ? zone : deps.fallbackTimeZone,
     accountId: auth.accountId,
+    callerId: auth.space?.memberId ?? auth.account.id,
   };
 }
 

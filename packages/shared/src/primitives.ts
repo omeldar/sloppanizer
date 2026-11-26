@@ -64,6 +64,7 @@ export const EVENT_KINDS = [
   "checklist_changed",
   "recurrence_changed",
   "recurred",
+  "assignee_changed",
 ] as const;
 export const EventKind = z.enum(EVENT_KINDS);
 export type EventKind = z.infer<typeof EventKind>;

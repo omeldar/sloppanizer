@@ -25,6 +25,17 @@ export type ProjectFilter = z.infer<typeof ProjectFilter>;
 export const StatusFilter = z.union([z.literal("all"), commaList(TodoStatus)]).default([...ACTIVE_STATUSES]);
 export type StatusFilter = z.infer<typeof StatusFilter>;
 
+/**
+ * `assignee` filter (todos in shared projects): "me" (the caller), "none" (unassigned) or a username.
+ * Todos outside shared projects have no assignee, so "me" or a username matches none of them.
+ */
+export const AssigneeFilter = z.union([
+  z.literal("me"),
+  z.literal("none"),
+  z.string().trim().toLowerCase().min(1).max(32),
+]);
+export type AssigneeFilter = z.infer<typeof AssigneeFilter>;
+
 export const TODO_SORTS = ["created", "updated", "due", "priority", "position"] as const;
 
 export const TodoListQuery = z
@@ -38,6 +49,7 @@ export const TodoListQuery = z
     parentId: z.union([z.literal("none"), IdParam]).optional(),
     /** How personId is linked: requester (default, the step 1 meaning), contact or any. */
     personRole: z.enum([...PersonRole.options, "any"]).default("requester"),
+    assignee: AssigneeFilter.optional(),
     /** Title substring for now. */
     q: z.string().trim().max(200).optional(),
     dueBefore: CalendarDate.optional(),
@@ -69,6 +81,7 @@ export const NextQuery = z.strictObject({
   mode: NextMode.default("smart"),
   projectId: ProjectFilter.optional(),
   label: commaList(LabelName).optional(),
+  assignee: AssigneeFilter.optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 export type NextQuery = z.infer<typeof NextQuery>;

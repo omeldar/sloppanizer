@@ -225,6 +225,11 @@ export const todos = sqliteTable(
     recurrence: text("recurrence"),
     /** The occurrence this todo was created from when the previous one was marked done. */
     recurrencePrevId: integer("recurrence_prev_id"),
+    /**
+     * In a shared project (the account is a space): the member the todo is assigned to. The services
+     * only set members of the space and clear it when the member leaves; deleting the account clears it.
+     */
+    assigneeId: integer("assignee_id").references(() => accounts.id, { onDelete: "set null" }),
   },
   (t) => [
     primaryKey({ columns: [t.accountId, t.id] }),
@@ -252,6 +257,8 @@ export const todos = sqliteTable(
     index("todos_created_idx").on(t.accountId, t.createdAt),
     // The standup list's first filter: todos with activity since the window start.
     index("todos_activity_idx").on(t.accountId, t.lastActivityAt),
+    // "Assigned to me" across shared projects, and clearing a member's todos when they leave.
+    index("todos_assignee_idx").on(t.assigneeId, t.accountId),
     // One next occurrence per todo, also against double clicks and races.
     uniqueIndex("todos_recurrence_prev_idx")
       .on(t.accountId, t.recurrencePrevId)

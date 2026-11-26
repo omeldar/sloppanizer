@@ -6,6 +6,7 @@ import { getAccount, toAuthAccount } from "../services/accounts.ts";
 import { isPublicOAuthPath } from "../routes/oauth.ts";
 import { looksLikeAccessToken, readAccessToken } from "../services/auth/access-token.ts";
 import type { AuthServices } from "../services/auth/index.ts";
+import { localLoginEnded, localLoginEndedMessage } from "../services/auth/omeldar.ts";
 import { useSession } from "../services/auth/sessions.ts";
 import { memberName, openSpace } from "../services/spaces.ts";
 import type { Auth } from "../services/context.ts";
@@ -52,6 +53,12 @@ declare module "fastify" {
   interface FastifyContextConfig {
     /** Sloppanizer's own sign-in (login, sign-up, credentials): 410 with SLOPPANIZER_AUTH=oidc. */
     localSignIn?: boolean;
+    /**
+     * Starts a session or an account with Sloppanizer's own credentials (login, sign-up, setup, reset):
+     * 410 also once SLOPPANIZER_LOCAL_LOGIN_UNTIL has passed. Credential changes and "confirm it is you"
+     * keep working for sessions that are still open, so they can still move to omeldar.
+     */
+    localLogin?: boolean;
     access?: Access;
     /** Needs a full sign-in within the last 10 minutes (403 reauth_required otherwise). */
     reauth?: boolean;
@@ -173,8 +180,9 @@ export function allowedInSpace(route: string | undefined, method: string): boole
 }
 
 /**
- * Scopes a request to a shared project: a browser session of a member, on a route that works there.
- * The account becomes the space's; the actor is the member's name, so the history says who did it.
+ * Scopes a request to a shared project: a member (browser session, or an API token of the member's own
+ * account, with the token's scope), on a route that works there. The account becomes the space's; the
+ * actor is the member's name, so the history says who did it.
  */
 function enterSpace(
   db: Db,
@@ -184,13 +192,6 @@ function enterSpace(
 ): { auth: Auth } | { status: 403 | 404; code: "forbidden" | "not_found"; message: string } {
   const raw = Array.isArray(header) ? header[0] : header;
   const id = raw !== undefined && /^[1-9]\d{0,9}$/.test(raw) ? Number(raw) : null;
-  if (auth.via !== "session") {
-    return {
-      status: 403,
-      code: "forbidden",
-      message: "Shared projects work from the Sloppanizer web app only.",
-    };
-  }
   if (!allowedInSpace(request.routeOptions.url, request.method)) {
     return { status: 403, code: "forbidden", message: "This is not available inside a shared project." };
   }
@@ -207,7 +208,8 @@ function enterSpace(
     auth: {
       ...auth,
       accountId: opened.space.id,
-      actor: memberName(member),
+      // A token (an MCP client, a script) acts for its member: "Anna Berg via assistant".
+      actor: auth.via === "token" ? `${memberName(member)} via ${auth.actor}` : memberName(member),
       space: { id: opened.space.id, role: opened.role, memberId: member.id },
     },
   };
@@ -263,6 +265,12 @@ export function registerSecurity(app: FastifyInstance, options: SecurityOptions)
             'Sign-in and account security moved to auth.omeldar.com. Use "Sign in with omeldar".',
           ),
         );
+    }
+    if (
+      request.routeOptions.config.localLogin &&
+      localLoginEnded(config.omeldar, options.clock().getTime())
+    ) {
+      return reply.status(410).send(errorBody("gone", localLoginEndedMessage(config.omeldar)));
     }
     if (access === "public") return;
 

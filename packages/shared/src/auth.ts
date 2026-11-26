@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { isValidTimeZone } from "./dates.ts";
 import { DateFormat, Region, TimeFormat } from "./formats.ts";
-import { Id, PROJECT_COLORS, Timestamp } from "./primitives.ts";
+import { CalendarDate, Id, PROJECT_COLORS, Timestamp } from "./primitives.ts";
 
 /**
  * Accounts, sign-in and the admin dashboard. Every account signs in with a password plus an authenticator
@@ -146,6 +146,7 @@ export const ADMIN_ACTIONS = [
   "backup",
   "setup_admin",
   "make_admin",
+  "move_signin",
 ] as const;
 export const AdminAction = z.enum(ADMIN_ACTIONS);
 export type AdminAction = z.infer<typeof AdminAction>;
@@ -405,6 +406,11 @@ export const AuthConfig = z.strictObject({
       accountUrl: z.string(),
     })
     .nullable(),
+  /**
+   * When Sloppanizer's own login stops (SLOPPANIZER_LOCAL_LOGIN_UNTIL, "both" only): the day, and the
+   * instant it starts. Null or missing (a server from before it): no end.
+   */
+  localLoginEnds: z.strictObject({ on: CalendarDate, at: Timestamp }).nullable().optional(),
 });
 export type AuthConfig = z.infer<typeof AuthConfig>;
 

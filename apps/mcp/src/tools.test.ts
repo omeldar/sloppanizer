@@ -8,6 +8,7 @@ import type {
   Note,
   Person,
   Project,
+  Space,
   Standup,
   StandupItem,
   Todo,
@@ -26,26 +27,38 @@ interface Call {
   path: string;
   query?: Record<string, unknown>;
   body?: unknown;
+  /** The shared project the call went to (Api.inSpace). */
+  space?: number;
 }
 
 type Handler = (call: Call) => unknown;
 
+/**
+ * The account's shared projects, as GET /spaces lists them, are answered here unless the handler
+ * answers them itself: none, and the call is not recorded, so tests about own todos see their own calls.
+ */
 function fakeApi(handler: Handler): { api: Api; calls: Call[] } {
   const calls: Call[] = [];
   const run = async (call: Call) => {
+    const answer = handler(call);
+    if (call.path === "/spaces" && call.space === undefined && answer === undefined) return [];
     calls.push(call);
-    return handler(call);
+    return answer;
   };
-  const api: Api = {
-    get: async (path, query) =>
-      run({ method: "GET", path, query: query as Record<string, unknown> }) as never,
-    post: async (path, body) => run({ method: "POST", path, body }) as never,
-    patch: async (path, body) => run({ method: "PATCH", path, body }) as never,
-    delete: async (path, query) => {
-      await run({ method: "DELETE", path, query: query as Record<string, unknown> });
-    },
+  const make = (space?: number): Api => {
+    const where = space === undefined ? {} : { space };
+    return {
+      get: async (path, query) =>
+        run({ method: "GET", path, query: query as Record<string, unknown>, ...where }) as never,
+      post: async (path, body) => run({ method: "POST", path, body, ...where }) as never,
+      patch: async (path, body) => run({ method: "PATCH", path, body, ...where }) as never,
+      delete: async (path, query) => {
+        await run({ method: "DELETE", path, query: query as Record<string, unknown>, ...where });
+      },
+      inSpace: (id) => make(id),
+    };
   };
-  return { api, calls };
+  return { api: make(), calls };
 }
 
 const clients: Client[] = [];
@@ -138,6 +151,7 @@ function todo(overrides: Partial<Todo> = {}): Todo {
     recurrence: null,
     previousOccurrenceId: null,
     nextOccurrence: null,
+    assignee: null,
     ...overrides,
   };
 }
@@ -1125,5 +1139,199 @@ describe("meeting tools", () => {
       "Weeks:",
       "- 09.11.2026: worked 4.5 h, meetings 0.5 h, 3 created, 2 done",
     ]);
+  });
+});
+
+describe("shared projects", () => {
+  const space: Space = {
+    id: 7,
+    name: "Home move",
+    color: "#4C9AFF",
+    system: null,
+    projectSlug: "home-move",
+    openCount: 2,
+    role: "owner",
+    members: [
+      { accountId: 1, username: "anna", name: "Anna Berg", role: "owner" },
+      { accountId: 2, username: "bobo", name: "bobo", role: "member" },
+    ],
+    createdAt: at,
+  };
+  const bo = { accountId: 2, username: "bobo", name: "bobo" };
+  const moveProject = { id: 1, slug: "home-move", name: "Home move", color: "#4C9AFF" };
+  const van = todo({ id: 3, title: "Book van", projectId: 1, project: moveProject, assignee: bo });
+  const me = { actor: "planner", via: "token", scope: "write", account: { id: 1, username: "anna" } };
+  const nextOf = (items: { todo: Todo; score: number }[]) => ({
+    mode: "smart",
+    today: "2026-11-11",
+    generatedAt: at,
+    items: items.map((i) => ({ ...i, reasons: [] })),
+    blocked: [],
+  });
+
+  it("list_todos adds each shared project's todos under their own heading, with S7#n and the assignee", async () => {
+    const { call, calls } = await connect(({ path, space: inSpace }) => {
+      if (path === "/spaces") return [space];
+      if (path === "/todos") return page(inSpace === 7 ? [van] : [todo()]);
+      return undefined;
+    });
+    const result = await call("list_todos", {});
+    expect(calls.map((c) => [c.path, c.space, c.query?.assignee])).toEqual([
+      ["/spaces", undefined, undefined],
+      ["/todos", undefined, undefined],
+      ["/todos", 7, undefined],
+    ]);
+    expect(result.text).toContain("1 of 1 todos:\n#142 open | Open port 443");
+    expect(result.text).toContain(
+      "1 of 1 todos in shared project Home move (S7):\nS7#3 open | Book van | shared Home move | assigned to bobo",
+    );
+  });
+
+  it("list_todos with an assignee other than me leaves own todos out; scope own never asks the projects", async () => {
+    const { call, calls } = await connect(({ path }) => (path === "/spaces" ? [space] : page([])));
+    expect((await call("list_todos", { assignee: "bobo" })).text).toBe("No todos match.");
+    expect(calls.map((c) => [c.path, c.space, c.query?.assignee])).toEqual([
+      ["/spaces", undefined, undefined],
+      ["/todos", 7, "bobo"],
+    ]);
+    calls.length = 0;
+    await call("list_todos", { scope: "own" });
+    expect(calls.map((c) => c.path)).toEqual(["/todos"]);
+    calls.length = 0;
+    await call("list_todos", { project: "S7", assignee: "me" });
+    expect(calls.map((c) => [c.path, c.space, c.query?.assignee])).toEqual([
+      ["/spaces", undefined, undefined],
+      ["/todos", 7, "me"],
+    ]);
+  });
+
+  it("get_todo and update_todo take S7#3, go to that project and resolve assignee me", async () => {
+    const { call, calls } = await connect(({ path, method }) => {
+      if (path === "/spaces/7") return space;
+      if (path === "/me") return me;
+      if (path === "/todos/3")
+        return method === "PATCH"
+          ? { ...van, assignee: { ...bo, username: "anna", name: "Anna Berg" } }
+          : van;
+      return undefined;
+    });
+    const detail = await call("get_todo", { id: "S7#3" });
+    expect(detail.text).toContain("S7#3 open | Book van");
+    expect(detail.text).toContain("In shared project Home move (S7)");
+    expect(detail.text).toContain("Assigned to bobo (bobo).");
+    const updated = await call("update_todo", { id: "s7#3", assignee: "me" });
+    expect(updated.text).toContain("Updated S7#3 open | Book van | shared Home move | assigned to Anna Berg");
+    const patch = calls.find((c) => c.method === "PATCH");
+    expect(patch).toEqual({ method: "PATCH", path: "/todos/3", body: { assignee: "anna" }, space: 7 });
+    // null clears it, without asking who "me" is.
+    calls.length = 0;
+    await call("update_todo", { id: "S7#3", assignee: null });
+    expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ assignee: null });
+    expect(calls.some((c) => c.path === "/me")).toBe(false);
+  });
+
+  it("says when the shared project is not one of the account's", async () => {
+    const { call } = await connect(({ path }) => {
+      if (path === "/spaces/9") throw new ApiError(404, "not_found", "no");
+      return undefined;
+    });
+    const result = await call("get_todo", { id: "S9#1" });
+    expect(result.isError).toBe(true);
+    expect(result.text).toBe("There is no shared project S9 you are a member of. list_projects shows them.");
+  });
+
+  it("next_up ranks todos assigned to the user in shared projects in with the own ones", async () => {
+    const { call, calls } = await connect(({ path, space: inSpace }) => {
+      if (path === "/spaces") return [space];
+      if (path === "/next")
+        return inSpace === 7 ? nextOf([{ todo: van, score: 50 }]) : nextOf([{ todo: todo(), score: 20 }]);
+      return undefined;
+    });
+    const result = await call("next_up", {});
+    expect(calls.find((c) => c.space === 7)?.query?.assignee).toBe("me");
+    expect(result.text).toContain(
+      "1. S7#3 open | Book van | shared Home move | assigned to bobo | open 41d | score 50",
+    );
+    expect(result.text).toContain("2. #142 open | Open port 443");
+  });
+
+  it("create_todo in a shared project uses its project and the assignee", async () => {
+    const { call, calls } = await connect(({ path, space: inSpace }) => {
+      if (path === "/spaces") return [space];
+      if (path === "/projects")
+        return inSpace === 7 ? [{ ...homelab, id: 1, slug: "home-move", name: "Home move" }] : [homelab];
+      if (path === "/todos") return van;
+      return undefined;
+    });
+    const result = await call("create_todo", { title: "Book van", project: "Home move", assignee: "bobo" });
+    expect(result.text).toBe("Created S7#3 open | Book van | shared Home move | assigned to bobo | open 41d");
+    expect(calls.find((c) => c.method === "POST")).toEqual({
+      method: "POST",
+      path: "/todos",
+      body: { title: "Book van", projectId: 1, assignee: "bobo" },
+      space: 7,
+    });
+  });
+
+  it("mark_done marks own and shared todos, one bulk call per place", async () => {
+    const { call, calls } = await connect(({ path, space: inSpace, body }) => {
+      if (path === "/spaces/7") return space;
+      if (path === "/todos/bulk") {
+        const ids = (body as { ids: number[] }).ids;
+        return {
+          updated: ids.map((id) =>
+            todo(
+              inSpace === 7
+                ? { id, status: "done", title: "Book van", project: moveProject, assignee: bo }
+                : { id, status: "done" },
+            ),
+          ),
+        };
+      }
+      return undefined;
+    });
+    const result = await call("mark_done", { ids: [142, "S7#3", "#143"] });
+    expect(
+      calls.filter((c) => c.path === "/todos/bulk").map((c) => [c.space, (c.body as { ids: number[] }).ids]),
+    ).toEqual([
+      [undefined, [142, 143]],
+      [7, [3]],
+    ]);
+    expect(result.text).toContain("S7#3 done | Book van");
+  });
+
+  it("search adds the todo and comment hits of each shared project", async () => {
+    const hit = {
+      kind: "todo",
+      id: 3,
+      title: "Book van",
+      snippet: "Book van",
+      highlights: [],
+      todoId: 3,
+      status: "open",
+      subtitle: null,
+    };
+    const { call, calls } = await connect(({ path, space: inSpace }) => {
+      if (path === "/spaces") return [space];
+      if (path === "/search") {
+        return inSpace === 7
+          ? { q: "van", items: [hit], counts: { todo: 1, note: 0, comment: 0, person: 0 } }
+          : { q: "van", items: [], counts: { todo: 0, note: 0, comment: 0, person: 0 } };
+      }
+      return undefined;
+    });
+    const result = await call("search", { q: "van" });
+    expect(calls.find((c) => c.space === 7)?.query?.kinds).toEqual(["todo", "comment"]);
+    expect(result.text).toBe(
+      'Nothing found for "van".\n\nIn shared project Home move (S7):\nS7#3 open | Book van',
+    );
+  });
+
+  it("list_projects lists the shared projects with their members", async () => {
+    const { call } = await connect(({ path }) => (path === "/spaces" ? [space] : [homelab]));
+    const result = await call("list_projects", {});
+    expect(result.text).toContain(
+      "S7 Home move | 2 open | you: owner | members: anna (Anna Berg, owner), bobo",
+    );
   });
 });

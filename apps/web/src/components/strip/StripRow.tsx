@@ -10,8 +10,19 @@ import { hasFacts, TodoFacts } from "./TodoFacts.tsx";
 /** Matches --t-collapse: the row folds away, then the change is sent. */
 export const COLLAPSE_MS = 180;
 
+/**
+ * Where a todo from a shared project came from, when a list of your own shows it ("Assigned to you"):
+ * the badge names the project, and the title opens the todo in that project's tab.
+ */
+export interface StripSource {
+  name: string;
+  color: string;
+  href: string;
+}
+
 export interface StripRowProps {
   todo: Todo;
+  source?: StripSource;
   selected?: boolean;
   /** Next up: position in the ranking (1 is framed as "next"). */
   rank?: number;
@@ -28,6 +39,7 @@ export interface StripRowProps {
 
 export function StripRow({
   todo,
+  source,
   selected = false,
   rank,
   reasons,
@@ -97,27 +109,51 @@ export function StripRow({
           type="checkbox"
           checked={done || collapsing}
           onChange={toggle}
-          aria-label={done ? `Reopen #${todo.id}` : `Mark #${todo.id} done`}
+          aria-label={
+            // A shared project numbers its todos on its own: #3 there is not your #3.
+            source
+              ? `${done ? "Reopen" : "Mark"} "${todo.title}"${done ? "" : " done"}`
+              : done
+                ? `Reopen #${todo.id}`
+                : `Mark #${todo.id} done`
+          }
         />
       </span>
-      <span className={styles.id}>#{todo.id}</span>
+      <span className={styles.id}>{source ? "" : `#${todo.id}`}</span>
       <span className={styles.main}>
         <span className={styles.line}>
           {editingTitle ? (
             <TitleEditor initial={todo.title} onSave={onTitleSave} onCancel={onTitleCancel} />
+          ) : source ? (
+            // Another tab (the shared project's own), so a full page load.
+            <a href={source.href} className={styles.title}>
+              {todo.title}
+            </a>
           ) : (
             <Link to="/todos/$id" params={{ id: String(todo.id) }} className={styles.title}>
               {todo.title}
             </Link>
           )}
-          {(todo.labels.length > 0 || todo.requestedBy.length > 0) && (
+          {(source || todo.labels.length > 0 || todo.requestedBy.length > 0 || todo.assignee) && (
             <span className={styles.tags}>
+              {source && (
+                <span className={styles.source} title={`From the shared project ${source.name}`}>
+                  <span className={styles.swatch} style={{ "--swatch": source.color } as CSSProperties} />
+                  from {source.name}
+                </span>
+              )}
               {todo.labels.map((label) => (
                 <LabelPill key={label.id} name={label.name} color={label.color} />
               ))}
               {todo.requestedBy.length > 0 && (
                 <span className={styles.people}>
                   from {todo.requestedBy.map((p) => p.displayName).join(", ")}
+                </span>
+              )}
+              {/* In your own list a shared todo is always yours; the project's own lists say whose. */}
+              {todo.assignee && !source && (
+                <span className={styles.assignee} title={`Assigned to ${todo.assignee.name}`}>
+                  @{todo.assignee.username}
                 </span>
               )}
             </span>
@@ -164,7 +200,12 @@ export function StripRow({
           : `open ${shortAge(todo.createdAt)}`}
       </span>
       <span className={styles.project}>
-        {todo.project ? (
+        {source ? (
+          <>
+            <span className={styles.swatch} style={{ "--swatch": source.color } as CSSProperties} />
+            <span className={styles.projectName}>{source.name}</span>
+          </>
+        ) : todo.project ? (
           <>
             <span className={styles.swatch} style={{ "--swatch": todo.project.color } as CSSProperties} />
             <span className={styles.projectName}>{todo.project.name}</span>
