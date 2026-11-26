@@ -88,7 +88,7 @@ describe("statistics page", () => {
     expect(within(projects).getByRole("link", { name: "Lab" }).getAttribute("href")).toBe("/projects/lab");
     const people = screen.getByRole("region", { name: "Worked for whom" });
     expect(within(people).getByRole("link", { name: "Anna Meier" }).getAttribute("href")).toBe("/people/9");
-    expect(screen.getByText("Busiest: Tue around 14:00")).toBeTruthy();
+    expect(screen.getByText("Busiest: Tue, 1.5 h on an average day")).toBeTruthy();
     expect(screen.getByText("1 more created than done: the backlog grows")).toBeTruthy();
   });
 
@@ -104,6 +104,19 @@ describe("statistics page", () => {
     ).toEqual(["Week ofWorked hMeetings hTop projects", "09.11.202620.5", "16.11.20262.50Lab 2.5 h"]);
     fireEvent.click(within(weeks).getByRole("button", { name: "Chart" }));
     expect(within(weeks).queryByRole("table")).toBeNull();
+  });
+
+  it("shows worked time per weekday as one day's average, never more than a day holds (S5#4)", async () => {
+    renderStats();
+    const card = await screen.findByRole("region", { name: "When you work" }, LAZY_PAGE);
+    fireEvent.click(within(card).getByRole("button", { name: "Table" }));
+    const rows = within(within(card).getByRole("table"))
+      .getAllByRole("row")
+      .map((r) => r.textContent);
+    expect(rows[0]).toBe("DayDaysWorked hAverage h");
+    expect(rows[2]).toBe("Tue11.51.5");
+    expect(rows[3]).toBe("Wed111");
+    expect(rows).toHaveLength(8);
   });
 
   it("asks for the period picked above the charts", async () => {

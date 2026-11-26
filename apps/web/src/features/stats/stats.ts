@@ -77,3 +77,30 @@ export const BUCKET_LABELS: Record<DoneBucket, string> = {
 };
 
 export const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+export interface WeekdayStats {
+  /** 0 = Monday ... 6 = Sunday. */
+  weekday: number;
+  /** How many of this weekday the period has, up to today. */
+  days: number;
+  /** Worked minutes on those days together. */
+  minutes: number;
+  /** Worked minutes on one of them, on average (0 without days). */
+  average: number;
+}
+
+/**
+ * Worked time per weekday (S5#4): the days of the period up to today, grouped by weekday, with their total
+ * and the average for one such day. Days in the future are left out, so they do not pull the average down.
+ */
+export function weekdayStats(days: { date: string; workedMinutes: number }[], today: string): WeekdayStats[] {
+  const rows = WEEKDAY_SHORT.map((_, weekday) => ({ weekday, days: 0, minutes: 0, average: 0 }));
+  for (const day of days) {
+    if (day.date > today) continue;
+    const row = rows[isoWeekday(day.date) - 1] as WeekdayStats;
+    row.days += 1;
+    row.minutes += day.workedMinutes;
+  }
+  for (const row of rows) row.average = row.days > 0 ? row.minutes / row.days : 0;
+  return rows;
+}

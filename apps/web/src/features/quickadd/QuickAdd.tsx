@@ -243,7 +243,7 @@ function QuickAddForm({ defaults, onDone }: { defaults: QuickAddDefaults; onDone
 
         <span className={styles.fieldName}>Due</span>
         <DateInput
-          className={styles.date}
+          className={styles.dateField}
           value={dueOn}
           onChange={(value) => setDueOn(value)}
           aria-label="Due date"
@@ -252,7 +252,7 @@ function QuickAddForm({ defaults, onDone }: { defaults: QuickAddDefaults; onDone
         <span className={styles.fieldName}>Plan for</span>
         <div className={styles.planRow}>
           <DateInput
-            className={styles.date}
+            className={styles.dateField}
             value={plannedOn}
             onChange={(value) => setPlannedOn(value)}
             aria-label="Planned day"
@@ -261,7 +261,7 @@ function QuickAddForm({ defaults, onDone }: { defaults: QuickAddDefaults; onDone
             <>
               <TimeInput
                 step={900}
-                className={styles.date}
+                className={styles.dateField}
                 value={slotStart}
                 onChange={(value) => setSlotStart(value)}
                 aria-label="Time slot start (optional)"
