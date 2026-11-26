@@ -119,14 +119,10 @@
   gap: 8px;
 }
 
+/* Size and font only: DateInput draws its own field, a border here would draw a second box around it. */
 .date {
-  height: 30px;
   flex: 1;
   min-width: 0;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  background: transparent;
   font-family: var(--font-mono);
   font-size: var(--fs-mono);
 }

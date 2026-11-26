@@ -329,7 +329,7 @@ function CustomForm({
       <label className={styles.row}>
         <span>Ends</span>
         <DateInput
-          className={styles.text}
+          className={styles.untilDate}
           aria-label="Ends on"
           value={draft.until}
           onChange={(until) => set({ until })}
