@@ -8,6 +8,12 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- Move your sign-in to omeldar: accounts that still sign in with their Sloppanizer password see a line
+  under the top bar and a section on the Account page; "Move my sign-in" binds their omeldar account
+  (auth.omeldar.com) after a fresh sign-in there. "Later" hides it for a day. With
+  `SLOPPANIZER_LOCAL_LOGIN_UNTIL` the own login, sign-up and reset stop on that day; the banner and the
+  login page name it beforehand.
+
 - Shared projects: a todo can be assigned to one member ("Assigned to" in the todo, `@username` on its
   row). Only members can be assigned; someone who leaves is taken off its todos. Your own Next up lists
   the todos assigned to you in shared projects under "Assigned to you", each with the project it comes

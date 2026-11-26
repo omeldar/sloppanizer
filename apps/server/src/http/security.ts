@@ -6,6 +6,7 @@ import { getAccount, toAuthAccount } from "../services/accounts.ts";
 import { isPublicOAuthPath } from "../routes/oauth.ts";
 import { looksLikeAccessToken, readAccessToken } from "../services/auth/access-token.ts";
 import type { AuthServices } from "../services/auth/index.ts";
+import { localLoginEnded, localLoginEndedMessage } from "../services/auth/omeldar.ts";
 import { useSession } from "../services/auth/sessions.ts";
 import { memberName, openSpace } from "../services/spaces.ts";
 import type { Auth } from "../services/context.ts";
@@ -52,6 +53,12 @@ declare module "fastify" {
   interface FastifyContextConfig {
     /** Sloppanizer's own sign-in (login, sign-up, credentials): 410 with SLOPPANIZER_AUTH=oidc. */
     localSignIn?: boolean;
+    /**
+     * Starts a session or an account with Sloppanizer's own credentials (login, sign-up, setup, reset):
+     * 410 also once SLOPPANIZER_LOCAL_LOGIN_UNTIL has passed. Credential changes and "confirm it is you"
+     * keep working for sessions that are still open, so they can still move to omeldar.
+     */
+    localLogin?: boolean;
     access?: Access;
     /** Needs a full sign-in within the last 10 minutes (403 reauth_required otherwise). */
     reauth?: boolean;
@@ -258,6 +265,12 @@ export function registerSecurity(app: FastifyInstance, options: SecurityOptions)
             'Sign-in and account security moved to auth.omeldar.com. Use "Sign in with omeldar".',
           ),
         );
+    }
+    if (
+      request.routeOptions.config.localLogin &&
+      localLoginEnded(config.omeldar, options.clock().getTime())
+    ) {
+      return reply.status(410).send(errorBody("gone", localLoginEndedMessage(config.omeldar)));
     }
     if (access === "public") return;
 

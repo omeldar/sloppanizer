@@ -4,6 +4,7 @@
 #   SLOPPANIZER_SETUP_CODE optional, else the setup code is printed in the container log
 #   SLOPPANIZER_AUTH       local (default) | both | oidc: sign-in through auth.omeldar.com (README)
 #   SLOPPANIZER_AUTH_CLIENT_SECRET  needed with both/oidc; the same value as AUTH_CLIENT_SECRET_SLOPPANIZER at auth
+#   SLOPPANIZER_LOCAL_LOGIN_UNTIL   optional, with both: YYYY-MM-DD, the day the own login stops (README)
 name: sloppanizer
 
 services:
@@ -21,6 +22,7 @@ services:
       SLOPPANIZER_TRUSTED_PROXIES: 172.16.0.0/12
       SLOPPANIZER_AUTH: ${SLOPPANIZER_AUTH:-local}
       SLOPPANIZER_AUTH_CLIENT_SECRET: ${SLOPPANIZER_AUTH_CLIENT_SECRET:-}
+      SLOPPANIZER_LOCAL_LOGIN_UNTIL: ${SLOPPANIZER_LOCAL_LOGIN_UNTIL:-}
     volumes:
       - data:/data
     read_only: true

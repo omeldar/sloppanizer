@@ -171,6 +171,37 @@ Cross-Origin-Opener-Policy, which cuts `window.opener`.
 lint and formatting) so it can be updated by copying. The server adds the two Web Crypto types it expects
 from the DOM lib (`src/webcrypto-types.d.ts`).
 
+## 2026-11-25 Moving to omeldar, and the end of the own login
+
+**A signed-in account binds its omeldar account itself.** Until now an account was bound only on a sign-in
+with omeldar, through the `legacy_id` auth's import sets. That needs the import to have run for that
+person; otherwise the sign-in makes a new, empty account. "Move my sign-in" binds from inside the session
+instead: Sloppanizer's own "confirm it is you" first (within 10 minutes), so a stolen session cannot bind
+someone else's omeldar account and keep the account after the session is revoked; then a fresh sign-in at
+omeldar (`max_age=0`, in a popup like "confirm it is you", the username as `login_hint`). It refuses an
+omeldar account that is bound to another account or whose `legacy_id` names another account, and an account
+that is already bound. It binds `auth_subject` only: name and role follow at the next sign-in with omeldar,
+like everyone's, so the move itself changes nothing else (an admin is not demoted mid-session). The own
+credentials stay, for rollback. Each move is a `move_signin` line in the admin log.
+
+**The end is a date the admin sets, not a fixed 30 days.** `SLOPPANIZER_LOCAL_LOGIN_UNTIL=YYYY-MM-DD`, the
+day the own login stops (from 00:00 in `SLOPPANIZER_DEFAULT_TZ`). Unset means no end, so shipping this
+changes nothing until the date is set; "30 days after the prompt ships" is the date 30 days after the
+release. A date, not a duration from start, so restarts and redeploys never move it.
+
+**From that day the own login stops for everyone, bound or not.** The login, passkey login, sign-up, setup
+and reset answer 410 with a pointer to omeldar, before the credentials are checked, so the answer says
+nothing about whether an account exists or moved. Refusing only unbound accounts would keep a second way in
+for bound ones and would need the password checked first. Sessions that are still open keep working, and
+"confirm it is you" with the own password or passkey still works for them, so someone who did not move in
+time can still move before signing out. People who never moved and have no open session sign in with
+omeldar: if auth imported them, with their old username and password (the `legacy_id` binding); otherwise
+the admin helps. It only counts with `both`: with `local` there is nothing to sign in with instead (and
+rollback must stay one switch), with `oidc` the own login is already off. The banner shows only with
+`both`; with `oidc` an unbound account is bound at its next sign-in with omeldar.
+
+**Shown once a day after "Later", never once it ended.** "Later" is remembered per account in this browser
+for 24 hours. From 7 days before the end the line is amber; after the end it stays and has no "Later".
 
 ## 2026-11-25 Assignees in shared projects, "Assigned to you", shared todos in MCP (#15)
 

@@ -356,6 +356,7 @@ const ACTION_TEXT: Record<AdminEvent["action"], string> = {
   backup: "made a backup",
   setup_admin: "set up the first admin",
   make_admin: "made admin:",
+  move_signin: "moved their sign-in to omeldar:",
 };
 
 function LogSection() {

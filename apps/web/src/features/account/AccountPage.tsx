@@ -31,7 +31,8 @@ import {
 import { removeAccount } from "../../lib/accounts.ts";
 import { errorMessage } from "../../lib/api.ts";
 import { browserTimeZone, newTotpSecret } from "../../lib/auth.ts";
-import { absoluteTime, relativeTime } from "../../lib/format.ts";
+import { absoluteTime, formatDate, relativeTime } from "../../lib/format.ts";
+import { MoveSignInDialog, useMoveSignIn } from "../../app/MoveSignIn.tsx";
 import { stopTabSession } from "../../lib/session.ts";
 import { passkeysSupported } from "../../lib/webauthn.ts";
 import { PasswordInput, RecoveryCodesBlock, TotpSetup } from "../auth/parts.tsx";
@@ -63,6 +64,7 @@ export function AccountPage() {
         username={data.username}
       />
       {omeldar && (omeldarOnly || data.omeldarLinked) && <OmeldarSection accountUrl={omeldar.accountUrl} />}
+      <MoveSignInSection />
       {!omeldarOnly && (
         <>
           <PasswordSection username={data.username} hasPassword={data.security.password} />
@@ -92,6 +94,31 @@ function OmeldarSection({ accountUrl }: { accountUrl: string }) {
           Manage your omeldar account
         </a>
       </div>
+    </section>
+  );
+}
+
+/** Still signing in with the Sloppanizer password while omeldar is offered: the way to move. */
+function MoveSignInSection() {
+  const state = useMoveSignIn();
+  const [open, setOpen] = useState(false);
+  if (!state) return null;
+  return (
+    <section className={styles.section} aria-labelledby="move-heading">
+      <h2 className={styles.heading} id="move-heading">
+        Sign-in with omeldar
+      </h2>
+      <p className={styles.text}>
+        You sign in with your Sloppanizer password.{" "}
+        {state.endsOn ? `That ${state.ended ? "ended" : "ends"} on ${formatDate(state.endsOn)}. ` : ""}
+        Move your sign-in to your omeldar account (auth.omeldar.com); your data stays.
+      </p>
+      <div className={styles.formRow}>
+        <Button variant="primary" onClick={() => setOpen(true)}>
+          Move my sign-in
+        </Button>
+      </div>
+      <MoveSignInDialog state={state} open={open} onOpenChange={setOpen} />
     </section>
   );
 }
