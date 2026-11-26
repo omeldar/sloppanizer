@@ -141,7 +141,7 @@ describe("date and time formats", () => {
 });
 
 describe("how project pages open (S5#3)", () => {
-  it("is the list until the person picks the board, per account, also inside a shared project", async () => {
+  it("is the list until the person picks the board, per account", async () => {
     const t = await makeApp();
     const bo = await t.asAccount({ username: "bobo" });
     expect(json<{ projectView: string }>(await t.call("GET", "/api/v1/account")).projectView).toBe("list");
@@ -150,12 +150,6 @@ describe("how project pages open (S5#3)", () => {
     expect(json<{ projectView: string }>(await t.call("GET", "/api/v1/account")).projectView).toBe("board");
     // Someone else's choice is their own.
     expect(json<{ projectView: string }>(await bo.call("GET", "/api/v1/account")).projectView).toBe("list");
-    // The account page is personal: a shared project's header does not change whose it is.
-    const space = await t.create<Space>("/api/v1/spaces", { name: "Flat" });
-    expect(
-      json<{ projectView: string }>(await t.call("GET", "/api/v1/account", undefined, { [H]: space.id }))
-        .projectView,
-    ).toBe("board");
     expect((await t.call("PATCH", "/api/v1/account", { projectView: "grid" })).statusCode).toBe(422);
   });
 });

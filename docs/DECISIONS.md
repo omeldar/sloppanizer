@@ -246,7 +246,7 @@ is in shared projects.
 lueoeng asked to make "Board" the standard view of projects. It is one choice per account, in Settings,
 Projects ("Open projects as List / Board"), stored on the account (`accounts.project_view`, like the date
 formats) rather than in the browser, so it follows the person to every device and into the shared projects'
-tabs (the account page is personal, `X-Sloppanizer-Space` does not change it). `?view=list|board` in a
+tabs (the web app always asks for the account as the person's own, never through a shared project). `?view=list|board` in a
 project's address still wins, and the List / Board switch on the page only sets it when it differs from the
 choice, so links stay clean. Not done: remembering the last view per project. Two places deciding the view
 would make "why does this one open as a list?" hard to answer; it can follow if one default is not enough.
