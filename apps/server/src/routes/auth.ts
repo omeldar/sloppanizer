@@ -75,6 +75,8 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
    * once SLOPPANIZER_LOCAL_LOGIN_UNTIL has passed.
    */
   const local = { access: "public" as const, localSignIn: true, localLogin: true };
+  /** Sign-up: with omeldar on (both or oidc), new accounts are made at auth.omeldar.com only (S5#18). */
+  const localSignupConfig = { ...local, localSignup: true };
 
   app.get(
     `${API_PREFIX}/auth/config`,
@@ -89,7 +91,8 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
     async () => {
       const ownLogin = omeldar.mode !== "oidc" && !localLoginEnded(omeldar, now());
       return {
-        signupsOpen: auth.config.signupsOpen && ownLogin,
+        // With omeldar on, sign-up happens at auth.omeldar.com ("Create an account with omeldar").
+        signupsOpen: auth.config.signupsOpen && ownLogin && omeldar.mode === "local",
         setupNeeded: ownLogin && !adminExists(db),
         rpId: auth.config.rpId,
         mode: omeldar.mode,
@@ -112,7 +115,7 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/auth/signup/passkey-options`,
     {
-      config: local,
+      config: localSignupConfig,
       schema: {
         tags,
         summary: "Passkey options for a sign-up without a password",
@@ -125,7 +128,7 @@ function authRoutes(app: App, deps: Deps, auth: AuthServices): void {
   app.post(
     `${API_PREFIX}/auth/signup`,
     {
-      config: local,
+      config: localSignupConfig,
       schema: {
         tags,
         summary: "Sign up; the account waits for an admin's approval",

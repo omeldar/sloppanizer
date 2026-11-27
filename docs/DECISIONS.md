@@ -333,3 +333,27 @@ The dialog (sidebar, the project's menu, "Share and settings"; in the project's 
 name) lists each person with "(you)", Owner or Member and since when (`members[].addedAt`), suggests users
 as you type, says who was added and who already had access, and shows the server's error for an unknown
 username. Owners remove members, everyone can leave. Adding and removing members stays browser-session only.
+
+## 2026-11-27 Sign-up only at omeldar once it is on; moving accounts auth never imported (S5#18)
+
+**Why a member could not move.** auth.omeldar.com learns Sloppanizer's accounts only from the admin's import
+(`import-sloppanizer` in omeldar/auth), run by hand on the VPS. With `SLOPPANIZER_AUTH=both` the own
+sign-up stayed open, so an account made after the last import exists here only. "Move my sign-in" sends
+that person to omeldar, which has no account of that name, and answers "wrong username or password",
+whatever the password is (a "@" in it plays no part: auth compares the argon2id hash the import copied).
+
+**Sign-up moves with `both`, not only with `oidc`.** As soon as omeldar is on, new accounts are made there:
+the web app's /signup shows "Create an account with omeldar", the own sign-up routes answer 410
+(`localSignup`, separate from `localLogin` so the own *login* stays until `oidc` or
+`SLOPPANIZER_LOCAL_LOGIN_UNTIL`), and `/auth/config` reports `signupsOpen: false`. The first sign-in at
+omeldar makes the Sloppanizer account as before, and auth's approval (`access: "approval"` for this
+client) replaces Sloppanizer's. Needs `AUTH_SIGNUPS=open` at auth, or nobody can sign up anywhere.
+Rollback is `SLOPPANIZER_AUTH=local`, which opens the own sign-up again.
+
+**Moving without an imported account.** The move dialog offers "Create an omeldar account": the same
+link flow (`/auth/omeldar/link/start`, popup, `/auth/omeldar/link`) with `prompt=create`, so auth shows its
+sign-up page. The new omeldar account waits for approval there; the popup then says "Waiting for
+approval", the person closes it and moves again once approved, signing in with the new account. The link
+binds any omeldar account not already bound to, or imported from, another Sloppanizer account, so this
+needs no change at auth. Re-running the import is the other way (same username and password, no
+approval wait); both are fine and the import stays safe to repeat.

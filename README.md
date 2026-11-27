@@ -150,7 +150,8 @@ tokens, MCP connections and calendar feeds stay as they are; only the sign-in st
 
 - `SLOPPANIZER_AUTH=local` (default): Sloppanizer's own login only.
 - `both`: "Sign in with omeldar" next to the own login. The first sign-in at omeldar binds the account auth
-  imported for that person (`legacy_id`), or makes a new one.
+  imported for that person (`legacy_id`), or makes a new one. Sign-up already happens only at omeldar
+  ("Create an account with omeldar"; the own sign-up answers 410), so every new account is one auth knows.
 - `oidc`: only omeldar. The own login, sign-up, setup, reset and password/authenticator/passkey changes
   answer 410; people manage those at auth.omeldar.com/account, admins approve people at auth.omeldar.com/admin.
 
@@ -167,6 +168,8 @@ password sees a line under the top bar (and a section on the Account page): "Mov
 asks them to confirm it is them here when the last sign-in is older than 10 minutes, then opens a fresh
 sign-in at omeldar in a popup and binds that omeldar account to theirs (`POST /api/v1/auth/omeldar/link`;
 never an omeldar account that already belongs to, or was imported from, another Sloppanizer account).
+Accounts made here after the import have no omeldar account yet: "Create an omeldar account" in the same
+dialog opens auth's sign-up in the popup, and the new account is bound once the admin approves it there.
 "Later" hides it for a day. Accounts that moved never see it.
 
 `SLOPPANIZER_LOCAL_LOGIN_UNTIL=YYYY-MM-DD` (optional, only with `both`) is the day the own login stops, from

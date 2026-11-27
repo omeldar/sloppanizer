@@ -8,6 +8,14 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- Sign-up goes through omeldar as soon as "Sign in with omeldar" is on (`SLOPPANIZER_AUTH=both`, not only
+  `oidc`): /signup opens "Create an account with omeldar", and the own sign-up API answers 410. A sign-up
+  here made an account auth.omeldar.com never knew, which then could not move its sign-in (S5#18).
+- "Move my sign-in" also offers "Create an omeldar account", for accounts made here after the admin's
+  import to auth: omeldar then has no account with their Sloppanizer username and password, and says the
+  password is wrong. The new omeldar account is bound to theirs once the admin approves it at omeldar
+  (S5#18).
+
 ## 1.2.1 (2026-11-27)
 
 - Notifications: long comment text and the hover background stay inside the panel. The panel was 40px

@@ -67,8 +67,10 @@ export function AuthApp({ page, search, go }: { page: AuthPage; search: URLSearc
   if (page === "oauth") return <ConsentPage search={search} go={go} />;
   if (page === "reset") return <ResetPage go={go} />;
   if (page === "signup") {
-    if (config?.omeldar && (config.mode === "oidc" || ownLoginEnded(config)))
-      return <OmeldarLoginPage config={config.omeldar} search={search} create />;
+    // Waits for the config, so a sign-up never starts here while omeldar is on.
+    if (!config && !configFailed) return null;
+    // With omeldar on (both or oidc), new accounts are made at auth.omeldar.com only (S5#18).
+    if (config?.omeldar) return <OmeldarLoginPage config={config.omeldar} search={search} create />;
     return <SignupPage config={config} />;
   }
   // Setup only while the instance has no admin; afterwards the page does not exist.

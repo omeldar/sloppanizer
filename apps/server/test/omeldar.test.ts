@@ -185,6 +185,28 @@ describe("sign in with omeldar", () => {
     expect((await t.call("GET", "/api/v1/todos")).statusCode).toBe(200);
   });
 
+  it("makes new accounts at omeldar only, as soon as omeldar is on (S5#18)", async () => {
+    const { t, post } = await omeldarApp("both", { n: { sub: "usr_new", preferred_username: "nora" } });
+    expect(json(await t.app.inject({ method: "GET", url: "/api/v1/auth/config" }))).toMatchObject({
+      mode: "both",
+      signupsOpen: false,
+    });
+    const refused = await Promise.all(
+      ["/api/v1/auth/signup", "/api/v1/auth/signup/passkey-options"].map((url) => post(url, {})),
+    );
+    for (const answer of refused) {
+      expect(answer.statusCode).toBe(410);
+      const error = json<{ error: { code: string; message: string } }>(answer).error;
+      expect(error.code).toBe("gone");
+      expect(error.message).toContain("auth.omeldar.com");
+    }
+    // The own login still works next to omeldar, and a new person signs up through omeldar.
+    expect((await passwordLogin(t)).statusCode).toBe(200);
+    const created = await post("/api/v1/auth/omeldar/callback", callbackBody("n"));
+    expect(created.statusCode).toBe(200);
+    expect(json<{ account: { username: string } }>(created).account.username).toBe("nora");
+  });
+
   it("confirms it is you with a fresh sign-in of the same person only", async () => {
     const { t, post } = await omeldarApp("both", {
       a: { sub: "usr_a", preferred_username: "anna", legacy_id: "1" },
@@ -221,7 +243,7 @@ describe("the own login ends (SLOPPANIZER_LOCAL_LOGIN_UNTIL)", () => {
     const { t, post } = await omeldarApp("both", { a: { sub: "usr_a", preferred_username: "anna" } }, UNTIL);
     expect(json(await t.app.inject({ method: "GET", url: "/api/v1/auth/config" }))).toMatchObject({
       mode: "both",
-      signupsOpen: true,
+      signupsOpen: false,
       localLoginEnds: { on: "2026-12-25", at: "2026-12-24T23:00:00.000Z" },
     });
 
