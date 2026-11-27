@@ -15,6 +15,9 @@ app shows "Sloppanizer is updating".
   import to auth: omeldar then has no account with their Sloppanizer username and password, and says the
   password is wrong. The new omeldar account is bound to theirs once the admin approves it at omeldar
   (S5#18).
+- Notifications open the todo where it lives, from any tab: an own todo opened from a shared project's tab
+  went to "this todo does not exist" (it was looked up in the shared project); it now opens your own tab,
+  and a shared project's todo opens that project's tab, also from another shared project (S5#19).
 
 ## 1.2.1 (2026-11-27)
 
