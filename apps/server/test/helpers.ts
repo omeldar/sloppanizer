@@ -5,6 +5,7 @@ import type { InjectOptions, LightMyRequestResponse } from "fastify";
 import { afterEach } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
+import { LOG_REDACT } from "../src/http/security.ts";
 import type { ClaudeRunner } from "../src/services/ai.ts";
 import type { OmeldarClient } from "../src/services/auth/omeldar.ts";
 import { accountFilesDir } from "../src/services/attachments.ts";
@@ -35,6 +36,8 @@ export interface TestAppOptions {
   claude?: ClaudeRunner;
   /** Stands in for auth.omeldar.com. */
   omeldar?: OmeldarClient;
+  /** Collects every log line (all levels, redacted like the real server). */
+  logs?: string[];
 }
 
 type Call = (
@@ -82,6 +85,15 @@ export async function makeApp(options: TestAppOptions = {}) {
     ...(options.limits ? { limits: options.limits } : {}),
     ...(options.claude ? { claude: options.claude } : {}),
     ...(options.omeldar ? { omeldar: options.omeldar } : {}),
+    ...(options.logs
+      ? {
+          logger: {
+            level: "trace",
+            redact: { paths: LOG_REDACT, censor: "[redacted]" },
+            stream: { write: (line: string) => options.logs?.push(line) },
+          },
+        }
+      : {}),
   });
   cleanups.push(async () => {
     await app.close();

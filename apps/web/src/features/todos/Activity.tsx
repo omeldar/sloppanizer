@@ -2,6 +2,7 @@ import { type ActivityItem, type Comment, describeEvent, type Me, type Todo } fr
 import { type Ref, useEffect, useRef, useState } from "react";
 import { Dialog, DialogBody, DialogActions } from "../../components/Dialog.tsx";
 import { MarkdownEditor, type MarkdownEditorHandle } from "../../components/markdown/MarkdownEditor.tsx";
+import { replaceLinkTarget } from "../../components/markdown/drawingLinks.ts";
 import { MarkdownPreview } from "../../components/markdown/MarkdownPreview.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { Button, ErrorState, Loading } from "../../components/ui.tsx";
@@ -215,7 +216,22 @@ function CommentBlock({
         </div>
       ) : (
         <div className={styles.commentBody}>
-          <MarkdownPreview source={comment.bodyMd} />
+          <MarkdownPreview
+            source={comment.bodyMd}
+            onReplaceLink={
+              canChange
+                ? (from, to) =>
+                    void update
+                      .mutateAsync({ id: comment.id, bodyMd: replaceLinkTarget(comment.bodyMd, from, to) })
+                      .catch((error: unknown) =>
+                        toast.show({
+                          tone: "error",
+                          message: `Could not save the comment. ${errorMessage(error)}`,
+                        }),
+                      )
+                : undefined
+            }
+          />
         </div>
       )}
       <DeleteCommentDialog

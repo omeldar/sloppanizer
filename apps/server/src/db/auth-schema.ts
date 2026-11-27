@@ -303,3 +303,36 @@ export const aiSettings = sqliteTable("ai_settings", {
   dayEnd: text("day_end").notNull().default("18:00"),
   updatedAt: text("updated_at").notNull(),
 });
+
+/**
+ * "Draw on your phone" (S5#17): a short-lived, single-use link that lets a phone without a session send one
+ * drawing into the account (own or a shared project's) of the person who opened it. Only the sha256 of
+ * the token is stored, and it is cleared (null) as soon as the drawing arrives, so the link stops working.
+ * Rows are pruned once expired; never exported.
+ */
+export const drawHandoffs = sqliteTable(
+  "draw_handoffs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** Where the drawing is stored: the user's own account or a shared project's. */
+    accountId: integer("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    /** The user who opened it (the member inside a shared project); only they can see what arrived. */
+    creatorId: integer("creator_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    /** Who the stored file names as its author, as the history names them. */
+    actor: text("actor").notNull(),
+    tokenHash: text("token_hash").unique(),
+    createdAt: text("created_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    receivedAt: text("received_at"),
+    /** The stored drawing (an attachment of account_id), once the phone sent it. */
+    attachmentId: integer("attachment_id"),
+  },
+  (t) => [
+    index("draw_handoffs_expires_idx").on(t.expiresAt),
+    index("draw_handoffs_creator_idx").on(t.creatorId),
+  ],
+);

@@ -28,7 +28,14 @@ export const CSP = [
 ].join("; ");
 
 /** Log fields that could carry secrets (bodies are never logged). */
-export const LOG_REDACT = ["req.headers.authorization", "req.headers.cookie", "headers.authorization"];
+export const LOG_REDACT = [
+  "req.headers.authorization",
+  "req.headers.cookie",
+  "headers.authorization",
+  // The phone's drawing token (S5#17); it is never in a URL.
+  'req.headers["x-draw-token"]',
+  'headers["x-draw-token"]',
+];
 
 export const HSTS = "max-age=63072000; includeSubDomains";
 
@@ -178,7 +185,7 @@ export function authenticate(
  * Account, tokens, settings changes, export, restore, AI, meetings, calendar and admin stay personal.
  */
 const SPACE_ROUTE =
-  /^\/api\/v1\/(todos|projects|labels|people|person-tags|topics|teams|comments|attachments|notes|search|next|stats|blocks|me|users)(\/|$)/;
+  /^\/api\/v1\/(todos|projects|labels|people|person-tags|topics|teams|comments|attachments|drawings|notes|search|next|stats|blocks|me|users)(\/|$)/;
 
 export function allowedInSpace(route: string | undefined, method: string): boolean {
   if (route === undefined) return false;

@@ -8,6 +8,17 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- Draw: every Markdown field (todo descriptions, comments, notes) has a Draw button next to Attach file.
+  It opens a canvas for mouse, finger or pen (with pressure): six colours, four sizes, eraser, undo, redo
+  and clear on a white page, also on phones and in the dark theme. Insert stores the drawing as a PNG and
+  puts it where the cursor was (S5#17).
+- Draw on your phone: the same dialog shows a QR code. The phone opens it without signing in, draws full
+  screen and taps Send; the computer shows the drawing to insert. The code works once, for 10 minutes,
+  only for that dialog, and the file counts against the account's file limit (S5#17).
+- Edit drawing and copies: a drawing keeps its strokes inside the PNG. "Edit drawing" under a drawing (in
+  a description, a note or your own comment) opens it to change it; saving stores a new file and links it
+  in place of the old one. A new drawing can start from a copy of a recent one (S5#17).
+
 ## 1.2.2 (2026-11-27)
 
 - Sign-up goes through omeldar as soon as "Sign in with omeldar" is on (`SLOPPANIZER_AUTH=both`, not only

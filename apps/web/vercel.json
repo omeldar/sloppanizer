@@ -28,6 +28,10 @@
     {
       "source": "/auth/callback",
       "destination": "/app.html"
+    },
+    {
+      "source": "/draw",
+      "destination": "/app.html"
     }
   ],
   "headers": [
@@ -118,7 +122,7 @@
       ]
     },
     {
-      "source": "/(app.html|login|signup|setup|reset|oauth/authorize|auth/callback)",
+      "source": "/(app.html|login|signup|setup|reset|oauth/authorize|auth/callback|draw)",
       "headers": [
         {
           "key": "X-Robots-Tag",

@@ -102,6 +102,16 @@ export async function insertUploads(
   );
 }
 
+/** Inserts text (a drawing's link) where the cursor is, apart from the words next to it. */
+export function insertAtCursor(view: EditorView, text: string): void {
+  const { from, to } = view.state.selection.main;
+  const { lead } = separators(1, view.state.sliceDoc(Math.max(0, from - 2), from), "");
+  const after = view.state.sliceDoc(to, to + 1);
+  const trail = after === "" || /\s/.test(after) ? "" : " ";
+  const insert = lead + text + trail;
+  view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + lead.length + text.length } });
+}
+
 /** Line breaks still missing for a blank line between inserted files and the text next to them. */
 const missing = (newlines: number) => "\n".repeat(2 - Math.min(2, newlines));
 

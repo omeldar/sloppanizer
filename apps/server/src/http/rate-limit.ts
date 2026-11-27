@@ -148,6 +148,10 @@ export interface Limiters {
   calendarByIp: FixedWindowLimiter;
   /** AI assistant requests per account (each may cost the account money). */
   aiByAccount: FixedWindowLimiter;
+  /** "Draw on your phone" links per user (each is a capability to upload one file). */
+  drawHandoffsByUser: FixedWindowLimiter;
+  /** The phone's calls (no session, only the token) per IP. */
+  drawPhoneByIp: FixedWindowLimiter;
 }
 
 export function createLimiters(clock: Clock): Limiters {
@@ -166,5 +170,7 @@ export function createLimiters(clock: Clock): Limiters {
     oauthTokenByIp: new FixedWindowLimiter(clock, 60, MINUTE),
     calendarByIp: new FixedWindowLimiter(clock, 120, HOUR),
     aiByAccount: new FixedWindowLimiter(clock, 60, HOUR),
+    drawHandoffsByUser: new FixedWindowLimiter(clock, 10, 10 * MINUTE),
+    drawPhoneByIp: new FixedWindowLimiter(clock, 30, MINUTE),
   };
 }

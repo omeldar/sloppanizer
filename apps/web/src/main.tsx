@@ -2,7 +2,7 @@
 import "./styles/index.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
-import { StrictMode } from "react";
+import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { AccountProvider } from "./app/account.tsx";
 import { CommandsProvider } from "./app/commands.tsx";
@@ -31,6 +31,18 @@ if (entry.kind === "redirect") {
   createRoot(root).render(
     <StrictMode>
       <AuthApp page={entry.page} search={new URLSearchParams(location.search)} go={go} />
+    </StrictMode>,
+  );
+} else if (root && entry.kind === "draw") {
+  // The phone's drawing page: no account, loaded on its own.
+  const PhoneDrawPage = lazy(() => import("./features/drawings/PhoneDrawPage.tsx"));
+  // A new code scanned into the same tab: start over with it.
+  window.addEventListener("hashchange", () => location.reload());
+  createRoot(root).render(
+    <StrictMode>
+      <Suspense fallback={null}>
+        <PhoneDrawPage hash={location.hash} />
+      </Suspense>
     </StrictMode>,
   );
 } else if (root && entry.kind === "app") {
