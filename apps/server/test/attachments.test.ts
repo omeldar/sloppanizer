@@ -1,6 +1,6 @@
-import type { Attachment } from "@organizer/shared";
+import type { Attachment, FileList, Note, Todo } from "@organizer/shared";
 import { createHash } from "node:crypto";
-import { readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { sanitizeName } from "../src/services/attachments.ts";
@@ -218,6 +218,63 @@ describe("attachment downloads", () => {
     );
     // The details still exist.
     expect((await t.call("GET", "/api/v1/attachments/1/meta")).statusCode).toBe(200);
+  });
+});
+
+describe("files page (S5#11)", () => {
+  it("lists every file newest first with where it is linked, and the space used against 1 GB", async () => {
+    const t = await makeApp();
+    const png = await stored(t, PNG, "shot.png");
+    const pdf = await stored(t, PDF, "report.pdf");
+    const unused = await stored(t, GIF, "old.gif");
+    const todo = await t.create<Todo>("/api/v1/todos", {
+      title: "Renew certs",
+      descriptionMd: `See ![shot](${png.url}) and [the report](https://app.example${pdf.url}).`,
+    });
+    await t.call("POST", `/api/v1/todos/${todo.id}/comments`, {
+      bodyMd: `Again: ![x](/api/v1/attachments/${png.id})`,
+    });
+    const note = await t.create<Note>("/api/v1/notes", { title: "Minutes", bodyMd: `[pdf](${pdf.url})` });
+
+    const res = await t.call("GET", "/api/v1/attachments");
+    expect(res.statusCode).toBe(200);
+    const list = res.json() as FileList;
+    expect(list.limitBytes).toBe(1024 * 1024 * 1024);
+    expect(list.usedBytes).toBe(PNG.length + PDF.length + GIF.length);
+    expect(list.items.map((f) => f.id)).toEqual([unused.id, pdf.id, png.id]);
+    const byId = new Map(list.items.map((f) => [f.id, f.usedIn]));
+    expect(byId.get(unused.id)).toEqual([]);
+    expect(byId.get(png.id)).toEqual([
+      { kind: "todo", id: todo.id, todoId: null, title: "Renew certs" },
+      { kind: "comment", id: expect.any(Number), todoId: todo.id, title: "Renew certs" },
+    ]);
+    expect(byId.get(pdf.id)).toEqual([
+      { kind: "todo", id: todo.id, todoId: null, title: "Renew certs" },
+      { kind: "note", id: note.id, todoId: null, title: "Minutes" },
+    ]);
+  });
+
+  it("deletes a file: row and bytes go, its space is free, its link answers 404", async () => {
+    const t = await makeApp();
+    const a = await stored(t, PNG, "shot.png");
+    const b = await stored(t, PDF, "report.pdf");
+    const res = await t.call("DELETE", `/api/v1/attachments/${a.id}`);
+    expect(res.statusCode).toBe(204);
+    expect(existsSync(join(t.filesDir, String(a.id)))).toBe(false);
+    expect((await t.call("GET", a.url)).statusCode).toBe(404);
+    const list = (await t.call("GET", "/api/v1/attachments")).json() as FileList;
+    expect(list.items.map((f) => f.id)).toEqual([b.id]);
+    expect(list.usedBytes).toBe(PDF.length);
+    expect((await t.call("DELETE", `/api/v1/attachments/${a.id}`)).statusCode).toBe(404);
+  });
+
+  it("only ever shows and deletes the account's own files", async () => {
+    const t = await makeApp();
+    const mine = await stored(t, PNG);
+    const bobby = await t.asAccount({ username: "bobby" });
+    expect(((await bobby.call("GET", "/api/v1/attachments")).json() as FileList).items).toEqual([]);
+    expect((await bobby.call("DELETE", `/api/v1/attachments/${mine.id}`)).statusCode).toBe(404);
+    expect(existsSync(join(t.filesDir, String(mine.id)))).toBe(true);
   });
 });
 

@@ -4,6 +4,7 @@ import {
   BackupFile,
   Comment,
   CreatedToken,
+  FileList,
   type CreateLabel,
   type CreateNote,
   type CreatePerson,
@@ -71,6 +72,7 @@ export const keys = {
   search: (query: SearchParams) => ["search", query] as const,
   tokens: ["tokens"] as const,
   settings: ["settings"] as const,
+  files: ["files"] as const,
   backups: ["backups"] as const,
   // Under "stats", so todo changes (invalidateTodoViews) refresh them too.
   peopleStats: (query: PeopleStatsParams) => ["stats", "people", query] as const,
@@ -582,6 +584,22 @@ export function useRevokeToken() {
 /** Session only: version, last export and the files quota of this account. */
 export const useSettings = (enabled = true) =>
   useQuery({ queryKey: keys.settings, queryFn: () => api(Settings, "/settings"), enabled });
+
+/** Every uploaded file of this account (or shared project), newest first, with where it is used. */
+export const useFiles = () =>
+  useQuery({ queryKey: keys.files, queryFn: () => api(FileList, "/attachments") });
+
+/** Deletes an uploaded file: its space is free at once, links to it show a missing file. */
+export function useDeleteFile() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => apiVoid(`/attachments/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.files });
+      void client.invalidateQueries({ queryKey: keys.settings });
+    },
+  });
+}
 
 /** Safety copies written before restores, newest first. */
 export const useBackups = (enabled = true) =>

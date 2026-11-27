@@ -24,7 +24,7 @@ describe("GET /settings", () => {
       lastExportAt: null,
       version: VERSION,
       filesBytes: 0,
-      filesLimitBytes: 2048 * 1024 * 1024,
+      filesLimitBytes: 1024 * 1024 * 1024,
     });
     expect((await t.withToken(t.token("w", "write"), "GET", "/api/v1/settings")).statusCode).toBe(403);
     expect((await t.withToken(t.token("r", "read"), "GET", "/api/v1/settings")).statusCode).toBe(403);

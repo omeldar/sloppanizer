@@ -15,6 +15,7 @@ import { SearchPage } from "../features/search/SearchPage.tsx";
 import { ProjectPage } from "../features/projects/ProjectPage.tsx";
 import { SettingsPage } from "../features/settings/SettingsPage.tsx";
 import { TokensPage } from "../features/settings/TokensPage.tsx";
+import { FilesPage } from "../features/settings/FilesPage.tsx";
 import { WeekPage } from "../features/week/WeekPage.tsx";
 import { Layout } from "./Layout.tsx";
 
@@ -228,6 +229,7 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: "/people/$id", component: personPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/settings/tokens", component: TokensPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/settings/files", component: FilesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/account", component: AccountPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/admin", component: AdminPage }),
 ] as const;

@@ -86,6 +86,7 @@ describe("accounts never see each other's data", () => {
       ["DELETE", `/api/v1/labels/${ids.label}`],
       ["GET", `/api/v1/attachments/${ids.file}`],
       ["GET", `/api/v1/attachments/${ids.file}/meta`],
+      ["DELETE", `/api/v1/attachments/${ids.file}`],
       ["GET", `/api/v1/meetings/${ids.meeting}`],
       ["PATCH", `/api/v1/meetings/${ids.meeting}`, { name: "taken" }],
       [

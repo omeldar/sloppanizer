@@ -54,6 +54,7 @@ export function breadcrumbTrail(pathname: string, context: TrailContext): Crumb[
   if (pathname.startsWith("/people/")) return [{ label: "People", to: "/people" }, { label: "Person" }];
   if (pathname === "/settings/tokens")
     return [{ label: "Settings", to: "/settings" }, { label: "API tokens" }];
+  if (pathname === "/settings/files") return [{ label: "Settings", to: "/settings" }, { label: "Files" }];
   if (pathname.startsWith("/projects/")) {
     const slug = decodeURIComponent(pathname.slice("/projects/".length));
     const name = context.projects?.find((p) => p.slug === slug)?.name ?? slug;

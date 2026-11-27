@@ -3,12 +3,20 @@ import {
   Attachment,
   AttachmentFileParams,
   AttachmentUploadQuery,
+  FileList,
   IdParams,
   MAX_ATTACHMENT_BYTES,
 } from "@organizer/shared";
 import { createReadStream } from "node:fs";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { attachmentFile, getAttachment, isInline, storeAttachment } from "../services/attachments.ts";
+import {
+  attachmentFile,
+  deleteAttachment,
+  getAttachment,
+  isInline,
+  listFiles,
+  storeAttachment,
+} from "../services/attachments.ts";
 import { actorOf, type App, ctxOf, type Deps, filesDirOf } from "./types.ts";
 
 /** User files never run in the app's origin: sandboxed, no sniffing, images inline, the rest as download. */
@@ -46,6 +54,37 @@ export function attachmentRoutes(app: App, deps: Deps): void {
       },
     );
   });
+
+  // The files page is the browser's: tokens can't list or delete files (deleting breaks links).
+  const sessionOnly = { access: "session" as const };
+  app.get(
+    `${API_PREFIX}/attachments`,
+    {
+      config: sessionOnly,
+      schema: {
+        tags,
+        summary: "Every uploaded file, newest first, with where it is linked from and the space used",
+        response: { 200: FileList },
+      },
+    },
+    async (request) => listFiles(ctxOf(request, deps), deps.filesLimitBytes),
+  );
+
+  app.delete(
+    `${API_PREFIX}/attachments/:id`,
+    {
+      config: sessionOnly,
+      schema: {
+        tags,
+        summary: "Delete a file and free its space; links to it then show a missing file",
+        params: IdParams,
+      },
+    },
+    async (request, reply) => {
+      deleteAttachment(ctxOf(request, deps), filesDirOf(request, deps), request.params.id);
+      return reply.status(204).send();
+    },
+  );
 
   app.get(
     `${API_PREFIX}/attachments/:id/meta`,

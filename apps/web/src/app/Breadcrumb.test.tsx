@@ -92,6 +92,7 @@ describe("breadcrumb links (S5#8)", () => {
       "/people/stats",
       "/people/9",
       "/settings/tokens",
+      "/settings/files",
       "/projects/x",
       "/todos/7",
     ]) {
