@@ -14,6 +14,9 @@ they sat untouched, and tells you why each one is where it is.
   done creates the next one with its dates moved.
 - Notes: Markdown pages, alone or in a project, pinned ones first.
 - Paste or drop images and files into any Markdown field; images show inline, other files are downloads.
+- Diagrams: a ```` ```mermaid ```` block in a description, comment or note draws as a
+  [Mermaid](https://mermaid.js.org) diagram (flowcharts, sequence diagrams, Gantt charts and more), in the
+  app's theme. A diagram with a mistake shows its text and what is wrong.
 - Board (Open, In progress, Blocked, Done) and a week planner, both with drag and drop and keys.
 - Projects open as a list or a board, as you choose in Settings (saved to your account).
 - Statistics: worked time (planned time that has already happened) per project, requester and week,

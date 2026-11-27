@@ -8,6 +8,10 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- Mermaid diagrams: a ```` ```mermaid ```` block in a todo description, comment, note, meeting note or person
+  note draws as a diagram, in the light or dark theme. One that does not parse shows its text and a short
+  error line. The renderer loads only on a page with a diagram (S5#16).
+
 ## 1.2.2 (2026-11-27)
 
 - Sign-up goes through omeldar as soon as "Sign in with omeldar" is on (`SLOPPANIZER_AUTH=both`, not only

@@ -9,6 +9,7 @@ import { HoverCard } from "../HoverCard.tsx";
 import { useDownload } from "../useDownload.ts";
 import { AuthImage } from "./AuthImage.tsx";
 import styles from "./Markdown.module.css";
+import { MermaidDiagram, mermaidSourceOf } from "./MermaidDiagram.tsx";
 import { remarkTodoLinks, todoIdFromHref } from "./remarkTodoLinks.ts";
 
 /** Only files stored by this app render as images; anything else stays a plain link. */
@@ -32,13 +33,14 @@ const ChecklistContext = createContext<(ChecklistControl & { items: ChecklistIte
 /** The checklist item of the nearest task list line. */
 const ItemContext = createContext<ChecklistItem | null>(null);
 
-const baseComponents = { a: Anchor, img: Image };
+const baseComponents = { a: Anchor, img: Image, pre: Pre };
 const checklistComponents = { ...baseComponents, li: ListItem, input: Checkbox };
 
 /**
  * Stored Markdown is untrusted text: it renders through rehype-sanitize. Outside links open in a new tab,
- * "#123" opens the todo inside the app, and only the app's own attachments show as images. With
- * `checklist`, task list boxes can be clicked; each box is matched to its item by source line.
+ * "#123" opens the todo inside the app, and only the app's own attachments show as images. A ```mermaid
+ * block shows as a diagram (the renderer loads only then). With `checklist`, task list boxes can be
+ * clicked; each box is matched to its item by source line.
  */
 export function MarkdownPreview({ source, checklist }: { source: string; checklist?: ChecklistControl }) {
   const clickable = checklist !== undefined;
@@ -89,6 +91,17 @@ function Checkbox({ node: _node, ...props }: ComponentProps<"input"> & { node?: 
       onChange={(event) => checklist.onToggle(item, event.target.checked)}
     />
   );
+}
+
+/** A code block, or a diagram for a ```mermaid fence. */
+function Pre({
+  node,
+  children,
+  ...props
+}: ComponentProps<"pre"> & { node?: Parameters<typeof mermaidSourceOf>[0] }) {
+  const diagram = mermaidSourceOf(node);
+  if (diagram !== null) return <MermaidDiagram source={diagram} />;
+  return <pre {...props}>{children}</pre>;
 }
 
 function Anchor({ node: _node, href, children, ...props }: ComponentProps<"a"> & { node?: unknown }) {
