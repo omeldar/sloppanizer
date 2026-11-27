@@ -8,6 +8,8 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+## 1.2.1 (2026-11-27)
+
 - Notifications: long comment text and the hover background stay inside the panel. The panel was 40px
   wider than its popover, so text ran past the border; long words and links now wrap, and a long todo
   title ends in "…" (S5#12).
