@@ -116,10 +116,12 @@ async function signInInPopup(
 
 /**
  * "Confirm it is you" at auth.omeldar.com in a popup: a fresh sign-in there, then the API marks this
- * session as just confirmed. Resolves false when it never answers.
+ * session as just confirmed. Resolves false when it never answers. `username` (the signed-in account)
+ * goes along as login_hint: when the browser is signed in at auth as someone else, auth asks for this
+ * account straight away (prefilled, editable) instead of offering the other one read-only.
  */
-export async function confirmWithOmeldar(config: OmeldarConfig): Promise<boolean> {
-  const answer = await signInInPopup(config);
+export async function confirmWithOmeldar(config: OmeldarConfig, username?: string): Promise<boolean> {
+  const answer = await signInInPopup(config, username);
   if (answer === null) return false;
   await apiVoid("/auth/omeldar/reauth", { method: "POST", body: answer });
   return true;

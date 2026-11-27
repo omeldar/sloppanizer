@@ -8,6 +8,10 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- "Confirm it is you" with omeldar asks auth.omeldar.com for the account you are signed in with. When the
+  browser is signed in at auth as another account (e.g. omerovie while you use akotami), the popup now asks
+  for your account, prefilled and editable, instead of showing the other one read-only (S5#10).
+
 ## 1.2.0 (2026-11-27)
 
 - The breadcrumb at the top left links back: every step but the page you are on is a link (keyboard, a
