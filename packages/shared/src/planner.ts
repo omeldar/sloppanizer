@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { ProjectRef, TodoRef } from "./entities.ts";
-import { CalendarDate, Id, Timestamp } from "./primitives.ts";
+import { ProjectRef, TodoAssignee, TodoRef } from "./entities.ts";
+import { CalendarDate, Color, Id, Timestamp } from "./primitives.ts";
 
 /** Web links: http(s) or mailto, as typed (a bare host gets https://). */
 export const WebUrl = z
@@ -87,6 +87,14 @@ export const TimeBlockQuery = z
     from: CalendarDate,
     to: CalendarDate,
     todoId: z.coerce.number().int().positive().optional(),
+    /**
+     * In your own account: also your blocks in the shared projects you are a member of (each with its
+     * `space`). Ignored inside a shared project, which lists every member's blocks anyway.
+     */
+    shared: z
+      .enum(["true", "false"])
+      .transform((v) => v === "true")
+      .optional(),
   })
   .refine((v) => v.to >= v.from, { message: "to must not be before from.", path: ["to"] })
   .refine((v) => (Date.parse(v.to) - Date.parse(v.from)) / 86_400_000 <= 62, {
@@ -95,7 +103,12 @@ export const TimeBlockQuery = z
   });
 export type TimeBlockQuery = z.infer<typeof TimeBlockQuery>;
 
+/** The shared project a block lives in, as your own planner shows it. */
+export const BlockSpace = z.strictObject({ id: Id, name: z.string(), color: Color });
+export type BlockSpace = z.infer<typeof BlockSpace>;
+
 export const TimeBlock = z.strictObject({
+  /** Counted per account: a block of a shared project (space set) is changed inside that project. */
   id: Id,
   todoId: Id.nullable(),
   /** The block's own title; "" for a todo's block (show todo.title). */
@@ -108,5 +121,11 @@ export const TimeBlock = z.strictObject({
   createdBy: z.string(),
   createdAt: Timestamp,
   updatedAt: Timestamp,
+  /** The shared project the block (and its todo) lives in; null for your own and inside the project. */
+  space: BlockSpace.nullable(),
+  /** In a shared project: the member whose time it is (who planned it); null in your own account. */
+  member: TodoAssignee.nullable(),
+  /** The assignee of its todo (shared projects only; planning an unassigned todo there assigns it). */
+  assignee: TodoAssignee.nullable(),
 });
 export type TimeBlock = z.infer<typeof TimeBlock>;

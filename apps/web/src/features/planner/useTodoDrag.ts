@@ -1,10 +1,17 @@
+import type { BlockSpace } from "@organizer/shared";
 import { type MouseEvent, type PointerEvent, useState } from "react";
 import { snap } from "./planner.ts";
 
 export interface DragTodo {
   id: number;
   title: string;
+  /** A todo of a shared project (its id is counted there); none for your own. */
+  space?: BlockSpace | null;
 }
+
+/** Tells todos apart across your own and your shared projects (ids are counted per project). */
+export const dragKey = (todo: Pick<DragTodo, "id" | "space">): string =>
+  todo.space ? `s${todo.space.id}-${todo.id}` : String(todo.id);
 
 export interface TodoDrag {
   todo: DragTodo;

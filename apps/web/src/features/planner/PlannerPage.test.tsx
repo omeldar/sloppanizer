@@ -20,6 +20,9 @@ const focus: TimeBlock = {
   createdBy: "you",
   createdAt: "2026-11-18T09:00:00.000Z",
   updatedAt: "2026-11-18T09:00:00.000Z",
+  space: null,
+  member: null,
+  assignee: null,
 };
 
 beforeEach(() => {

@@ -42,7 +42,9 @@ they sat untouched, and tells you why each one is where it is.
   role and since when), rename and delete it; members can leave. A todo's Project field moves it into a
   shared project and back: it is copied there with its thread, subtasks and files, the original is done. A todo there can be assigned to
   one member ("Assigned to" in the todo); your own Next up lists what is assigned to you under "Assigned to
-  you", with the project it comes from.
+  you", with the project it comes from. Your own planner, Week view, search and statistics include the shared
+  projects too: search their todos when you plan time, plan them (time or a day) next to your own, each
+  marked with its project; planning a todo nobody is on assigns it to you.
 - Feedback: "report a bug / request a feature" in the status bar, the sidebar and the palette. Reports land as
   todos in the Sloppanizer shared project (all admins are members), labelled `type::bug` or `type::feature`,
   requested by the sender ("First Last" from the account page, else the username).
@@ -139,9 +141,12 @@ Settings (environment of the service, all optional): `ORGANIZER_PORT` (4711), `O
 - Repeating todos: `GET /api/v1/todos/recurring`; planned time that repeats with one:
   `POST`/`GET`/`DELETE /api/v1/todos/{id}/plan`, `PATCH /api/v1/todos/{id}/plan/{date}` (this, following or
   all), `GET /api/v1/blocks/series?from=&to=` for its dates.
-- Planner: `GET /api/v1/blocks?from=YYYY-MM-DD&to=YYYY-MM-DD[&todoId=]` (days in the account's time zone, at
-  most 62), `POST /api/v1/blocks` (`{ todoId? , title?, startAt, endAt }`, ISO instants), `PATCH`/`DELETE`
-  `/api/v1/blocks/{id}`.
+- Planner: `GET /api/v1/blocks?from=YYYY-MM-DD&to=YYYY-MM-DD[&todoId=][&shared=true]` (days in the account's
+  time zone, at most 62; `shared=true` adds your blocks in your shared projects, each with its `space`),
+  `POST /api/v1/blocks` (`{ todoId? , title?, startAt, endAt }`, ISO instants), `PATCH`/`DELETE`
+  `/api/v1/blocks/{id}`. Time for a shared project's todo is planned inside that project (the header above);
+  the block is yours (`member`), and an unassigned todo planned there (a block or `plannedOn`) is assigned to
+  whoever planned it.
 
 ## Sign in with omeldar (auth.omeldar.com)
 
@@ -236,8 +241,9 @@ Tools:
 - Shared projects: their todos read `S7#12` (todo 12 of shared project 7) with project and assignee.
   `list_todos`, `next_up` (assigned to you, ranked in), `overview`, `search` and `list_projects` include
   them; `scope` (all, own, shared) and `assignee` ("me", "none", "anyone", a username) filter them.
-  `get_todo`, `update_todo` (`assignee`), `mark_done`, `add_comment`, `get_activity` and `check_item` take
-  `S7#12`; `create_todo` takes a shared project as `project` ("S7" or its name).
+  `get_todo`, `update_todo` (`assignee`), `mark_done`, `add_comment`, `get_activity`, `check_item` and
+  `plan_time` take `S7#12`; `create_todo` takes a shared project as `project` ("S7" or its name).
+  `list_plan` lists your time there as `block S7:5`, which `move_block` and `delete_block` take.
 
 Restore, settings and tokens are not offered as tools.
 

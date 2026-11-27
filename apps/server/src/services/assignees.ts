@@ -107,3 +107,27 @@ export function unassignMember(tx: Tx, spaceId: number, userId: number, actor: s
   );
   return rows.length;
 }
+
+/**
+ * The shared projects a user account is a member of (space account ids): its memberships, plus the
+ * Sloppanizer project for an active admin. The same rule as opening one (spaces.ts roleIn).
+ */
+export function memberSpaceIds(tx: Tx, userId: number): number[] {
+  const user = tx.select().from(accounts).where(eq(accounts.id, userId)).get();
+  if (!user || user.kind !== "user" || user.status !== "active") return [];
+  const ids = tx
+    .select({ spaceId: spaceMembers.spaceId })
+    .from(spaceMembers)
+    .innerJoin(accounts, eq(accounts.id, spaceMembers.spaceId))
+    .where(and(eq(spaceMembers.accountId, userId), eq(accounts.status, "active")))
+    .all()
+    .map((r) => r.spaceId);
+  if (user.role === "admin") {
+    const feedback = tx.select().from(spaces).where(eq(spaces.systemKey, FEEDBACK_KEY)).get();
+    if (feedback) ids.push(feedback.accountId);
+  }
+  return [...new Set(ids)].toSorted((a, b) => a - b);
+}
+
+/** Whether the account is a shared project (a space). */
+export const isSpace = (tx: Tx, accountId: number): boolean => spaceOf(tx, accountId) !== undefined;

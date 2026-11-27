@@ -1,6 +1,7 @@
 import { addDays, type Todo, toLocalDate } from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { useCurrentAccount } from "../../app/account.tsx";
 import { Button } from "../../components/ui.tsx";
 import { dayLabel, timeZone, today } from "../../lib/format.ts";
 import { useBlocks } from "../../lib/queries.ts";
@@ -8,7 +9,7 @@ import { useNow } from "../../lib/useNow.ts";
 import relations from "../todos/relations/Relations.module.css";
 import { BlockDialog, type BlockDraft, draftOf } from "./BlockDialog.tsx";
 import styles from "./Planner.module.css";
-import { minutesToTime, nextQuarter, spanText, timeToMinutes } from "./planner.ts";
+import { blockSource, minutesToTime, nextQuarter, spanText, timeToMinutes } from "./planner.ts";
 
 /** The time planned for a todo (two weeks back, seven weeks ahead) and a button to plan more. */
 export function PlannedTime({ todo }: { todo: Todo }) {
@@ -16,6 +17,7 @@ export function PlannedTime({ todo }: { todo: Todo }) {
   const now = today(new Date(nowMs));
   const blocks = useBlocks(addDays(now, -14), addDays(now, 47), todo.id);
   const [draft, setDraft] = useState<BlockDraft | null>(null);
+  const me = useCurrentAccount()?.username ?? null;
 
   const planNew = () => {
     const day = todo.plannedOn && todo.plannedOn >= now ? todo.plannedOn : now;
@@ -44,6 +46,8 @@ export function PlannedTime({ todo }: { todo: Todo }) {
       ) : (
         <ul className={styles.plannedList}>
           {list.map((block) => {
+            // In a shared project every member's time on the todo is listed, with whose it is.
+            const who = blockSource(block, me);
             return (
               <li key={block.id}>
                 <button
@@ -54,6 +58,7 @@ export function PlannedTime({ todo }: { todo: Todo }) {
                 >
                   <span>{dayLabel(toLocalDate(block.startAt, timeZone))}</span>
                   <span className={styles.plannedTime}>{spanText(block, timeZone)}</span>
+                  {who && <span className={styles.plannedTime}>{who}</span>}
                 </button>
               </li>
             );

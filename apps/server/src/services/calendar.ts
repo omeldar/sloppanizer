@@ -74,11 +74,18 @@ export function renderFeed(
   const today = toLocalDate(now, timeZone);
   const ctx = { db, clock, timeZone, accountId: account.id };
   const range = { from: addDays(today, -PAST_DAYS), to: addDays(today, FUTURE_DAYS) };
-  const blocks = listBlocks(ctx, range);
+  // Your time in shared projects too: it is in your planner.
+  const blocks = listBlocks(ctx, { ...range, shared: true });
   // Planned time that repeats with a todo: one event per date (moved ones at their new time).
   const planned = listRepeatOccurrences(ctx, range);
   const base = options.webOrigin ? `${options.webOrigin}/u/${account.username}` : null;
-  return toIcs(blocks, { now, todoUrl: base ? (id) => `${base}/todos/${id}` : null, planned });
+  return toIcs(blocks, {
+    now,
+    todoUrl: base
+      ? (id, spaceId) => (spaceId === null ? `${base}/todos/${id}` : `${base}/shared/${spaceId}/todos/${id}`)
+      : null,
+    planned,
+  });
 }
 
 // ---------- iCalendar (RFC 5545) ----------
@@ -122,17 +129,21 @@ interface FeedEvent {
   done: boolean;
   project: string | null;
   todoId: number | null;
+  /** The shared project of the todo (its own numbers), or null for your own. */
+  spaceId: number | null;
 }
 
 const blockEvent = (block: TimeBlock): FeedEvent => ({
-  uid: `block-${block.id}-${block.createdAt.replace(/\D/g, "")}`,
+  // Block ids are counted per account: a shared project's block names its project.
+  uid: `block-${block.space ? `s${block.space.id}-` : ""}${block.id}-${block.createdAt.replace(/\D/g, "")}`,
   modified: block.updatedAt,
   startAt: block.startAt,
   endAt: block.endAt,
   title: block.todo?.title ?? block.title,
   done: block.todo?.status === "done",
-  project: block.project?.name ?? null,
+  project: block.project?.name ?? block.space?.name ?? null,
   todoId: block.todo?.id ?? null,
+  spaceId: block.space?.id ?? null,
 });
 
 /** The UID stays the same for a date as long as the planned time exists (its series and original date). */
@@ -145,13 +156,14 @@ const plannedEvent = (o: BlockOccurrence, now: Date): FeedEvent => ({
   done: o.todo.status === "done",
   project: o.project?.name ?? null,
   todoId: o.todo.id,
+  spaceId: null,
 });
 
 export function toIcs(
   blocks: readonly TimeBlock[],
   options: {
     now: Date;
-    todoUrl: ((todoId: number) => string) | null;
+    todoUrl: ((todoId: number, spaceId: number | null) => string) | null;
     planned?: readonly BlockOccurrence[];
   },
 ): string {
@@ -182,8 +194,9 @@ export function toIcs(
     );
     if (event.project) lines.push(`CATEGORIES:${icsText(event.project)}`);
     if (event.todoId !== null && options.todoUrl) {
-      const url = options.todoUrl(event.todoId);
-      lines.push(`URL:${url}`, `DESCRIPTION:${icsText(`#${event.todoId} in Sloppanizer: ${url}`)}`);
+      const url = options.todoUrl(event.todoId, event.spaceId);
+      const ref = event.spaceId === null ? `#${event.todoId}` : `S${event.spaceId}#${event.todoId}`;
+      lines.push(`URL:${url}`, `DESCRIPTION:${icsText(`${ref} in Sloppanizer: ${url}`)}`);
     }
     lines.push("TRANSP:OPAQUE", "END:VEVENT");
   }

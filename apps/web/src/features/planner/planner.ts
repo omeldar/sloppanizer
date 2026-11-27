@@ -38,10 +38,14 @@ export type PlannerItem = Span &
     | { kind: "repeat"; occurrence: BlockOccurrence }
   );
 
+/** Block ids are counted per account: a block of a shared project names its project in the key. */
+export const blockKey = (block: Pick<TimeBlock, "id" | "space">): string =>
+  block.space ? `block-s${block.space.id}-${block.id}` : `block-${block.id}`;
+
 export const blockItem = (block: TimeBlock): PlannerItem => ({
   kind: "block",
   block,
-  key: `block-${block.id}`,
+  key: blockKey(block),
   startAt: block.startAt,
   endAt: block.endAt,
 });
@@ -194,6 +198,20 @@ export const spanText = (block: Pick<TimeBlock, "startAt" | "endAt">, timeZone: 
 
 /** What a block is for: its todo's title, else its own title. */
 export const blockTitle = (block: TimeBlock): string => block.todo?.title ?? block.title;
+
+/**
+ * The line under a block's title that says where it comes from: in your own tab the shared project of
+ * your time there, in a shared project's tab the member whose time it is (when it is not yours).
+ */
+export function blockSource(block: TimeBlock, me: string | null): string | undefined {
+  if (block.space) return block.space.name;
+  if (block.member && block.member.username !== me) return block.member.name;
+  return undefined;
+}
+
+/** The colour of a block: its todo's project, else its shared project. */
+export const blockColor = (block: TimeBlock): string | undefined =>
+  block.project?.color ?? block.space?.color;
 
 /** Why only this date can move: the repeat has no rule for its dates moved by that many days. */
 export const ONLY_THIS_DAY = "Only this date can move to another day for this repeat.";

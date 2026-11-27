@@ -26,6 +26,7 @@ import { createProject, listProjects, updateProject } from "./projects.ts";
 import { foldCase } from "./text.ts";
 import { createTodo } from "./todos.ts";
 import { unassignMember } from "./assignees.ts";
+import { deleteMemberBlocks } from "./blocks.ts";
 
 /**
  * Shared projects. A shared project is a space: a hidden account (kind "space", username "~..." that no
@@ -387,6 +388,8 @@ export function removeSpaceMember(
       .run();
     // Their todos in the project are nobody's now (a line in each history says so).
     unassignMember(tx, id, accountId, memberName(member), clock().toISOString());
+    // So is the time they planned there (it showed in their own planner, which no longer reaches it).
+    deleteMemberBlocks(tx, id, accountId);
   });
 }
 

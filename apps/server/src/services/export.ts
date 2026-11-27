@@ -81,6 +81,8 @@ export const LOCAL_COLUMNS: Partial<Record<(typeof EXPORT_TABLES)[number], reado
   comments: ["author_token_id"],
   // An account id of this server (the member a shared project's todo is assigned to).
   todos: ["assignee_id"],
+  // The member whose time a block of a shared project is (also an account id; null in personal accounts).
+  time_blocks: ["member_id"],
 };
 
 /** The row without account_id and the local columns of its table. */

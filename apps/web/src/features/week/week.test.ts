@@ -1,6 +1,7 @@
+import type { Space } from "@organizer/shared";
 import { describe, expect, it } from "vitest";
 import { makeTodo } from "../../test/render.tsx";
-import { weekLists } from "./WeekPage.tsx";
+import { weekKey, weekLists } from "./WeekPage.tsx";
 import { daysOfWeek, shiftWeek, weekPlace, weekStart } from "./week.ts";
 
 const WEEK = daysOfWeek("2026-11-12");
@@ -58,12 +59,23 @@ describe("where a todo shows", () => {
       [a, b, a],
       WEEK,
       new Map([
-        [1, "2026-11-11"],
-        [2, null],
+        ["1", "2026-11-11"],
+        ["2", null],
       ]),
     );
     expect(lists.days.get("2026-11-11")?.map((t) => t.id)).toEqual([1]);
     expect(lists.unplanned.map((t) => t.id)).toEqual([2]);
     expect(lists.carried).toEqual([]);
+  });
+
+  it("tells a shared project's todo from your own with the same number (S5#13)", () => {
+    const space = { id: 7, name: "Home move" } as Space;
+    const own = makeTodo({ id: 3, plannedOn: "2026-11-10" });
+    const shared = { ...makeTodo({ id: 3, plannedOn: null }), space };
+    expect(weekKey(own)).toBe("3");
+    expect(weekKey(shared)).toBe("s7-3");
+    const lists = weekLists([own, shared], WEEK, new Map([["s7-3", "2026-11-12"]]));
+    expect(lists.days.get("2026-11-10")?.map(weekKey)).toEqual(["3"]);
+    expect(lists.days.get("2026-11-12")?.map(weekKey)).toEqual(["s7-3"]);
   });
 });

@@ -11,6 +11,7 @@ import { type DropHandler, useBlockDrag } from "./useBlockDrag.ts";
 export function BlockCard({
   placed,
   title,
+  source,
   color,
   done = false,
   meeting = false,
@@ -23,6 +24,8 @@ export function BlockCard({
 }: {
   placed: Placed;
   title: string;
+  /** Where it comes from: a shared project's name, or the member whose time it is. */
+  source?: string | undefined;
   /** The project's colour; amber without one. */
   color?: string | undefined;
   done?: boolean;
@@ -84,13 +87,15 @@ export function BlockCard({
       onClick={(event) => {
         if (event.detail === 0 || !matchesMouse(event)) onOpen();
       }}
-      title={`${title}, ${time}${kind}`}
+      title={`${title}${source ? ` (${source})` : ""}, ${time}${kind}`}
+      data-shared={source !== undefined || undefined}
     >
       <span className={styles.blockTitle}>
         {meeting && <MeetingMark />}
         {repeats && <RepeatMark />}
         {title}
       </span>
+      {source && <span className={styles.blockSource}>{source}</span>}
       <span className={styles.blockTime}>{time}</span>
       {!placed.continuesAfter && (
         <span

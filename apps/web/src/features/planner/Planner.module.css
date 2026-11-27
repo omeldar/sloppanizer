@@ -253,6 +253,37 @@
   white-space: nowrap;
 }
 
+/* The shared project a block comes from, or the member whose time it is. */
+.blockSource {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.block[data-short] .blockSource {
+  display: none;
+}
+
+/* A shared project's todo in the Day row and To plan: where it comes from. */
+.fromSpace {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.fromSpace::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--swatch, var(--text-2));
+  content: "";
+}
+
 /* Todos planned for a day without a time yet. Capped, so many items scroll here and the hours stay usable. */
 .allDay {
   flex: none;

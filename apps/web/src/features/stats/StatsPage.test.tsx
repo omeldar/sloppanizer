@@ -18,11 +18,12 @@ const stats: WorkStats = {
     {
       kind: "project",
       project: { id: 1, slug: "lab", name: "Lab", color: "#4c9aff" },
+      space: null,
       minutes: 180,
       done: 1,
     },
-    { kind: "untitled", project: null, minutes: 60, done: 0 },
-    { kind: "inbox", project: null, minutes: 30, done: 1 },
+    { kind: "untitled", project: null, space: null, minutes: 60, done: 0 },
+    { kind: "inbox", project: null, space: null, minutes: 30, done: 1 },
   ],
   requesters: [{ person: { id: 9, name: "Anna Meier" }, minutes: 120, done: 1 }],
   otherRequesters: null,
@@ -92,6 +93,26 @@ describe("statistics page", () => {
     expect(within(people).getByRole("link", { name: "Anna Meier" }).getAttribute("href")).toBe("/people/9");
     expect(screen.getByText("Busiest: Tue, 1.5 h on an average day")).toBeTruthy();
     expect(screen.getByText("1 more created than done: the backlog grows")).toBeTruthy();
+  });
+
+  it("lists your time in a shared project as its own group, without a link to an own project (S5#13)", async () => {
+    renderAppAt("/stats", (call: RecordedCall) => {
+      if (call.path.split("?")[0] !== "/api/v1/stats/overview")
+        return { status: 404, body: { error: { code: "not_found", message: "Not here." } } };
+      const space = { id: 7, name: "Home move", color: "#4C9AFF" };
+      const project = { id: 1, slug: "home-move", name: "Home move", color: "#4C9AFF" };
+      return {
+        body: { ...stats, projects: [{ kind: "project", project, space, minutes: 90, done: 0 }] },
+      };
+    });
+    await screen.findByText("4.5 h", {}, LAZY_PAGE);
+    const projects = screen.getByRole("region", { name: "Worked per project" });
+    expect(
+      within(projects)
+        .getAllByRole("listitem")
+        .map((r) => r.textContent),
+    ).toEqual(["Home move (shared)1.5 h · 0 done"]);
+    expect(within(projects).queryByRole("link")).toBeNull();
   });
 
   it("shows the time in meetings per person, linking to each person (S5#5)", async () => {

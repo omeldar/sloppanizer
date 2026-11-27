@@ -138,21 +138,26 @@ function Tile({ label, value, sub }: { label: string; value: string; sub: string
 }
 
 const groupLabel = (g: WorkStats["projects"][number]): string =>
-  g.kind === "inbox"
-    ? "Inbox"
-    : g.kind === "untitled"
-      ? "Own title (no todo)"
-      : (g.project?.name ?? "Project");
+  g.space
+    ? `${g.space.name} (shared)`
+    : g.kind === "inbox"
+      ? "Inbox"
+      : g.kind === "untitled"
+        ? "Own title (no todo)"
+        : (g.project?.name ?? "Project");
 
 const workText = (minutes: number, done: number): string => `${hoursText(minutes)} · ${done} done`;
 
 function ProjectsCard({ stats }: { stats: WorkStats }) {
   const rows: BarRow[] = stats.projects.map((g) => ({
-    key: g.project ? `p${g.project.id}` : g.kind,
+    // Your time in a shared project: its own group (its project is numbered there, so no link here).
+    key: g.space ? `s${g.space.id}` : g.project ? `p${g.project.id}` : g.kind,
     label: groupLabel(g),
-    ...(g.project
-      ? { swatch: g.project.color, to: { to: "/projects/$slug", params: { slug: g.project.slug } } }
-      : {}),
+    ...(g.space
+      ? { swatch: g.space.color }
+      : g.project
+        ? { swatch: g.project.color, to: { to: "/projects/$slug", params: { slug: g.project.slug } } }
+        : {}),
     value: g.minutes,
     text: workText(g.minutes, g.done),
     tip: {

@@ -21,8 +21,9 @@ export function createServer(config: McpConfig, fetchImpl?: typeof fetch): McpSe
         "meeting_todos, remove_from_meeting); they stay on every date until removed. " +
         "Shared projects (list_projects) are worked on with other users: their todos are numbered on their own and shown " +
         "as S7#12 (todo 12 of shared project 7); the lists, next_up, overview and search include them, and get_todo, " +
-        "update_todo, mark_done, add_comment, get_activity and check_item take S7#12. A todo there can be assigned to " +
-        'one member (update_todo assignee: "me", a username, or null). ' +
+        "update_todo, mark_done, add_comment, get_activity, check_item and plan_time take S7#12. A todo there can be assigned to " +
+        'one member (update_todo assignee: "me", a username, or null); planning it (plan_time, plannedOn) assigns it to the ' +
+        "user when nobody is on it. list_plan includes the user's time in shared projects as block S7:5. " +
         "Replies write dates as dd.MM.yyyy (03.10.2026); tool inputs take dates as YYYY-MM-DD (2026-10-03).",
     },
   );

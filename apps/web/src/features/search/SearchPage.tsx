@@ -3,7 +3,9 @@ import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { EmptyState, ErrorState, Loading, PageHeader } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
+import { useCurrentAccount } from "../../app/account.tsx";
 import { useSearch } from "../../lib/queries.ts";
+import { sharedTodoHref, type SharedHit, useSharedSearch } from "../../lib/spaces.ts";
 import { useOnChange } from "../../lib/useOnChange.ts";
 import { useUrlText } from "../../lib/useUrlText.ts";
 import { useScrollIntoView } from "../../lib/listCursor.ts";
@@ -35,6 +37,9 @@ export function SearchPage() {
     q.length > 0,
   );
   const items = result.data?.items ?? [];
+  // Todos of your shared projects (your own tab only), listed after your own results.
+  const shared = useSharedSearch(q, !search.kind || search.kind === "todo", search.kind ? 50 : 10);
+  const account = useCurrentAccount();
 
   useEffect(() => input.current?.focus(), []);
 
@@ -106,7 +111,7 @@ export function SearchPage() {
       )}
       {q && result.isPending && <Loading />}
       {result.isError && <ErrorState error={result.error} onRetry={() => void result.refetch()} />}
-      {q && result.data && items.length === 0 && (
+      {q && result.data && items.length === 0 && shared.items.length === 0 && (
         <EmptyState>
           Nothing found for "{q}". Try fewer or shorter words{search.kind ? ", or search in All" : ""}.
         </EmptyState>
@@ -122,6 +127,20 @@ export function SearchPage() {
             />
           ))}
         </ol>
+      )}
+      {shared.items.length > 0 && account && (
+        <section aria-label="In shared projects">
+          <h2 className={styles.sharedHead}>In shared projects</h2>
+          <ol className={styles.results}>
+            {shared.items.map((found) => (
+              <SharedResult
+                key={`${found.space.id}-${found.hit.id}`}
+                found={found}
+                href={sharedTodoHref(account.username, found.space.id, found.hit.id)}
+              />
+            ))}
+          </ol>
+        </section>
       )}
     </div>
   );
@@ -173,6 +192,31 @@ function Result({ hit, selected, showKind }: { hit: SearchHit; selected: boolean
           </span>
         )}
       </Link>
+    </li>
+  );
+}
+
+/** A todo found in one of your shared projects: it opens in that project's tab (a full page load). */
+function SharedResult({ found, href }: { found: SharedHit; href: string }) {
+  const { space, hit } = found;
+  return (
+    <li className={styles.result} data-kind="todo">
+      <a href={href} className={styles.resultLink}>
+        <span className={styles.resultTop}>
+          <span className={styles.space}>{space.name}</span>
+          <span className={styles.title}>{hit.title}</span>
+          {hit.status && (
+            <span className={styles.status} data-status={hit.status}>
+              {STATUS_LABELS[hit.status]}
+            </span>
+          )}
+        </span>
+        {hit.snippet && (
+          <span className={styles.snippet}>
+            <Highlighted text={hit.snippet} ranges={hit.highlights} />
+          </span>
+        )}
+      </a>
     </li>
   );
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { daysBetween } from "./dates.ts";
 import { ProjectRef } from "./entities.ts";
+import { BlockSpace } from "./planner.ts";
 import { CalendarDate, Id } from "./primitives.ts";
 
 /**
@@ -49,6 +50,11 @@ export function doneBucket(ms: number): DoneBucket {
 export const StatsGroup = z.strictObject({
   kind: z.enum(["project", "inbox", "untitled"]),
   project: ProjectRef.nullable(),
+  /**
+   * A shared project you are a member of: your time on its todos (kind "project", its project, which is
+   * numbered there). Null for your own projects.
+   */
+  space: BlockSpace.nullable(),
   minutes: Minutes,
   done: Count,
 });

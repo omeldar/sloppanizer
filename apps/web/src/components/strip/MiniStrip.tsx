@@ -1,9 +1,11 @@
 import { PRIORITY_SCOPE, parseLabelName, priorityOf, type Todo } from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
-import { forwardRef, type HTMLAttributes } from "react";
+import { type CSSProperties, forwardRef, type HTMLAttributes } from "react";
 import { dueState, dueText, formatDate, shortDate } from "../../lib/format.ts";
 import { LabelPill } from "../LabelPill.tsx";
 import styles from "./MiniStrip.module.css";
+import type { StripSource } from "./StripRow.tsx";
+import stripStyles from "./Strip.module.css";
 import { hasFacts, TodoFacts } from "./TodoFacts.tsx";
 
 type Props = HTMLAttributes<HTMLDivElement> & {
@@ -18,11 +20,13 @@ type Props = HTMLAttributes<HTMLDivElement> & {
   aside?: string;
   /** Narrow columns (week days): the title wraps to two lines and labels stay out. */
   narrow?: boolean;
+  /** A todo of a shared project in your own tab: its project, and the title opens it in that tab. */
+  source?: StripSource;
 };
 
 /** Compact flight strip for board columns and week days: band, #id, title, labels, due. */
 export const MiniStrip = forwardRef<HTMLDivElement, Props>(function MiniStrip(
-  { todo, selected, ghost, lifted, dimmed, aside, narrow, className, ...rest },
+  { todo, selected, ghost, lifted, dimmed, aside, narrow, source, className, ...rest },
   ref,
 ) {
   const priority = priorityOf(todo.labels);
@@ -47,19 +51,33 @@ export const MiniStrip = forwardRef<HTMLDivElement, Props>(function MiniStrip(
       <span className={styles.band} aria-hidden="true" />
       <span className={styles.body}>
         <span className={styles.top}>
-          <span className={styles.id}>#{todo.id}</span>
-          <Link
-            to="/todos/$id"
-            params={{ id: String(todo.id) }}
-            className={styles.title}
-            // The whole card drags (also by its title); the board stops the click that ends a drag.
-            draggable={false}
-          >
-            {todo.title}
-          </Link>
+          {/* A shared project numbers its todos on its own: #3 there is not your #3. */}
+          {!source && <span className={styles.id}>#{todo.id}</span>}
+          {source ? (
+            // Another tab (the shared project's own), so a full page load.
+            <a href={source.href || undefined} className={styles.title} draggable={false}>
+              {todo.title}
+            </a>
+          ) : (
+            <Link
+              to="/todos/$id"
+              params={{ id: String(todo.id) }}
+              className={styles.title}
+              // The whole card drags (also by its title); the board stops the click that ends a drag.
+              draggable={false}
+            >
+              {todo.title}
+            </Link>
+          )}
         </span>
-        {(labels.length > 0 || todo.dueOn || aside || hasFacts(todo)) && (
+        {(source || labels.length > 0 || todo.dueOn || aside || hasFacts(todo)) && (
           <span className={styles.meta}>
+            {source && (
+              <span className={stripStyles.source} title={`From the shared project ${source.name}`}>
+                <span className={stripStyles.swatch} style={{ "--swatch": source.color } as CSSProperties} />
+                {source.name}
+              </span>
+            )}
             <span className={styles.labels}>
               {labels.map((label) => (
                 <LabelPill key={label.id} name={label.name} color={label.color} />

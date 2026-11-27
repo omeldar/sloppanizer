@@ -1435,6 +1435,67 @@ describe("shared projects", () => {
     expect(result.text).toContain("S7#3 done | Book van");
   });
 
+  it("plans time for S7#3 in its project and lists, moves and deletes it as block S7:5 (S5#13)", async () => {
+    const shared = {
+      id: 5,
+      todoId: 3,
+      title: "",
+      startAt: "2026-11-12T08:00:00.000Z",
+      endAt: "2026-11-12T09:00:00.000Z",
+      todo: { id: 3, title: "Book van", status: "open" },
+      project: moveProject,
+      createdBy: "anna",
+      createdAt: at,
+      updatedAt: at,
+      space: null,
+      member: { accountId: 1, username: "anna", name: "Anna Berg" },
+      assignee: bo,
+    };
+    const { call, calls } = await connect(({ path, method, space: inSpace }) => {
+      if (path === "/spaces/7") return space;
+      if (path === "/blocks" && method === "POST") return shared;
+      if (path === "/blocks" && inSpace === 7) return [shared];
+      if (path === "/blocks") return [{ ...shared, space: { id: 7, name: "Home move", color: "#4C9AFF" } }];
+      if (path === "/blocks/5") return shared;
+      return [];
+    });
+    const made = await call("plan_time", {
+      todo: "S7#3",
+      date: "2026-11-12",
+      start: "09:00",
+      minutes: 60,
+    });
+    expect(made.text).toBe(
+      "Planned block S7:5 | 12.11.2026 09:00-10:00 | S7#3 Book van [Home move] (assigned to bobo)",
+    );
+    expect(calls.find((c) => c.method === "POST")).toMatchObject({
+      path: "/blocks",
+      space: 7,
+      body: { todoId: 3 },
+    });
+    const listed = await call("list_plan", { from: "2026-11-12", to: "2026-11-12" });
+    expect(listed.text).toContain("block S7:5 | 12.11.2026 09:00-10:00 | S7#3 Book van [Home move]");
+    expect(calls.find((c) => c.path === "/blocks" && c.method === "GET")?.query?.shared).toBe("true");
+
+    calls.length = 0;
+    expect((await call("move_block", { block: "S7:5", start: "10:00" })).text).toContain("Moved block S7:5");
+    expect(calls.filter((c) => c.method === "PATCH").map((c) => [c.path, c.space])).toEqual([
+      ["/blocks/5", 7],
+    ]);
+    expect((await call("delete_block", { block: "s7:5" })).text).toBe("Deleted block S7:5.");
+    expect(calls.filter((c) => c.method === "DELETE").map((c) => [c.path, c.space])).toEqual([
+      ["/blocks/5", 7],
+    ]);
+    const repeat = await call("plan_time", {
+      todo: "S7#3",
+      repeat: true,
+      date: "2026-11-12",
+      start: "09:00",
+      minutes: 60,
+    });
+    expect(repeat.isError).toBe(true);
+  });
+
   it("search adds the todo and comment hits of each shared project", async () => {
     const hit = {
       kind: "todo",
