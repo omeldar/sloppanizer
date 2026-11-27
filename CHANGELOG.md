@@ -8,6 +8,8 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+## 1.2.0 (2026-11-27)
+
 - The breadcrumb at the top left links back: every step but the page you are on is a link (keyboard, a
   middle click opens a new tab). A project page starts with "My todos", which in a shared project goes back
   to your own todos; a subtask shows its parent (S5#8).
