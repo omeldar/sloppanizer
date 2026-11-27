@@ -357,3 +357,65 @@ approval", the person closes it and moves again once approved, signing in with t
 binds any omeldar account not already bound to, or imported from, another Sloppanizer account, so this
 needs no change at auth. Re-running the import is the other way (same username and password, no
 approval wait); both are fine and the import stays safe to repeat.
+
+## 2026-11-27 Drawings: Draw, Draw on your phone, Edit drawing (S5#17)
+
+omerovie asked to draw in comments, descriptions and notes, on the screen (finger or pen) or by scanning a
+QR code with a phone or iPad, the finished picture going in as an image; and, if it fits, to edit drawings
+and to start a new one from a copy.
+
+**A drawing is an ordinary attachment.** "Insert" stores a PNG through `POST /attachments` (named
+`drawing-YYYY-MM-DD-HHmm.png`, so the quota, the export, the restore, the files folder and "move to a
+shared project" all work unchanged) and puts `![Drawing](/api/v1/attachments/<id>/<name>)` at the cursor
+(at the end when the text was never clicked into). The Draw button sits in the shared Markdown editor, so
+every field that uses it has it: descriptions, comments, notes, meeting notes, person notes.
+
+**The strokes live inside the PNG, not in a table.** The web app writes them as compact JSON
+(`{v:1,w,h,s:[[colour,size,eraser,[x,y,pressure,…]]]}`, whole numbers in page units) into a `tEXt`
+chunk with the keyword "Sloppanizer drawing", and reads them back to edit or copy. A `drawings` table
+would have needed export, restore and the copy into shared projects to learn about it, and a copied file
+would lose its strokes; inside the file they travel wherever the file goes. The server stores and serves
+the bytes as they are. A PNG without the chunk (a file renamed `drawing-x.png`) opens as a background to
+draw on; such a page is saved flat without strokes, so the next edit again starts from the whole picture
+and nothing is lost. The page is white, 1600 units on the long side (landscape on computers, portrait on
+a phone held upright); the eraser paints white.
+
+**Edit makes a new file, the old one stays.** "Edit drawing" shows under a drawing in a rendered
+description or note (anyone who can edit that text) and in your own comments (who may change the
+comment). Saving stores a new PNG and replaces the link target in the text (only whole `](…)` targets);
+the old file is kept: ids are never reused, an older version of the text, a copy in a shared project or
+another todo may still show it, and there is no attachment delete yet (the file manager, #37, is where
+unused files get cleaned up). Recent drawings (`GET /drawings`, the 12 newest attachments named
+`drawing-*.png`) show under the canvas as "Start from a copy": the copy loads into the canvas (undo goes
+back) and is stored as a new file.
+
+**Draw on your phone is a single-use capability, not a sign-in.** The dialog calls
+`POST /drawings/handoffs` (browser session only, also inside a shared project) and gets a 32-byte random
+token (base64url, 256 bits); the server keeps only its sha256 in `draw_handoffs` (auth-schema, never
+exported) with the account the drawing goes to (the shared project's when opened there), the user who
+opened it and their name for the file's author. The QR code holds `https://<web origin>/draw#<token>`:
+the token sits in the fragment, which browsers never send to a server, so it is not in any access log
+(Vercel's or ours) and not in a Referer. The phone's page needs no account; its two calls,
+`GET /draw-handoff` (does the link still work) and `POST /draw-handoff` (the PNG as the body, at most
+10 MB, PNG only by its bytes), send the token in the `X-Draw-Token` header, which the server's log
+redaction also covers. The token allows exactly that one upload into that one account, nothing else: it
+works for 10 minutes, once (the hash is cleared as the file is stored, in the same synchronous request),
+only while its user is active and still a member of the shared project, and ends at once when the
+dialog closes without a drawing (`DELETE /drawings/handoffs/{id}`). Unknown, used, expired and revoked
+tokens all get the same 404. The computer polls `GET /drawings/handoffs/{id}` every 1.5 s (no SSE in the
+app yet); only the user who opened it sees it, and once it says "received" it carries the attachment to
+insert. Expired tokens are cleared, and rows deleted an hour after expiry, by every hand-off call (no
+job). Limits: 10 links per user in 10 minutes, 30 phone calls per IP a minute; the file counts against
+the account's file limit like any upload. If the dialog is closed after the phone sent, the file stays
+stored but unlinked, like any upload removed from the text.
+
+**The canvas is hand-rolled** (Pointer Events, a few hundred lines, no library): `touch-action: none` on the
+canvas, the pen's pressure sets the width (mouse and finger draw at the size), coalesced events for
+smooth lines, and once a pen has touched the canvas, touches are ignored (palm rejection). Closing a
+dialog with an unsaved drawing asks first. The dialog and the phone page are separate lazy chunks; the
+main bundle only gains a few constants from the shared contract. The MCP server gets nothing new:
+drawings are image attachments like any other there.
+
+**Later:** editing an existing drawing on the phone (the hand-off would have to carry the strokes to the
+phone), drawing straight from the Write view of a field (edit works from the rendered text), a cleanup
+of drawings no text links any more (with the file manager).

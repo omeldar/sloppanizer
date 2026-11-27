@@ -14,6 +14,8 @@ they sat untouched, and tells you why each one is where it is.
   done creates the next one with its dates moved.
 - Notes: Markdown pages, alone or in a project, pinned ones first.
 - Paste or drop images and files into any Markdown field; images show inline, other files are downloads.
+- Draw in any Markdown field: a canvas for mouse, finger or pen, or "Draw on your phone" with a QR code (the
+  phone needs no sign-in). Drawings keep their strokes, so they can be edited later or copied for a new one.
 - Board (Open, In progress, Blocked, Done) and a week planner, both with drag and drop and keys.
 - Projects open as a list or a board, as you choose in Settings (saved to your account).
 - Statistics: worked time (planned time that has already happened) per project, requester and week,
@@ -124,6 +126,11 @@ Settings (environment of the service, all optional): `ORGANIZER_PORT` (4711), `O
 - Uploads: `POST /api/v1/attachments?name=<file name>` with the raw file as the body (any type, up to 25 MB).
   The type is read from the file itself; PNG, JPEG, GIF and WebP show inline, everything else is served as a
   download. Files live in `~/.local/share/organizer/attachments/` and are part of the export.
+- Drawings: `GET /api/v1/drawings` lists recent drawings (PNG attachments named `drawing-….png`, strokes in a
+  `tEXt` chunk). "Draw on your phone": `POST /api/v1/drawings/handoffs` (browser session only) returns a
+  single-use token for 10 minutes, `GET`/`DELETE /api/v1/drawings/handoffs/{id}` poll or end it; the phone
+  calls `GET`/`POST /api/v1/draw-handoff` with the token in the `X-Draw-Token` header (never in a URL) and
+  the PNG as the body.
 - Search: `GET /api/v1/search?q=...` over todos, notes, comments and people.
 - Web links: `POST /api/v1/todos/{id}/urls` (`{ urls: [{ url, label? }] }`), `PATCH`/`DELETE`
   `/api/v1/todos/{id}/urls/{urlId}`; `urls` on `POST /api/v1/todos` too.

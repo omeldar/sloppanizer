@@ -23,3 +23,4 @@ export * from "./work-stats.ts";
 export * from "./spaces.ts";
 export * from "./formats.ts";
 export * from "./notifications.ts";
+export * from "./drawings.ts";

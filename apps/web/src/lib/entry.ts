@@ -9,6 +9,8 @@ export type AuthPage = "login" | "signup" | "setup" | "reset" | "oauth" | "callb
 export type Entry =
   | { kind: "app"; account: StoredAccount; basepath: string; spaceId: number | null }
   | { kind: "auth"; page: AuthPage }
+  /** "Draw on your phone": the phone opens /draw#<token> without an account. */
+  | { kind: "draw" }
   | { kind: "redirect"; to: string };
 
 const AUTH_PAGES: ReadonlySet<string> = new Set<AuthPage>(["login", "signup", "setup", "reset"]);
@@ -30,6 +32,7 @@ export function resolveEntry(pathname: string, search: string, store: AccountSto
   if (page && AUTH_PAGES.has(page)) return { kind: "auth", page };
   // "Sign in with omeldar": auth.omeldar.com sends the browser back here.
   if (/^\/auth\/callback\/?$/.test(pathname)) return { kind: "auth", page: "callback" };
+  if (/^\/draw\/?$/.test(pathname)) return { kind: "draw" };
   // OAuth consent for MCP clients: picks among the signed-in accounts itself.
   if (/^\/oauth\/authorize\/?$/.test(pathname)) return { kind: "auth", page: "oauth" };
 

@@ -22,6 +22,7 @@ import { registerAccountApi } from "./routes/auth.ts";
 import { aiRoutes } from "./routes/ai.ts";
 import { calendarRoutes } from "./routes/calendar.ts";
 import { commentRoutes } from "./routes/comments.ts";
+import { drawingRoutes } from "./routes/drawings.ts";
 import { exportRoutes } from "./routes/export.ts";
 import { labelRoutes } from "./routes/labels.ts";
 import { mcpRoutes } from "./routes/mcp.ts";
@@ -161,6 +162,7 @@ export async function buildApp(options: BuildOptions) {
   noteRoutes(app, deps);
   meetingRoutes(app, deps);
   attachmentRoutes(app, deps);
+  drawingRoutes(app, deps, auth);
   searchRoutes(app, deps);
   tokenRoutes(app, deps);
   exportRoutes(app, deps);

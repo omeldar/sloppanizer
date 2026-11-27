@@ -1,6 +1,7 @@
 import { type ReactNode, type Ref, useState } from "react";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./MarkdownEditor.tsx";
 import styles from "./Markdown.module.css";
+import { replaceLinkTarget } from "./drawingLinks.ts";
 import { type ChecklistControl, MarkdownPreview } from "./MarkdownPreview.tsx";
 import { useAutosave } from "./useAutosave.ts";
 
@@ -79,7 +80,14 @@ export function MarkdownField({
           onBlur={flush}
         />
       ) : draft.trim() ? (
-        <MarkdownPreview source={draft} checklist={checklist} />
+        <MarkdownPreview
+          source={draft}
+          checklist={checklist}
+          onReplaceLink={(from, to) => {
+            change(replaceLinkTarget(draft, from, to));
+            flush();
+          }}
+        />
       ) : (
         <p className={styles.emptyText}>{emptyText}</p>
       )}

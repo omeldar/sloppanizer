@@ -3,6 +3,7 @@ import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fileMarkdown,
+  insertAtCursor,
   insertUploads,
   pendingUploads,
   placeholderText,
@@ -136,5 +137,17 @@ describe("insertUploads", () => {
     expect(fileMarkdown({ name: "a]b[c.png", url: "/api/v1/attachments/1/a-b-c.png", inline: true })).toBe(
       "![a\\]b\\[c.png](/api/v1/attachments/1/a-b-c.png)",
     );
+  });
+});
+
+describe("insertAtCursor", () => {
+  it("puts a drawing's link at the cursor, apart from the words around it", () => {
+    const v = editor("See this:and that", 9);
+    insertAtCursor(v, "![Drawing](/d.png)");
+    expect(v.state.doc.toString()).toBe("See this: ![Drawing](/d.png) and that");
+    expect(v.state.selection.main.head).toBe("See this: ![Drawing](/d.png)".length);
+    const empty = editor("");
+    insertAtCursor(empty, "![Drawing](/d.png)");
+    expect(empty.state.doc.toString()).toBe("![Drawing](/d.png)");
   });
 });

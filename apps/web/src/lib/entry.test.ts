@@ -16,6 +16,14 @@ const anna = {
 const store: AccountStore = { version: 1, lastUsed: "anna", accounts: [anna] };
 
 describe("resolveEntry", () => {
+  it("opens the phone's drawing page without an account, also when nobody is signed in", () => {
+    expect(resolveEntry("/draw", "", store)).toEqual({ kind: "draw" });
+    expect(resolveEntry("/draw/", "", { version: 1, lastUsed: null, accounts: [] })).toEqual({
+      kind: "draw",
+    });
+    expect(resolveEntry("/drawing", "", store).kind).toBe("redirect");
+  });
+
   it("opens the account's own data under /u/<username>", () => {
     expect(resolveEntry("/u/anna/board", "", store)).toEqual({
       kind: "app",

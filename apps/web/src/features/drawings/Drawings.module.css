@@ -1,0 +1,293 @@
+/* The drawing board: tools above a white page that keeps its shape. */
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.board[data-full] {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 8px 0;
+}
+
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.toolGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--line-strong);
+  border-radius: var(--radius-round);
+  cursor: pointer;
+}
+
+.swatch[aria-pressed="true"] {
+  outline: 2px solid var(--amber-line);
+  outline-offset: 2px;
+}
+
+.sizeButton,
+.toolButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  color: var(--text);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.sizeButton span {
+  display: block;
+  border-radius: var(--radius-round);
+  background: var(--text);
+}
+
+.sizeButton[aria-pressed="true"],
+.toolButton[aria-pressed="true"] {
+  border-color: var(--amber-line);
+  background: var(--amber-tint);
+}
+
+.toolButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.canvasBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: min(58vh, 540px);
+  min-height: 220px;
+  border-radius: var(--radius-panel);
+  background: var(--sunken);
+  overflow: hidden;
+}
+
+.board[data-full] .canvasBox {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+.canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  background: #ffffff;
+  border-radius: 4px;
+  box-shadow: var(--shadow-1);
+  /* The pen draws; the page does not scroll or zoom under it. */
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.canvas[data-eraser] {
+  cursor: cell;
+}
+
+.modes {
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.modes button {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  background: var(--raised);
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.modes button[aria-pressed="true"] {
+  background: var(--amber-tint);
+  color: var(--text);
+}
+
+.recent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recentTitle {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.recentList {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 6px;
+  list-style: none;
+  margin: 0;
+}
+
+.recentItem {
+  display: block;
+  width: 96px;
+  height: 64px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: #ffffff;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.recentItem:hover,
+.recentItem:focus-visible {
+  border-color: var(--amber-line);
+}
+
+.recentItem img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.phone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  min-height: 220px;
+}
+
+.qr {
+  width: 220px;
+  padding: 12px;
+  border-radius: var(--radius-panel);
+  background: #ffffff;
+}
+
+.qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.phoneText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.receivedImage {
+  max-width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.receivedImage img {
+  display: block;
+  max-width: 100%;
+  max-height: 50vh;
+}
+
+.note {
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.error {
+  color: var(--red);
+  font-size: var(--fs-small);
+}
+
+.discard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.discard span {
+  margin-right: auto;
+}
+
+/* The phone page: the canvas fills the screen, Send at the bottom above the home indicator. */
+.phonePage {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  overscroll-behavior: none;
+}
+
+.phonePage[data-centered] {
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+}
+
+.phoneTitle {
+  font-size: var(--fs-h1);
+  font-weight: 600;
+}
+
+.phoneBar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+}
+
+.phoneBar button {
+  height: 40px;
+  padding: 0 22px;
+  font-size: var(--fs-text);
+}
+
+@media (max-width: 640px) {
+  .canvasBox {
+    height: min(52dvh, 480px);
+  }
+
+  .swatch {
+    width: 30px;
+    height: 30px;
+  }
+
+  .sizeButton,
+  .toolButton {
+    height: 34px;
+    min-width: 34px;
+  }
+}

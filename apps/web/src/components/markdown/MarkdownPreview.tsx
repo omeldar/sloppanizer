@@ -1,6 +1,15 @@
 import { API_PREFIX, type ChecklistItem, parseChecklist, STATUS_LABELS } from "@organizer/shared";
 import { Link } from "@tanstack/react-router";
-import { type ComponentProps, createContext, type ReactNode, useContext, useMemo, useState } from "react";
+import {
+  type ComponentProps,
+  createContext,
+  lazy,
+  type ReactNode,
+  Suspense,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
@@ -8,6 +17,7 @@ import { useTodo } from "../../lib/queries.ts";
 import { HoverCard } from "../HoverCard.tsx";
 import { useDownload } from "../useDownload.ts";
 import { AuthImage } from "./AuthImage.tsx";
+import { isDrawingSrc } from "./drawingLinks.ts";
 import styles from "./Markdown.module.css";
 import { remarkTodoLinks, todoIdFromHref } from "./remarkTodoLinks.ts";
 
@@ -17,6 +27,9 @@ export const ATTACHMENT_PREFIX = `${API_PREFIX}/attachments/`;
 export function isAttachmentSrc(src: unknown): src is string {
   return typeof src === "string" && src.startsWith(ATTACHMENT_PREFIX) && !src.includes("..");
 }
+
+// Loads on the first "Edit drawing".
+const DrawDialog = lazy(() => import("../../features/drawings/DrawDialog.tsx"));
 
 const remarkPlugins = [remarkGfm, remarkTodoLinks];
 const rehypePlugins = [rehypeSanitize];
@@ -29,6 +42,13 @@ export interface ChecklistControl {
 }
 
 const ChecklistContext = createContext<(ChecklistControl & { items: ChecklistItem[] }) | null>(null);
+/**
+ * Drawings in the text can be edited: the new file's link replaces the old one in the text. Passed by
+ * whoever may change that text (a description, a note, your own comment).
+ */
+export type ReplaceLink = (from: string, to: string) => void;
+const ReplaceLinkContext = createContext<ReplaceLink | null>(null);
+
 /** The checklist item of the nearest task list line. */
 const ItemContext = createContext<ChecklistItem | null>(null);
 
@@ -40,21 +60,32 @@ const checklistComponents = { ...baseComponents, li: ListItem, input: Checkbox }
  * "#123" opens the todo inside the app, and only the app's own attachments show as images. With
  * `checklist`, task list boxes can be clicked; each box is matched to its item by source line.
  */
-export function MarkdownPreview({ source, checklist }: { source: string; checklist?: ChecklistControl }) {
+export function MarkdownPreview({
+  source,
+  checklist,
+  onReplaceLink,
+}: {
+  source: string;
+  checklist?: ChecklistControl;
+  /** Offers "Edit drawing" on drawings; saving one puts the new file's link in place of the old. */
+  onReplaceLink?: ReplaceLink;
+}) {
   const clickable = checklist !== undefined;
   const items = useMemo(() => (clickable ? parseChecklist(source) : []), [clickable, source]);
   const context = useMemo(() => (checklist ? { ...checklist, items } : null), [checklist, items]);
   return (
     <div className={styles.preview}>
-      <ChecklistContext.Provider value={context}>
-        <ReactMarkdown
-          remarkPlugins={remarkPlugins}
-          rehypePlugins={rehypePlugins}
-          components={checklist ? checklistComponents : baseComponents}
-        >
-          {source}
-        </ReactMarkdown>
-      </ChecklistContext.Provider>
+      <ReplaceLinkContext.Provider value={onReplaceLink ?? null}>
+        <ChecklistContext.Provider value={context}>
+          <ReactMarkdown
+            remarkPlugins={remarkPlugins}
+            rehypePlugins={rehypePlugins}
+            components={checklist ? checklistComponents : baseComponents}
+          >
+            {source}
+          </ReactMarkdown>
+        </ChecklistContext.Provider>
+      </ReplaceLinkContext.Provider>
     </div>
   );
 }
@@ -103,6 +134,9 @@ function Anchor({ node: _node, href, children, ...props }: ComponentProps<"a"> &
 }
 
 function Image({ node: _node, src, alt }: ComponentProps<"img"> & { node?: unknown }) {
+  const replaceLink = useContext(ReplaceLinkContext);
+  if (replaceLink && isDrawingSrc(src))
+    return <EditableDrawing src={src} alt={alt ?? ""} replace={replaceLink} />;
   if (!isAttachmentSrc(src)) {
     // The CSP blocks outside images anyway; a link keeps the reference usable.
     return typeof src === "string" && src ? (
@@ -114,6 +148,29 @@ function Image({ node: _node, src, alt }: ComponentProps<"img"> & { node?: unkno
     );
   }
   return <AuthImage src={src} alt={alt ?? ""} />;
+}
+
+/** A drawing with "Edit drawing": the dialog opens it, saving stores a new file and relinks it here. */
+function EditableDrawing({ src, alt, replace }: { src: string; alt: string; replace: ReplaceLink }) {
+  const [editing, setEditing] = useState(false);
+  return (
+    <span className={styles.drawing}>
+      <AuthImage src={src} alt={alt} />
+      <button type="button" className={styles.drawingEdit} onClick={() => setEditing(true)}>
+        Edit drawing
+      </button>
+      {editing && (
+        <Suspense fallback={null}>
+          <DrawDialog
+            open
+            editing={src}
+            onOpenChange={(open) => setEditing(open)}
+            onDone={({ url }) => replace(src, url)}
+          />
+        </Suspense>
+      )}
+    </span>
+  );
 }
 
 /** The file name at the end of an attachment link, for the saved file. */

@@ -7,7 +7,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
  */
 
 export const CORS_ALLOW_METHODS = "GET, POST, PATCH, DELETE";
-export const CORS_ALLOW_HEADERS = "authorization, content-type, accept, x-sloppanizer-space";
+export const CORS_ALLOW_HEADERS = "authorization, content-type, accept, x-sloppanizer-space, x-draw-token";
 export const CORS_EXPOSE_HEADERS = "content-disposition, retry-after";
 const MAX_AGE_SECONDS = "600";
 

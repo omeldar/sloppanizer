@@ -69,12 +69,26 @@ describe("webSecurityHeaders", () => {
 });
 
 describe("isAppPath", () => {
-  it.each(["/u", "/u/", "/u/anna/", "/u/anna/todos/1", "/login", "/signup", "/setup", "/reset", "/login/"])(
-    "%s is the app",
-    (path) => expect(isAppPath(path)).toBe(true),
-  );
-  it.each(["/", "/index.html", "/assets/app.js", "/user", "/loginx", "/favicon.svg", "/404.html"])(
-    "%s is not the app",
-    (path) => expect(isAppPath(path)).toBe(false),
-  );
+  it.each([
+    "/u",
+    "/u/",
+    "/u/anna/",
+    "/u/anna/todos/1",
+    "/login",
+    "/signup",
+    "/setup",
+    "/reset",
+    "/login/",
+    "/draw",
+  ])("%s is the app", (path) => expect(isAppPath(path)).toBe(true));
+  it.each([
+    "/",
+    "/index.html",
+    "/assets/app.js",
+    "/user",
+    "/loginx",
+    "/favicon.svg",
+    "/404.html",
+    "/drawing",
+  ])("%s is not the app", (path) => expect(isAppPath(path)).toBe(false));
 });

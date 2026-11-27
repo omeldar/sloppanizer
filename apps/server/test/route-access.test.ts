@@ -114,6 +114,10 @@ const MATRIX: [method: string, path: string, access: Access][] = [
   ["GET", "/attachments/1", "read"],
   ["GET", "/attachments/1/meta", "read"],
   ["GET", "/attachments/1/a.png", "read"],
+  ["GET", "/drawings", "read"],
+  ["POST", "/drawings/handoffs", "session"],
+  ["GET", "/drawings/handoffs/1", "session"],
+  ["DELETE", "/drawings/handoffs/1", "session"],
   ["GET", "/export.zip", "write"],
   ["GET", "/tokens", "session"],
   ["POST", "/tokens", "session"],
@@ -189,11 +193,18 @@ describe("access on every API route", () => {
     const expected = MATRIX.map(([method, path]) =>
       `${method} ${shape(path)}`.replace(/:\w+/g, ":p"),
     ).toSorted();
-    // /health is public and checked in security.test.ts, the calendar feed (secret link) in calendar.test.ts;
+    // /health is public and checked in security.test.ts, the calendar feed (secret link) in calendar.test.ts,
+    // the phone's drawing link (a token header) in drawings.test.ts;
     // the sign-in, account and admin routes have
     // their own access rules and tests (auth-*.test.ts, admin.test.ts).
     const real = registered
-      .filter((route) => route !== "GET /health" && route !== "GET /calendar/:file" && !isAccountRoute(route))
+      .filter(
+        (route) =>
+          route !== "GET /health" &&
+          route !== "GET /calendar/:file" &&
+          !route.endsWith(" /draw-handoff") &&
+          !isAccountRoute(route),
+      )
       .map((route) => route.replace(/:\w+/g, ":p"))
       .toSorted();
     expect(real).toEqual(expected);

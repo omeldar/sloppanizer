@@ -2,13 +2,17 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { Annotation, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap, placeholder as placeholderExt } from "@codemirror/view";
-import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
+import { lazy, type Ref, Suspense, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { errorMessage } from "../../lib/api.ts";
 import { uploadAttachment } from "../../lib/attachments.ts";
 import { useToast } from "../toast/ToastProvider.tsx";
 import { Button } from "../ui.tsx";
 import styles from "./Markdown.module.css";
-import { filesOf, insertUploads, pendingUploads, type Upload } from "./uploads.ts";
+import { drawingMarkdown } from "./drawingLinks.ts";
+import { filesOf, insertAtCursor, insertUploads, pendingUploads, type Upload } from "./uploads.ts";
+
+// The drawing dialog loads on first use: the editor chunk stays as it was.
+const DrawDialog = lazy(() => import("../../features/drawings/DrawDialog.tsx"));
 
 export interface MarkdownEditorHandle {
   focus: () => void;
@@ -82,6 +86,9 @@ export function MarkdownEditor({
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [drawing, setDrawing] = useState(false);
+  /** The text was clicked or focused once: its cursor is where the user wants things to go. */
+  const placed = useRef(false);
   const toast = useToast();
   const latest = useRef({ onChange, onBlur, onSubmit, upload, toast });
   useEffect(() => {
@@ -139,6 +146,9 @@ export function MarkdownEditor({
             }
           }),
           EditorView.domEventHandlers({
+            focus: () => {
+              placed.current = true;
+            },
             blur: () => latest.current.onBlur?.(),
             paste: (event) => {
               const files = filesOf(event.clipboardData);
@@ -186,6 +196,9 @@ export function MarkdownEditor({
         <Button size="sm" variant="ghost" onClick={() => fileInput.current?.click()}>
           Attach file
         </Button>
+        <Button size="sm" variant="ghost" onClick={() => setDrawing(true)}>
+          Draw
+        </Button>
         <span className={styles.editorHint}>or paste and drop files into the text</span>
         <input
           ref={fileInput}
@@ -200,6 +213,26 @@ export function MarkdownEditor({
           }}
         />
       </div>
+      {drawing && (
+        <Suspense fallback={null}>
+          <DrawDialog
+            open
+            onOpenChange={(open) => {
+              if (open) return;
+              setDrawing(false);
+              viewRef.current?.focus();
+            }}
+            upload={(file) => latest.current.upload(file)}
+            onDone={({ url }) => {
+              const view = viewRef.current;
+              if (!view) return;
+              // Never clicked into: the drawing goes at the end, not before the first word.
+              if (!placed.current) view.dispatch({ selection: { anchor: view.state.doc.length } });
+              insertAtCursor(view, drawingMarkdown(url));
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
