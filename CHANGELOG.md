@@ -8,6 +8,8 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+## 1.2.2 (2026-11-27)
+
 - Sign-up goes through omeldar as soon as "Sign in with omeldar" is on (`SLOPPANIZER_AUTH=both`, not only
   `oidc`): /signup opens "Create an account with omeldar", and the own sign-up API answers 410. A sign-up
   here made an account auth.omeldar.com never knew, which then could not move its sign-in (S5#18).
