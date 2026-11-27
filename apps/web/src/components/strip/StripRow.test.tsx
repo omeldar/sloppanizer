@@ -70,7 +70,9 @@ describe("StripRow", () => {
     expect(within(item).getAllByText("Home move")).toHaveLength(1);
     // Its number belongs to the shared project, so it is not shown next to your own.
     expect(within(item).queryByText("#3")).toBeNull();
-    expect(within(item).getByRole("checkbox", { name: 'Mark "Book van" done' })).toBeTruthy();
+    expect(within(item).getByRole("button", { name: 'Mark "Book van" done' })).toBeTruthy();
+    // Shared todos in your own list cannot be bulk changed here, so they have no selection box.
+    expect(within(item).queryByRole("checkbox")).toBeNull();
     expect(within(item).getByRole("link", { name: "Book van" }).getAttribute("href")).toBe(
       "/u/anna/shared/7/todos/3",
     );
@@ -110,7 +112,7 @@ describe("StripRow", () => {
     });
     const item = await screen.findByRole("listitem");
     expect(within(item).getByText("took 3d 4h")).toBeTruthy();
-    expect(within(item).getByRole("checkbox", { name: "Reopen #1" })).toHaveProperty("checked", true);
+    expect(within(item).getByRole("button", { name: "Reopen #1" }).dataset.on).toBe("true");
     expect(item.dataset.done).toBe("true");
   });
 
@@ -140,13 +142,13 @@ describe("StripRow", () => {
 
   it("marks done right away when the list keeps done rows", async () => {
     const { onToggleDone } = row({ collapseOnDone: false });
-    await userEvent.click(await screen.findByRole("checkbox", { name: "Mark #1 done" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Mark #1 done" }));
     expect(onToggleDone).toHaveBeenCalledTimes(1);
   });
 
   it("folds the row away first, then marks it done once", async () => {
     const { onToggleDone } = row({ collapseOnDone: true });
-    await userEvent.click(await screen.findByRole("checkbox", { name: "Mark #1 done" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Mark #1 done" }));
     expect((await screen.findByRole("listitem")).dataset.collapsing).toBe("true");
     expect(onToggleDone).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(onToggleDone).toHaveBeenCalledTimes(1));
@@ -173,5 +175,26 @@ describe("StripRow", () => {
     await userEvent.type(input, " changed{Escape}");
     expect(onTitleCancel).toHaveBeenCalledTimes(1);
     expect(onTitleSave).not.toHaveBeenCalled();
+  });
+
+  it("selects with the checkbox instead of marking done, and passes shift for a range (S5#14)", async () => {
+    const onCheck = vi.fn<(range: boolean) => void>();
+    const { onToggleDone } = row({ onCheck });
+    const box = await screen.findByRole("checkbox", { name: "Select #1" });
+    const user = userEvent.setup();
+    await user.click(box);
+    expect(onCheck).toHaveBeenLastCalledWith(false);
+    await user.keyboard("{Shift>}");
+    await user.click(box);
+    await user.keyboard("{/Shift}");
+    expect(onCheck).toHaveBeenLastCalledWith(true);
+    expect(onToggleDone).not.toHaveBeenCalled();
+  });
+
+  it("shows a checked row as checked", async () => {
+    row({ onCheck: vi.fn<(range: boolean) => void>(), checked: true });
+    const item = await screen.findByRole("listitem");
+    expect(within(item).getByRole("checkbox", { name: "Select #1" })).toHaveProperty("checked", true);
+    expect(item.dataset.checked).toBe("true");
   });
 });

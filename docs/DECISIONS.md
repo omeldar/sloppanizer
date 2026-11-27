@@ -357,3 +357,42 @@ approval", the person closes it and moves again once approved, signing in with t
 binds any omeldar account not already bound to, or imported from, another Sloppanizer account, so this
 needs no change at auth. Re-running the import is the other way (same username and password, no
 approval wait); both are fine and the import stays safe to repeat.
+
+## 2026-11-27 The list checkbox selects; bulk changes from a selection bar (S5#14)
+
+omerovie asked for the checkbox in Next up, Inbox and project lists to select a todo instead of marking it
+done, with changes for all selected todos at once.
+
+**Done is a round button, not the box.** Every strip now has a square selection box at the start and a
+round check button at the end of the title line (shown on hover, focus and the cursor row; always on touch
+screens and on done rows). The button does exactly what the box did: done or reopen, folding the row away,
+with the undo toast. `x` stays "done or reopen" on the cursor row, because it is the documented key for it;
+selecting by keyboard is `v` (vim's visual mode; the request suggested `x` only if it did not clash), and
+`Esc` clears the selection. Shift-click selects the range since the last clicked box. "Assigned to you" on
+Next up has no box: those todos live in other accounts (shared projects), and one bulk call reaches one
+account only. They keep the done button.
+
+**One bar, one call, one toast.** While todos are selected, a bar over that list shows the count, "Select
+all N", Clear, and: Done, Status, Priority, Move, Add labels, Remove labels, Requested by, Add contacts,
+Planned, Due, and in a shared project's tab Assign. Each is one `POST /todos/bulk` (several only past 200
+todos, the route's limit) and a toast that says what changed ("Moved 4 todos to Work") with Undo. Undo
+puts each todo back as it was: the fields the change touched, the full label, requested-by and contact
+sets for those, grouped so todos that go back the same way share a call. Selection is per list (Next up's
+Blocked list has its own), it stays after a change so several can follow, and todos that leave the list
+(done, moved) drop out of it.
+
+**Requested by replaces, after a warning.** As asked, it sets the full set; when any selected todo already
+has someone, a dialog names those todos and their people and says what they will have instead. With
+nobody to overwrite it applies at once. Contacts only add (removing is on the todo).
+
+**The bulk patch grew instead of a new route.** `BulkPatch` gains the full `labels` set (for undo),
+`requestedBy`, `addRequestedBy`, `removeRequestedBy`, `contacts`, `addContacts`, `removeContacts` and
+`assignee`, with the same rules as `UpdateTodo` (a full set or add/remove, not both; assignee only in a
+shared project). A person typed as a new name is created once, not once per todo (same transaction). The
+MCP `bulk_update` takes the people fields too. The web app needs the server's new fields: minor release.
+
+**No bulk move into shared projects.** A move into a shared project (or back to your own todos from its
+tab) is a copy plus a closed original (2026-11-26), with a confirmation and a new tab per todo. Doing that
+for many todos at once deserves its own design, so the bulk Move lists this tab's projects and Inbox only;
+the todo's own Project field still moves one todo between accounts.
+

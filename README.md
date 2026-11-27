@@ -310,6 +310,7 @@ Off while typing in a field; the status bar then shows `insert`. Press `?` in th
 | `j` / `k` | Move down / up |
 | `Enter` | Open the selected todo |
 | `x` | Mark done / undone (with undo) |
+| `v` / `Esc` | Lists: select the row for a bulk change / clear the selection (shift-click selects a range) |
 | `e` | Edit the title |
 | `l` / `p` / `r` | Labels / project / requested by |
 | `1` to `4` | Priority critical, high, medium, low |

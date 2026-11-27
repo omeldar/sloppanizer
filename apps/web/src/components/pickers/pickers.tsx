@@ -15,7 +15,8 @@ export function ProjectPicker({
   elsewhere = NOWHERE,
   onElsewhere,
 }: {
-  value: number | null;
+  /** undefined marks no choice (a bulk move of todos from several projects). */
+  value: number | null | undefined;
   onChange: (projectId: number | null) => void;
   /** Name of the "no project" choice: todos without one are in the Inbox, notes just have none. */
   noneLabel?: string;
@@ -46,7 +47,7 @@ export function ProjectPicker({
       label="Project"
       placeholder="Move to project"
       items={items}
-      selected={new Set([value === null ? INBOX : String(value)])}
+      selected={new Set(value === undefined ? [] : [value === null ? INBOX : String(value)])}
       onPick={(picked) => {
         if (other.has(picked)) onElsewhere?.(picked);
         else onChange(picked === INBOX ? null : Number(picked));

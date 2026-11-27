@@ -290,6 +290,8 @@ describe("MCP server against the real API", () => {
     const bulk = await ok("bulk_update", { ids: [a, b], plannedOn: tomorrow });
     expect(bulk.split("\n")[0]).toBe("Updated 2:");
     expect(bulk.match(new RegExp(`planned ${formatDate(tomorrow)}`, "g"))).toHaveLength(2);
+    const attributed = await ok("bulk_update", { ids: [b], requestedBy: ["Bo Berg"] });
+    expect(attributed).toContain("Bo Berg");
 
     const next = await ok("next_up");
     const lines = next.split("\n");

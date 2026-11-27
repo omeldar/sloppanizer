@@ -9,7 +9,7 @@ import { sharedTodoHref, useAssignedToMe, useSetSharedStatus } from "../../lib/s
 /**
  * Next up in your own tab: the open todos assigned to you in shared projects, ranked like the rest,
  * each with the project it comes from. A title opens the todo in that project's tab, where every change
- * is made; the box marks it done right here (in the project, with undo).
+ * is made; the round done button marks it done right here (in the project, with undo).
  */
 export function AssignedToYou() {
   const { items } = useAssignedToMe();

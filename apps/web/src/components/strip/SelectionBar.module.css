@@ -1,0 +1,54 @@
+/* Over a list while todos are checked: the count, select all, clear, and the bulk changes. */
+.bar {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--amber-line);
+  border-radius: var(--radius-panel);
+  background: var(--raised-2);
+  box-shadow: var(--menu-shadow);
+}
+
+.count {
+  padding: 0 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--line-strong);
+}
+
+.step {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.warning {
+  margin: 0;
+}
+
+.overwrites {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+.ref {
+  font-family: var(--font-mono);
+  color: var(--text-3);
+}
