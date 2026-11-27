@@ -4,6 +4,7 @@ import type { Project, Space } from "@organizer/shared";
 import { Menu } from "../components/Menu.tsx";
 import { Kbd } from "../components/ui.tsx";
 import { BrandMark } from "./BrandMark.tsx";
+import { Breadcrumb } from "./Breadcrumb.tsx";
 import { Icon, type IconName } from "./icons.tsx";
 import { HelpOverlay } from "../features/help/HelpOverlay.tsx";
 import { Palette } from "../features/palette/Palette.tsx";
@@ -18,12 +19,12 @@ import { currentSpace } from "../lib/api.ts";
 import { accountBase } from "../lib/entry.ts";
 import { spaceHref, useCurrentSpace, useSpaces } from "../lib/spaces.ts";
 import { type KeyBinding, useActiveBindings, useKeyHold, useKeys } from "../keyboard/KeyboardProvider.tsx";
-import { useProjects, useStats, useTodo } from "../lib/queries.ts";
+import { useProjects, useStats } from "../lib/queries.ts";
 import { useSignups } from "../lib/adminQueries.ts";
-import { useMeeting } from "../lib/meetings.ts";
 import { useCurrentAccount } from "./account.tsx";
 import { AccountSwitcher } from "./AccountSwitcher.tsx";
 import { useCommands } from "./commands.tsx";
+import { NotificationBell } from "../features/notifications/NotificationBell.tsx";
 import styles from "./Layout.module.css";
 import { StatusBar } from "./StatusBar.tsx";
 import { MoveSignInBanner } from "./MoveSignIn.tsx";
@@ -266,6 +267,7 @@ function Sidebar({ open }: { open: boolean }) {
 function SpaceBanner() {
   const space = useCurrentSpace();
   const account = useCurrentAccount();
+  const [sharing, setSharing] = useState(false);
   return (
     <div className={styles.spaceBanner}>
       <span className={styles.spaceKicker}>Shared project</span>
@@ -277,10 +279,16 @@ function SpaceBanner() {
         {space.data?.name ?? (space.isError ? "Not available" : "Loading")}
       </span>
       {space.data && (
-        <span className={styles.spaceMembers}>
-          {space.data.members.length} {space.data.members.length === 1 ? "member" : "members"}
-        </span>
+        <button
+          type="button"
+          className={styles.spaceMembers}
+          onClick={() => setSharing(true)}
+          title="Who has access"
+        >
+          Share · {space.data.members.length} {space.data.members.length === 1 ? "member" : "members"}
+        </button>
       )}
+      <SpaceDialog space={sharing ? (space.data ?? null) : null} onOpenChange={setSharing} />
       {account && (
         <a className={styles.spaceBack} href={`${accountBase(account.username)}/`}>
           Back to my todos
@@ -325,7 +333,7 @@ function SharedSection() {
               </a>
               <Menu
                 label={`${space.name} menu`}
-                items={[{ label: "Members and settings", run: () => setManagingId(space.id) }]}
+                items={[{ label: "Share and settings", run: () => setManagingId(space.id) }]}
                 trigger={
                   <button
                     type="button"
@@ -406,6 +414,7 @@ function TopBar({ onMenu }: { onMenu: () => void }) {
       </button>
       <Breadcrumb />
       <div className={styles.topActions}>
+        <NotificationBell />
         <button type="button" className={styles.search} onClick={() => commands.openPalette()}>
           <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">
             <circle cx="5.5" cy="5.5" r="4.25" fill="none" stroke="currentColor" strokeWidth="1.4" />
@@ -424,65 +433,6 @@ function TopBar({ onMenu }: { onMenu: () => void }) {
         </button>
       </div>
     </header>
-  );
-}
-
-function Breadcrumb() {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const projects = useProjects();
-  const todoId = Number(/^\/todos\/(\d+)/.exec(pathname)?.[1] ?? Number.NaN);
-  const todo = useTodo(todoId);
-  const meetingId = Number(/^\/meetings\/(\d+)/.exec(pathname)?.[1] ?? Number.NaN);
-  // Phones show no page title, so the trail names the meeting.
-  const meeting = useMeeting(meetingId);
-
-  let trail: { label: string; to?: string; mono?: boolean }[] = [];
-  if (pathname === "/") trail = [{ label: "Next up" }];
-  else if (pathname === "/inbox") trail = [{ label: "Inbox" }];
-  else if (pathname === "/labels") trail = [{ label: "Labels" }];
-  else if (pathname === "/board") trail = [{ label: "Board" }];
-  else if (pathname === "/week") trail = [{ label: "Week" }];
-  else if (pathname === "/planner") trail = [{ label: "Planner" }];
-  else if (pathname === "/meetings") trail = [{ label: "Meetings" }];
-  else if (pathname === "/recurring") trail = [{ label: "Recurring" }];
-  else if (pathname === "/stats") trail = [{ label: "Statistics" }];
-  else if (pathname.startsWith("/meetings/"))
-    trail = [{ label: "Meetings", to: "/meetings" }, { label: meeting.data?.name ?? "Meeting" }];
-  else if (pathname === "/search") trail = [{ label: "Search" }];
-  else if (pathname === "/notes") trail = [{ label: "Notes" }];
-  else if (pathname.startsWith("/notes/")) trail = [{ label: "Notes", to: "/notes" }, { label: "Note" }];
-  else if (pathname === "/people") trail = [{ label: "People" }];
-  else if (pathname === "/people/stats")
-    trail = [{ label: "People", to: "/people" }, { label: "Statistics" }];
-  else if (pathname.startsWith("/people/")) trail = [{ label: "People", to: "/people" }, { label: "Person" }];
-  else if (pathname === "/settings") trail = [{ label: "Settings" }];
-  else if (pathname === "/account") trail = [{ label: "Account" }];
-  else if (pathname === "/admin") trail = [{ label: "Admin" }];
-  else if (pathname === "/settings/tokens")
-    trail = [{ label: "Settings", to: "/settings" }, { label: "API tokens" }];
-  else if (pathname.startsWith("/projects/")) {
-    const slug = decodeURIComponent(pathname.slice("/projects/".length));
-    trail = [{ label: "Projects" }, { label: projects.data?.find((p) => p.slug === slug)?.name ?? slug }];
-  } else if (Number.isInteger(todoId)) {
-    const project = todo.data?.project;
-    trail = [
-      project ? { label: project.name, to: `/projects/${project.slug}` } : { label: "Inbox", to: "/inbox" },
-      { label: `#${todoId}`, mono: true },
-    ];
-  }
-
-  return (
-    <ol className={styles.breadcrumb} aria-label="Breadcrumb">
-      {trail.map((part, i) => (
-        <li key={`${part.label}-${i === trail.length - 1}`} data-mono={part.mono || undefined}>
-          {part.to ? (
-            <Link to={part.to}>{part.label}</Link>
-          ) : (
-            <span aria-current={i === trail.length - 1 ? "page" : undefined}>{part.label}</span>
-          )}
-        </li>
-      ))}
-    </ol>
   );
 }
 

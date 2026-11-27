@@ -75,7 +75,9 @@ describe("new meeting", () => {
     fireEvent.click(await screen.findByRole("button", { name: /New meeting/ }, LAZY_PAGE));
     const dialog = await screen.findByRole("dialog", { name: "New meeting" });
     const name = within(dialog).getByRole("textbox", { name: "Name" });
-    const checked = () => within(dialog).getByRole("radio", { checked: true }).textContent;
+    const checked = () =>
+      within(within(dialog).getByRole("radiogroup", { name: "Type" })).getByRole("radio", { checked: true })
+        .textContent;
 
     expect(checked()).toBe("Other");
     fireEvent.change(name, { target: { value: "Daily scrum" } });
@@ -143,6 +145,34 @@ describe("new meeting", () => {
     expect(await screen.findByRole("heading", { name: "Team standup" })).toBeTruthy();
   });
 
+  it("creates a one-time meeting with people: no repeat in the request (S5#5)", async () => {
+    const created = makeMeeting({ type: "other", oneTime: true });
+    const { calls } = renderAppAt(
+      "/meetings",
+      api(({ method, path }) => {
+        if (path === "/api/v1/meetings") return method === "POST" ? { body: created } : { body: [] };
+        if (path === "/api/v1/meetings/7") return { body: created };
+        if (path === "/api/v1/people") return { body: [] };
+        if (path === "/api/v1/users") return { body: [] };
+        return undefined;
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /New meeting/ }, LAZY_PAGE));
+    const dialog = await screen.findByRole("dialog", { name: "New meeting" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Name" }), {
+      target: { value: "Kick-off" },
+    });
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Once" }));
+    expect(within(dialog).queryByText("Repeats", { selector: "span" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create meeting" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+      name: "Kick-off",
+      type: "other",
+      schedule: { startsOn: "2026-11-19", startTime: "09:00", durationMinutes: 15 },
+    });
+  });
+
   it("sends the day the user picked to count from", async () => {
     const { calls } = renderAppAt(
       "/meetings",
@@ -171,6 +201,59 @@ describe("one meeting", () => {
       api(() => undefined),
     );
     expect(await screen.findByText(/There is no meeting 99/, {}, LAZY_PAGE)).toBeTruthy();
+  });
+
+  it("shows the meeting's people and removes one with a pick (S5#5)", async () => {
+    const bo = {
+      id: 4,
+      firstName: "Bo",
+      lastName: "Berg",
+      displayName: "Bo Berg",
+      note: "",
+      team: "Ops",
+      email: "",
+    };
+    const meeting = makeMeeting({ type: "other", openCount: null, people: [bo] });
+    const { calls } = renderAppAt(
+      "/meetings/7",
+      api(({ method, path }) => {
+        if (path === "/api/v1/meetings/7")
+          return { body: method === "PATCH" ? { ...meeting, people: [] } : meeting };
+        if (path === "/api/v1/people")
+          return {
+            body: [
+              {
+                ...bo,
+                notesMd: "",
+                username: "",
+                languages: [],
+                topics: [],
+                tags: [],
+                counts: { requested: 0, requestedOpen: 0, requestedDone: 0, contact: 0, contactOpen: 0 },
+                createdAt: "2026-11-01T09:00:00.000Z",
+                updatedAt: "2026-11-01T09:00:00.000Z",
+              },
+            ],
+          };
+        if (path === "/api/v1/users") return { body: [] };
+        return undefined;
+      }),
+    );
+    const section = await screen.findByRole("region", { name: "People" }, LAZY_PAGE);
+    expect(
+      within(section)
+        .getByRole("link", { name: /Bo Berg/ })
+        .getAttribute("href"),
+    ).toBe("/people/4");
+    fireEvent.click(within(section).getByRole("button", { name: "People: add or remove" }));
+    fireEvent.click(await screen.findByRole("option", { name: /Bo Berg/ }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === "PATCH")).toEqual({
+        method: "PATCH",
+        path: "/api/v1/meetings/7",
+        body: { removePeople: [{ personId: 4 }] },
+      }),
+    );
   });
 
   it("steps through the dates and shows a cancelled date with a restore", async () => {

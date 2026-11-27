@@ -16,6 +16,8 @@ export interface Ctx {
    * filters read it ("assigned to me"); left out by internal callers, where "me" matches nothing.
    */
   callerId?: number;
+  /** How the caller acts: in the browser (their own clicks notify nobody else of themselves) or by token. */
+  callerVia?: "session" | "token";
 }
 
 /** A database handle inside or outside a transaction. */

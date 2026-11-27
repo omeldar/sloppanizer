@@ -2,6 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import {
   type Activity,
+  ActionNeededInput,
+  type NotificationList,
   formatDuration,
   type WorkStats,
   type BlockOccurrence,
@@ -30,7 +32,6 @@ import {
   type PeopleStats,
   PeopleStatsQuery,
   type Person,
-  PersonRef,
   PersonTagName,
   type PersonTag,
   PeopleQuery,
@@ -41,6 +42,7 @@ import {
   SearchQuery,
   type SearchResult,
   type Me,
+  type MovedTodo,
   type Space,
   type Stats,
   type Todo,
@@ -66,6 +68,7 @@ import {
 import { z } from "zod";
 import { type Api, ApiError, ToolError } from "./api.ts";
 import { registerMeetingTools } from "./meeting-tools.ts";
+import { People, PersonInput, toPeople, toPersonRef } from "./people-input.ts";
 import {
   activityLine,
   type DateContext,
@@ -94,6 +97,7 @@ import {
   sharedProjectLine,
   todoLine,
   todoLines,
+  notificationsText,
   todoRefText,
   topicLine,
   urlLines,
@@ -143,23 +147,6 @@ const Labels = (what: string) =>
       `${what} Names must exist (list_labels). Scoped labels like "priority::high" replace the other label of the same scope.`,
     );
 
-const PersonInput = z.union([
-  z.number().int().positive().describe("Person id from list_people."),
-  z
-    .string()
-    .trim()
-    .min(3)
-    .describe('"First Last". The last word is the last name; use the object form for multi-word last names.'),
-  PersonRef.options[1],
-]);
-const People = (what: string) =>
-  z
-    .array(PersonInput)
-    .max(50)
-    .describe(
-      `${what} By name, the person is found (case-insensitive) or created if missing. If several people share the name, pass the person id instead.`,
-    );
-
 const TopicNames = (what: string) =>
   CreatePerson.shape.topics
     .unwrap()
@@ -179,6 +166,12 @@ const Repeat = RecurrenceRule.nullable().describe(
 
 const NoteId = z.number().int().positive().describe("Note id from list_notes.");
 
+const ActionNeededField = ActionNeededInput.optional().describe(
+  'The "ACTION NEEDED" marker: what the user has to do themselves (e.g. "Approve the DNS change in the ' +
+    'Vercel dashboard"); it shows on the todo until someone removes it, and the user (in a shared project the ' +
+    'assignee, else every member) gets a notification. "" marks it without a reason; null removes it.',
+);
+
 const DateInput = (what: string) =>
   CalendarDate.nullable().describe(`${what} YYYY-MM-DD in the user's local calendar; null clears it.`);
 
@@ -186,18 +179,6 @@ const DateInput = (what: string) =>
 
 const READ: ToolAnnotations = { readOnlyHint: true, openWorldHint: false };
 const WRITE: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
-
-function toPersonRef(input: z.infer<typeof PersonInput>): PersonRef {
-  if (typeof input === "number") return { personId: input };
-  if (typeof input === "object") return input;
-  const words = input.split(/\s+/);
-  if (words.length < 2) {
-    throw new ToolError(`"${input}" needs a first and a last name, e.g. "Anna Meier", or pass a person id.`);
-  }
-  return { firstName: words.slice(0, -1).join(" "), lastName: words.at(-1) ?? "" };
-}
-
-const toPeople = (list: readonly z.infer<typeof PersonInput>[] | undefined) => list?.map(toPersonRef);
 
 /** Same text ignoring case (accents still count, like the server's name match). */
 const sameName = (a: string, b: string): boolean =>
@@ -607,6 +588,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           .boolean()
           .optional()
           .describe("true: only todos without a planned day (not together with plannedFrom/plannedTo)."),
+        actionNeeded: z
+          .boolean()
+          .optional()
+          .describe('true: only todos marked "ACTION NEEDED"; false: only todos without the marker.'),
         sort: TodoListQuery.shape.sort.describe("Sort field."),
         order: TodoListQuery.shape.order.describe("Sort order; priority desc lists critical first."),
         limit: TodoListQuery.shape.limit.unwrap().default(50).describe("Page size (default 50)."),
@@ -631,6 +616,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         plannedFrom: args.plannedFrom,
         plannedTo: args.plannedTo,
         unplanned: args.unplanned,
+        actionNeeded: args.actionNeeded,
         sort: args.sort,
         order: args.order,
         limit: args.limit,
@@ -737,6 +723,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           .max(50)
           .optional()
           .describe("Web links (tickets, docs, pull requests): url and an optional label."),
+        actionNeeded: ActionNeededField,
         format,
       },
       annotations: WRITE,
@@ -759,6 +746,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           parentId: args.parent,
           recurrence: args.repeat,
           urls: args.links,
+          actionNeeded: args.actionNeeded,
         }),
       );
       return out(args.format, todo, (data) => `Created ${todoLine(data, ctx(), where.space)}`);
@@ -774,7 +762,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "requested by, contacts. labels/requestedBy/contacts replace the full set; the add*/remove* fields " +
         "change only those (e.g. addContacts adds a colleague to ask). parent moves it under another todo " +
         "(null: top level again); repeat sets or stops (null) the repeat rule. Send only what changes. In a " +
-        'shared project (S7#12) assignee gives it to a member ("me" or a username) or null unassigns it.',
+        'shared project (S7#12) assignee gives it to a member ("me" or a username) or null unassigns it. ' +
+        'actionNeeded sets the "ACTION NEEDED" marker with what the user must do (when you are stuck on ' +
+        "something only they can do), null removes it.",
       inputSchema: {
         id: TodoRefInput,
         assignee: AssigneeInput.optional(),
@@ -799,6 +789,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           .optional()
           .describe("Make it a subtask of this todo; null: top level again."),
         repeat: Repeat.optional(),
+        actionNeeded: ActionNeededField,
         format,
       },
       annotations: { ...WRITE, idempotentHint: true },
@@ -826,6 +817,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           removeContacts: toPeople(args.removeContacts),
           parentId: args.parent,
           recurrence: args.repeat,
+          actionNeeded: args.actionNeeded,
         }),
       );
       return out(args.format, todo, (data) => `Updated ${todoLine(data, ctx(), target.space)}`);
@@ -1430,6 +1422,48 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   );
 
   tool(
+    "move_todo",
+    {
+      title: "Move todo",
+      description:
+        "Move a todo with its subtasks to a shared project, back to your own todos, or between shared " +
+        "projects. Todos never change accounts, so it is copied there (comments, checklist, subtasks, " +
+        "labels, people, web links, files) and the original is marked done with a comment naming the copy. " +
+        "Links to other todos stay behind (listed in the copy's first comment). Inside one place, change " +
+        "the project with update_todo instead.",
+      inputSchema: {
+        todo: TodoRefInput,
+        to: ProjectInput.describe(
+          'Where to: a shared project ("S7" or its name), or one of your own projects (id or slug) or "inbox".',
+        ),
+        format,
+      },
+      annotations: WRITE,
+    },
+    async (args) => {
+      const source = await todoTarget(api, args.todo);
+      const where = await createPlace(api, args.to);
+      const spaceId = where.space?.id ?? null;
+      if (spaceId === (source.space?.id ?? null)) {
+        throw new ToolError(
+          "The todo is already there. Use update_todo with project to move it to another project of the same place.",
+        );
+      }
+      const moved = await source.api.post<MovedTodo>(`/todos/${source.id}/move`, {
+        spaceId,
+        ...(where.projectId === undefined ? {} : { projectId: where.projectId }),
+      });
+      return out(
+        args.format,
+        moved,
+        (data) =>
+          `Moved ${todoRefText(source.id, source.space)} to ${data.ref} ${data.todo.title}. ` +
+          `${todoRefText(source.id, source.space)} is done and points to it.`,
+      );
+    },
+  );
+
+  tool(
     "search",
     {
       title: "Search",
@@ -1873,6 +1907,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       title: "Work statistics",
       description:
         "How much the user worked in a period, per project, per requester and per week, with meeting time " +
+        "(also per person in the meetings) " +
         "and todos created and done. Worked time is planned time that has already happened (there is no " +
         "timer). Default: the last 4 weeks.",
       inputSchema: {
@@ -1908,6 +1943,17 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
               ]
             : []),
           "",
+          "Time in meetings per person (a meeting counts for each of its people):",
+          ...(s.meetingPeople.length === 0
+            ? ["- nobody added to meetings"]
+            : s.meetingPeople.map(
+                (p) =>
+                  `- ${p.person.name}: ${hoursText(p.minutes)} in ${p.dates} meeting${p.dates === 1 ? "" : "s"}`,
+              )),
+          ...(s.meetingMinutesWithoutPeople > 0
+            ? [`- without people: ${hoursText(s.meetingMinutesWithoutPeople)}`]
+            : []),
+          "",
           "Weeks:",
           ...s.weeks.map(
             (w) =>
@@ -1917,6 +1963,32 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         ];
         return lines.join("\n");
       });
+    },
+  );
+
+  tool(
+    "list_notifications",
+    {
+      title: "Notifications",
+      description:
+        "The user's in-app notifications, newest first: assigned to a shared todo, mentioned (@username) in a " +
+        'comment, a comment on a todo of theirs, a todo marked "ACTION NEEDED". markRead: true marks every ' +
+        "one read afterwards (the bell in the app clears too).",
+      inputSchema: {
+        unread: z.boolean().optional().describe("true: unread ones only."),
+        limit: z.number().int().min(1).max(100).default(30).describe("How many (default 30)."),
+        markRead: z.boolean().default(false).describe("true: mark all read after listing them."),
+        format,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async (args) => {
+      const list = await api.get<NotificationList>("/notifications", {
+        unread: args.unread === undefined ? undefined : String(args.unread),
+        limit: args.limit,
+      });
+      if (args.markRead && list.unreadCount > 0) await api.post("/notifications/read", { all: true });
+      return out(args.format, list, (data) => notificationsText(data, deps.timeZone));
     },
   );
 

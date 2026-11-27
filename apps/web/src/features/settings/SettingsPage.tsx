@@ -2,12 +2,15 @@ import { Link } from "@tanstack/react-router";
 import { PageHeader } from "../../components/ui.tsx";
 import { Button } from "../../components/ui.tsx";
 import { useDownloadExport } from "../../components/useDownload.ts";
+import type { ProjectView } from "@organizer/shared";
+import { useProjectView, useUpdateProfile } from "../../lib/accountQueries.ts";
 import { absoluteTime, formatBytes, relativeTime } from "../../lib/format.ts";
 import { useMe, useSettings, useStats } from "../../lib/queries.ts";
 import { setTheme, type Theme, useTheme } from "../../lib/theme.ts";
 import { AiAssistantSection } from "./AiAssistant.tsx";
 import { CalendarFeedSection } from "./CalendarFeed.tsx";
 import { RestoreSection } from "./Restore.tsx";
+import listStyles from "../lists/Lists.module.css";
 import styles from "./Settings.module.css";
 
 const THEMES: { value: Theme; name: string; note: string }[] = [
@@ -52,6 +55,8 @@ export function SettingsPage() {
           ))}
         </div>
       </section>
+
+      {session && <ProjectViewSection />}
 
       <section className={styles.section}>
         <h2 className={styles.heading}>Export</h2>
@@ -99,6 +104,45 @@ export function SettingsPage() {
         </section>
       )}
     </div>
+  );
+}
+
+const PROJECT_VIEW_NAMES: Record<ProjectView, string> = { list: "List", board: "Board" };
+
+/** How project pages open (S5#3): saved to the account, so every device and shared project follows it. */
+function ProjectViewSection() {
+  const { view, pending } = useProjectView();
+  const update = useUpdateProfile();
+  const shown = update.isPending && update.variables.projectView ? update.variables.projectView : view;
+  return (
+    <section className={styles.section} aria-labelledby="project-view-heading">
+      <h2 className={styles.heading} id="project-view-heading">
+        Projects
+      </h2>
+      <p className={styles.text}>
+        Open projects as a list or as a board. Saved to your account, on every device. The List and Board
+        switch on a project still changes it for that visit.
+      </p>
+      <div className={listStyles.modes} role="group" aria-label="Open projects as">
+        {(["list", "board"] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={listStyles.mode}
+            aria-pressed={shown === option}
+            disabled={pending || update.isPending}
+            onClick={() => option !== view && update.mutate({ projectView: option })}
+          >
+            {PROJECT_VIEW_NAMES[option]}
+          </button>
+        ))}
+      </div>
+      {update.isError && (
+        <p className={styles.error} role="alert">
+          {update.error.message}
+        </p>
+      )}
+    </section>
   );
 }
 

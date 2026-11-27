@@ -17,8 +17,9 @@ import { LabelPill } from "../../components/LabelPill.tsx";
 import type { MarkdownEditorHandle } from "../../components/markdown/MarkdownEditor.tsx";
 import { MarkdownField } from "../../components/markdown/MarkdownField.tsx";
 import { Popover } from "../../components/Popover.tsx";
-import { LabelPicker, PeoplePicker, ProjectPicker } from "../../components/pickers/pickers.tsx";
+import { LabelPicker, PeoplePicker } from "../../components/pickers/pickers.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
+import { TodoProjectPicker } from "./TodoProjectPicker.tsx";
 import {
   Button,
   EmptyState,
@@ -53,6 +54,7 @@ import { RepeatField } from "./repeat/RepeatField.tsx";
 import { PersonChip } from "../people/PersonChip.tsx";
 import { Activity } from "./Activity.tsx";
 import { chosen, type PickerKind, togglePersonPatch } from "./TodoPickerDialog.tsx";
+import { ActionNeededBanner } from "./ActionNeeded.tsx";
 import styles from "./TodoPage.module.css";
 import { useTodoActions } from "./useTodoActions.ts";
 import { DateInput as DateField } from "../../components/DateTimeInputs.tsx";
@@ -182,6 +184,7 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
 
       <div className={styles.columns}>
         <div className={styles.body}>
+          <ActionNeededBanner todo={todo} />
           <WaitingLine todo={todo} />
           <section aria-label="Description">
             <Description todo={todo} />
@@ -246,9 +249,9 @@ function TodoDetail({ todo, focusComment }: { todo: Todo; focusComment?: number 
                 onOpenChange={pick("project")}
                 trigger={<FieldButton empty={!todo.project}>{todo.project?.name ?? "Inbox"}</FieldButton>}
               >
-                <ProjectPicker
-                  value={todo.projectId}
-                  onChange={(projectId) => {
+                <TodoProjectPicker
+                  todo={todo}
+                  onPick={(projectId) => {
                     setPicker(null);
                     if (projectId !== todo.projectId) void patch(todo.id, { projectId });
                   }}

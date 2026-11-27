@@ -10,6 +10,8 @@ export interface ScopeOption {
   off?: string | null;
   /** A line under the choice, e.g. which dates "All" changes on a split repeat. */
   hint?: string;
+  /** Instead of "This one only", "This and following" or "All". */
+  label?: string;
 }
 
 const LABELS: Record<SeriesScope, string> = {
@@ -111,7 +113,7 @@ function ScopeForm({
               onChange={() => setScope(option.scope)}
             />
             <span className={styles.text}>
-              <span className={styles.label}>{LABELS[option.scope]}</span>
+              <span className={styles.label}>{option.label ?? LABELS[option.scope]}</span>
               {(option.off || option.hint) && (
                 <span className={styles.hint}>{option.off || option.hint}</span>
               )}

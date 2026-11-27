@@ -29,14 +29,30 @@ export function TodoListView({
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("newest");
   const [showDone, setShowDone] = useState(false);
+  const [onlyAction, setOnlyAction] = useState(false);
   const { sort, order } = SORTS[sortKey];
-  const open = useTodos({ projectId, sort, order, limit: 500 });
+  const open = useTodos({ projectId, sort, order, limit: 500, ...(onlyAction && { actionNeeded: "true" }) });
+  // Offered only while something here is marked (or the filter is on).
+  const marked = useTodos({ projectId, actionNeeded: "true", limit: 1 });
+  const markedCount = marked.data?.total ?? 0;
   const done = useTodos({ projectId, status: "done", sort: "updated", order: "desc", limit: 20 }, showDone);
 
   return (
     <>
       <div className={styles.toolbar}>
-        <span className={styles.total}>{open.data ? `${open.data.total} open` : ""}</span>
+        <span className={styles.total}>
+          {open.data ? `${open.data.total} ${onlyAction ? "need action" : "open"}` : ""}
+        </span>
+        {(markedCount > 0 || onlyAction) && (
+          <button
+            type="button"
+            className={styles.actionFilter}
+            aria-pressed={onlyAction}
+            onClick={() => setOnlyAction((v) => !v)}
+          >
+            Action needed {markedCount}
+          </button>
+        )}
         <label className={styles.sort}>
           <span>Sort</span>
           <select

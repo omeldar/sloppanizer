@@ -220,6 +220,22 @@
   white-space: nowrap;
 }
 
+/* Set by an assistant (or anyone) until removed: what only the user can do. */
+.actionNeeded {
+  flex-shrink: 0;
+  padding: 0 7px;
+  border: 1px solid var(--amber-line);
+  border-radius: var(--radius-round);
+  background: var(--amber-tint);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 18px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .reasons {
   display: flex;
   gap: 6px;

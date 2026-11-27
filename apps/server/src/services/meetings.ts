@@ -17,8 +17,10 @@ import {
   suggestMeetingType,
   toLocalDate,
   type UpdateMeeting,
+  isOneTimeSpan,
   MAX_MEETINGS,
   MAX_SEGMENTS,
+  ONE_TIME_RULE,
 } from "@organizer/shared";
 import { asc, eq, inArray, sql } from "drizzle-orm";
 import { meetingNotes, meetings } from "../db/schema.ts";
@@ -34,6 +36,7 @@ import {
   segmentOn,
   segmentsOf,
 } from "./meeting-data.ts";
+import { changeMeetingPeople, peopleOf } from "./meeting-people.ts";
 import { insertOwnedRow, owned } from "./owned.ts";
 import {
   changeDate,
@@ -58,6 +61,10 @@ import { openStandupCounts } from "./standup.ts";
 const toSeries = (span: SeriesSpan): Series => ({ ...span, text: describeSeries(span) });
 
 const invalid = (message: string) => new ApiError("validation_failed", message);
+
+/** One segment with a single date: a one-time meeting. */
+const isOneTime = (segments: readonly SeriesSpan[]): boolean =>
+  segments.length === 1 && isOneTimeSpan(segments[0] as SeriesSpan);
 
 /** The segment that holds today, else the next one, else the last one. */
 function currentSegment(segments: readonly SeriesSpan[], today: string): SeriesSpan {
@@ -87,6 +94,7 @@ const toOccurrence = (
   meeting: MeetingRow,
   o: ExpandedOccurrence,
   notes: ReadonlyMap<string, number>,
+  oneTime: boolean,
 ): MeetingOccurrence => ({
   meetingId: meeting.id,
   seriesId: o.seriesId,
@@ -97,6 +105,7 @@ const toOccurrence = (
   endAt: o.endAt,
   status: o.status,
   noteId: notes.get(`${meeting.id}|${o.occursOn}`) ?? null,
+  oneTime,
 });
 
 /**
@@ -111,6 +120,7 @@ function hydrate(ctx: Ctx, sc: Scoped, rows: readonly MeetingRow[], counts = fal
     [...segments.values()].flatMap((list) => list.map((s) => s.id)),
   );
   const notes = noteLinks(sc, ids);
+  const attendees = peopleOf(sc, ids);
   const open = counts ? openStandupCounts(sc, rows) : new Map<number, number>();
   const at = ctx.clock();
   const today = toLocalDate(at, ctx.timeZone);
@@ -118,6 +128,7 @@ function hydrate(ctx: Ctx, sc: Scoped, rows: readonly MeetingRow[], counts = fal
     const list = segments.get(row.id) ?? [];
     if (list.length === 0) return [];
     const next = nextOf(list, exceptions, at, ctx.timeZone);
+    const oneTime = isOneTime(list);
     return [
       {
         id: row.id,
@@ -127,7 +138,9 @@ function hydrate(ctx: Ctx, sc: Scoped, rows: readonly MeetingRow[], counts = fal
         since: row.since,
         schedule: toSeries(currentSegment(list, today)),
         segments: list.map(toSeries),
-        next: next === null ? null : toOccurrence(row, next, notes),
+        oneTime,
+        people: attendees.get(row.id) ?? [],
+        next: next === null ? null : toOccurrence(row, next, notes, oneTime),
         openCount: counts && row.type === "standup" ? (open.get(row.id) ?? 0) : null,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
@@ -181,10 +194,12 @@ export function createMeeting(ctx: Ctx, input: CreateMeeting): Meeting {
   return ctx.db.transaction((tx) => {
     const sc = inTx(ctx, tx);
     const { schedule } = input;
+    // Without a rule the meeting happens once: one segment whose first date is also its last.
     const span = {
-      rule: scheduleRule(schedule.rule, schedule.startsOn),
+      rule: scheduleRule(schedule.rule ?? ONE_TIME_RULE, schedule.startsOn),
       startsOn: schedule.startsOn,
-      endsOn: schedule.endsOn ?? schedule.rule.until ?? null,
+      endsOn:
+        schedule.rule === undefined ? schedule.startsOn : (schedule.endsOn ?? schedule.rule.until ?? null),
       startTime: schedule.startTime,
       durationMinutes: schedule.durationMinutes,
     };
@@ -208,6 +223,7 @@ export function createMeeting(ctx: Ctx, input: CreateMeeting): Meeting {
       updatedAt: at,
     });
     insertSegment(sc, meetingOwner(id), span, at, MEETING_TEXTS);
+    if (input.people && input.people.length > 0) changeMeetingPeople(sc, id, { set: input.people }, at);
     return getMeeting(ctx, id, sc);
   });
 }
@@ -222,9 +238,17 @@ export function updateMeeting(ctx: Ctx, id: number, input: UpdateMeeting): Meeti
     if (input.filter !== undefined) patch.filter = JSON.stringify(checkedFilter(sc, input.filter));
     if (input.countFrom !== undefined)
       patch.since = startOfLocalDay(input.countFrom, ctx.timeZone).toISOString();
+    const at = now(ctx);
+    if (input.people !== undefined || input.addPeople !== undefined || input.removePeople !== undefined)
+      changeMeetingPeople(
+        sc,
+        id,
+        { set: input.people, add: input.addPeople, remove: input.removePeople },
+        at,
+      );
     sc.db
       .update(meetings)
-      .set({ ...patch, updatedAt: now(ctx) })
+      .set({ ...patch, updatedAt: at })
       .where(owned(sc, meetings, eq(meetings.id, id)))
       .run();
     return getMeeting(ctx, id, sc);
@@ -297,9 +321,10 @@ export function listOccurrences(ctx: Ctx, query: OccurrenceQuery): MeetingOccurr
   const out: MeetingOccurrence[] = [];
   for (const row of rows) {
     const list = segments.get(row.id) ?? [];
+    const oneTime = isOneTime(list);
     for (const o of expandSeries(list, exceptions, query.from, query.to, ctx.timeZone)) {
       if (o.status === "cancelled" && query.cancelled !== true) continue;
-      out.push(toOccurrence(row, o, notes));
+      out.push(toOccurrence(row, o, notes, oneTime));
     }
   }
   return out.toSorted((a, b) => a.startAt.localeCompare(b.startAt) || a.meetingId - b.meetingId);

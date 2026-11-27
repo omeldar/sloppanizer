@@ -84,7 +84,7 @@ export function accountRoutes(app: App, deps: Deps, auth: AuthServices): void {
       config,
       schema: {
         tags,
-        summary: "Change display name, color or time zone",
+        summary: "Change name, color, time zone, formats or how projects open",
         body: UpdateAccount,
         response: { 200: AccountProfile },
       },

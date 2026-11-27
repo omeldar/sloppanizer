@@ -61,6 +61,15 @@ export const RequesterStats = z.strictObject({
 });
 export type RequesterStats = z.infer<typeof RequesterStats>;
 
+/** Time in meetings with one person: the dates of meetings they are in, cut to the period and to now. */
+export const MeetingPersonStats = z.strictObject({
+  person: z.strictObject({ id: Id, name: z.string() }),
+  minutes: Minutes,
+  /** Meeting dates with time in the period. */
+  dates: Count,
+});
+export type MeetingPersonStats = z.infer<typeof MeetingPersonStats>;
+
 export const WeekStats = z.strictObject({
   /** The Monday. */
   start: CalendarDate,
@@ -90,6 +99,10 @@ export const WorkStats = z.strictObject({
   requesters: z.array(RequesterStats),
   /** The rest of the requesters together, or null when there are none. */
   otherRequesters: z.strictObject({ people: Count, minutes: Minutes, done: Count }).nullable(),
+  /** The 10 people you spent the most time in meetings with (a meeting date counts for each of its people). */
+  meetingPeople: z.array(MeetingPersonStats),
+  /** Meeting minutes with nobody added to the meeting. */
+  meetingMinutesWithoutPeople: Minutes,
   weeks: z.array(WeekStats),
   /** Every day of the period. */
   days: z.array(z.strictObject({ date: CalendarDate, workedMinutes: Minutes, done: Count })),

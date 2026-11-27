@@ -72,10 +72,10 @@ describe("GET /export.zip", () => {
     const manifest = JSON.parse(strFromU8(files["manifest.json"] as Uint8Array));
     expect(manifest).toMatchObject({
       app: "sloppanizer",
-      format: 8,
+      format: 9,
       exportedAt: "2026-11-14T13:04:05.000Z",
       appVersion: VERSION,
-      schemaVersion: 22,
+      schemaVersion: 25,
       account: { username: "anna" },
       attachments: { count: 0, bytes: 0, missing: [] },
     });
@@ -162,7 +162,7 @@ const frontMatter = (md: string) => {
   return { meta: parse(match?.[1] ?? "") as Record<string, unknown>, body: match?.[2] ?? "" };
 };
 
-describe("export format 8", () => {
+describe("export format 9", () => {
   it("holds the new tables, the uploaded files and Markdown for notes and people", async () => {
     const t = await makeApp({ now: "2026-11-11T13:04:05.000Z", timeZone: "Europe/Zurich" });
     const sqlite = t.deps.db.$client;
@@ -279,7 +279,7 @@ describe("export format 8", () => {
     expect(methods["attachments/2-net.txt"]).toBe(8);
 
     const manifest = JSON.parse(text("manifest.json"));
-    expect(manifest.format).toBe(8);
+    expect(manifest.format).toBe(9);
     expect(manifest.attachments).toEqual({ count: 2, bytes: png.length + txt.length, missing: [3] });
     const data = JSON.parse(text("data.json"));
     expect(Object.keys(data)).toEqual([...EXPORT_TABLES]);
@@ -372,7 +372,7 @@ describe("export format 8", () => {
       requested: [],
       contact_for: [todo.id],
     });
-    expect(text("README.md")).toContain("Export format 8.");
+    expect(text("README.md")).toContain("Export format 9.");
   });
 });
 
@@ -387,6 +387,10 @@ describe("meetings in the export", () => {
       name: "Team standup",
       schedule: { rule: { every: "week" }, startsOn: "2026-11-12", startTime: "09:00", durationMinutes: 15 },
       filter: { projectIds: [project.id], inbox: true, labelIds: [label.id] },
+      people: [
+        { firstName: "Bo", lastName: "Berg" },
+        { firstName: "Anna", lastName: "Meier" },
+      ],
     });
     const date = (on: string, body: unknown) =>
       t.call("PATCH", `/api/v1/meetings/${meeting.id}/occurrences/${on}`, body);
@@ -424,6 +428,7 @@ describe("meetings in the export", () => {
         "from 12.11.2026: every week on Thu until 02.12.2026, 09:00–09:15",
         "from 03.12.2026: every week on Thu, 10:00–10:15",
       ],
+      people: ["Anna Meier", "Bo Berg"],
       cancelled: ["2026-11-26"],
       moved: [{ date: "2026-11-19", to: "18.11.2026 14:00" }],
       filter: { projects: ["lab"], inbox: true, labels: ["ops"] },

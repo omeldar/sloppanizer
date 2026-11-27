@@ -1,5 +1,8 @@
 import {
   type CreateFeedback,
+  MovedTodo,
+  type MoveTodo,
+  Project,
   type CreateSpace,
   FeedbackResult,
   type NextItem,
@@ -12,7 +15,7 @@ import {
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { api, apiVoid, currentSpace } from "./api.ts";
-import { spaceBase } from "./entry.ts";
+import { accountBase, spaceBase } from "./entry.ts";
 
 /** Shared projects and feedback. Managing them always talks to the account itself, never to a space. */
 
@@ -133,5 +136,32 @@ export function useSetSharedStatus() {
         client.invalidateQueries({ queryKey: assignedKey }),
         client.invalidateQueries({ queryKey: spacesKey }),
       ]),
+  });
+}
+
+/** Your own projects, also inside a shared project's tab (to move a todo back to them). */
+export const useOwnProjects = (enabled: boolean) =>
+  useQuery({
+    queryKey: ["own-projects"],
+    queryFn: () => api(z.array(Project), "/projects", personal),
+    enabled,
+  });
+
+/** Where a moved todo lives now: its shared project's tab, or your own todos. */
+export const movedTodoHref = (username: string, moved: Pick<MovedTodo, "spaceId" | "todo">): string =>
+  moved.spaceId === null
+    ? `${accountBase(username)}/todos/${moved.todo.id}`
+    : sharedTodoHref(username, moved.spaceId, moved.todo.id);
+
+/**
+ * Moves a todo to another place (a shared project, or your own todos): it is copied there and this one
+ * is marked done. Sent from the tab the todo is in.
+ */
+export function useMoveTodo() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ todoId, ...input }: MoveTodo & { todoId: number }) =>
+      api(MovedTodo, `/todos/${todoId}/move`, { method: "POST", body: input }),
+    onSettled: () => client.invalidateQueries(),
   });
 }

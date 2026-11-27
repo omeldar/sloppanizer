@@ -71,6 +71,7 @@ export async function fillEveryTable(t: Pick<TestApp, "call" | "create" | "accou
     name: "Team standup",
     schedule: { rule: { every: "week" }, startsOn: "2026-11-12", startTime: "09:00", durationMinutes: 15 },
     filter: { projectIds: [project.id], labelIds: [homelab.id] },
+    people: [{ personId: anna.id }],
   });
   await t.call("PATCH", `/api/v1/meetings/${meeting.id}/occurrences/2026-11-19`, {
     scope: "this",

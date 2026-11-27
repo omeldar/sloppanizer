@@ -91,6 +91,7 @@ function userTables(sqlite: Database.Database): string[] {
     "ai_settings",
     "spaces",
     "space_members",
+    "notifications",
   ]);
   const rows = sqlite
     .prepare(
@@ -120,9 +121,9 @@ describe("baseline migration", () => {
   it("counts on from the single-user versions, so every single-user export (8 or lower) is older", () => {
     const { db } = freshDb();
     // The baseline (9), then one per migration: 0001 oauth, 0002 planner and links, 0003 calendar feed, 0004 ai
-    // settings, 0005 person languages, 0006 meetings, 0007 todos on meetings, 0008 todo series, 0009 shared projects, 0010 date and time formats, 0011 people as users, 0012 sign-in with omeldar, 0013 assignees.
-    expect(schemaVersion(db)).toBe(SCHEMA_BASE + 14);
-    expect(schemaVersion(db)).toBe(22);
+    // settings, 0005 person languages, 0006 meetings, 0007 todos on meetings, 0008 todo series, 0009 shared projects, 0010 date and time formats, 0011 people as users, 0012 sign-in with omeldar, 0013 assignees, 0014 project view, 0015 people in meetings, 0016 notifications and action needed.
+    expect(schemaVersion(db)).toBe(SCHEMA_BASE + 17);
+    expect(schemaVersion(db)).toBe(25);
   });
 
   it("gives every user table an account_id and every id table the key (account_id, id)", () => {

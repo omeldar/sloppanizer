@@ -30,6 +30,7 @@ import { and, asc, count, desc, eq, inArray, isNotNull, isNull, type SQL, sql } 
 import { insertUrls, urlsByTodo } from "./urls.ts";
 import { accounts } from "../db/auth-schema.ts";
 import { assigneesById, assigneeSummary, isAssignable, resolveAssignee } from "./assignees.ts";
+import { notifyTodoChange } from "./notifications.ts";
 import { comments, events, labels, people, todoLabels, todoLinks, todoPeople, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, inTx, now, type Scoped } from "./context.ts";
@@ -130,6 +131,10 @@ export function hydrate(sc: Scoped, rows: readonly TodoRow[]): Todo[] {
     previousOccurrenceId: row.recurrencePrevId,
     nextOccurrence: relations.next.get(row.id) ?? null,
     assignee: row.assigneeId === null ? null : (assignees.get(row.assigneeId) ?? null),
+    actionNeeded:
+      row.actionNeeded === null
+        ? null
+        : { reason: row.actionNeeded, by: row.actionNeededBy ?? "", at: row.actionNeededAt ?? row.updatedAt },
   }));
 }
 
@@ -245,6 +250,12 @@ export function insertTodo(
     recurrence: extra.recurrence ?? null,
     recurrencePrevId: extra.recurrencePrevId ?? null,
     assigneeId,
+    ...(input.actionNeeded !== undefined &&
+      input.actionNeeded !== null && {
+        actionNeeded: input.actionNeeded,
+        actionNeededBy: actor,
+        actionNeededAt: at,
+      }),
   });
   const row = todoRow(sc, id);
   const accountId = sc.accountId;
@@ -279,6 +290,7 @@ export function insertTodo(
           ...(row.parentId === null ? {} : { parentId: row.parentId }),
           ...(row.recurrencePrevId === null ? {} : { previousOccurrenceId: row.recurrencePrevId }),
           ...(todo.assignee === null ? {} : { assignee: assigneeSummary(todo.assignee) }),
+          ...(todo.actionNeeded === null ? {} : { actionNeeded: todo.actionNeeded.reason }),
         },
       },
     },
@@ -376,6 +388,7 @@ export function createTodo(ctx: Ctx, actor: string, input: CreateTodo): Todo {
         },
       ]);
     }
+    notifyTodoChange(sc, ctx, actor, at, null, todo);
     return todo;
   });
 }
@@ -689,6 +702,16 @@ function applyChange(
     }
   }
 
+  if (change.actionNeeded !== undefined) {
+    const from = current.actionNeeded?.reason ?? null;
+    if (change.actionNeeded !== from) {
+      set.actionNeeded = change.actionNeeded;
+      set.actionNeededBy = change.actionNeeded === null ? null : actor;
+      set.actionNeededAt = change.actionNeeded === null ? null : at;
+      event("action_needed_changed", { from, to: change.actionNeeded });
+    }
+  }
+
   const requesters = applyPeopleChange(sc, at, current, "requester", {
     set: change.requestedBy,
     add: change.addRequestedBy,
@@ -741,8 +764,12 @@ export function planTodoOn(
 export function updateTodo(ctx: Ctx, actor: string, id: number, change: UpdateTodo): Todo {
   return ctx.db.transaction((tx) => {
     const sc = inTx(ctx, tx);
-    applyChange(sc, now(ctx), actor, getTodo(sc, id), change, ctx.timeZone);
-    return getTodo(sc, id);
+    const at = now(ctx);
+    const before = getTodo(sc, id);
+    applyChange(sc, at, actor, before, change, ctx.timeZone);
+    const after = getTodo(sc, id);
+    notifyTodoChange(sc, ctx, actor, at, before, after);
+    return after;
   });
 }
 
@@ -779,6 +806,7 @@ export function bulkUpdate(ctx: Ctx, actor: string, ids: readonly number[], chan
           .all(),
       ).map((t) => [t.id, t]),
     );
+    for (const [id, todo] of after) notifyTodoChange(sc, ctx, actor, at, byId.get(id) ?? null, todo);
     return ids.map((id) => after.get(id) as Todo);
   });
 }
@@ -882,6 +910,8 @@ function listConditions(sc: Scoped & { callerId?: number }, query: TodoListQuery
   if (query.plannedTo !== undefined) conditions.push(sql`${todos.plannedOn} <= ${query.plannedTo}`);
   if (query.unplanned === true) conditions.push(isNull(todos.plannedOn));
   if (query.unplanned === false) conditions.push(isNotNull(todos.plannedOn));
+  if (query.actionNeeded === true) conditions.push(isNotNull(todos.actionNeeded));
+  if (query.actionNeeded === false) conditions.push(isNull(todos.actionNeeded));
   if (query.doneAfter !== undefined) {
     const start = startOfLocalDay(query.doneAfter, timeZone).toISOString();
     conditions.push(sql`(${todos.status} <> 'done' OR ${todos.doneAt} >= ${start})`);

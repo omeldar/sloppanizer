@@ -152,6 +152,7 @@ function todo(overrides: Partial<Todo> = {}): Todo {
     previousOccurrenceId: null,
     nextOccurrence: null,
     assignee: null,
+    actionNeeded: null,
     ...overrides,
   };
 }
@@ -768,6 +769,8 @@ function meeting(overrides: Partial<Meeting> = {}): Meeting {
     since: "2026-11-05T08:00:00.000Z",
     schedule: series,
     segments: [series],
+    oneTime: false,
+    people: [],
     next: {
       meetingId: 2,
       seriesId: 1,
@@ -778,6 +781,7 @@ function meeting(overrides: Partial<Meeting> = {}): Meeting {
       endAt: "2026-11-12T08:15:00.000Z",
       status: "scheduled",
       noteId: null,
+      oneTime: false,
     },
     openCount: 2,
     createdAt: at,
@@ -947,6 +951,97 @@ describe("meeting tools", () => {
     );
   });
 
+  it("plan_meeting plans a one-time meeting with its people, from an end time or minutes", async () => {
+    const anna = {
+      id: 4,
+      firstName: "Anna",
+      lastName: "Meier",
+      displayName: "Anna Meier",
+      note: "",
+      team: "",
+      email: "",
+    };
+    const once = {
+      ...series,
+      rule: { every: "day" as const, interval: 1, basis: "schedule" as const },
+      startsOn: "2026-11-13",
+      endsOn: "2026-11-13",
+      startTime: "14:00",
+      durationMinutes: 60,
+      text: "once on 13.11.2026, 14:00–15:00",
+    };
+    const kickOff = meeting({
+      id: 5,
+      name: "Kick-off",
+      type: "other",
+      schedule: once,
+      segments: [once],
+      oneTime: true,
+      people: [anna],
+      openCount: null,
+      next: null,
+    });
+    const { call, calls } = await connect(() => kickOff);
+    expect(
+      (
+        await call("plan_meeting", {
+          name: "Kick-off",
+          date: "2026-11-13",
+          start: "14:00",
+          end: "15:00",
+          people: ["Anna Meier", 7],
+        })
+      ).text,
+    ).toBe(
+      "Planned meeting 5 | Kick-off | other | once on 13.11.2026, 14:00–15:00 | no next date | with Anna Meier",
+    );
+    expect(calls[0]).toMatchObject({
+      method: "POST",
+      path: "/meetings",
+      body: {
+        name: "Kick-off",
+        schedule: { startsOn: "2026-11-13", startTime: "14:00", durationMinutes: 60 },
+        people: [{ firstName: "Anna", lastName: "Meier" }, { personId: 7 }],
+      },
+    });
+    calls.length = 0;
+    await call("plan_meeting", { name: "Late call", date: "2026-11-13", start: "23:30", end: "00:15" });
+    expect(calls[0]?.body).toEqual({
+      name: "Late call",
+      schedule: { startsOn: "2026-11-13", startTime: "23:30", durationMinutes: 45 },
+    });
+    calls.length = 0;
+    await call("plan_meeting", { name: "Sync", date: "2026-11-13", start: "10:00", minutes: 25 });
+    expect(calls[0]?.body).toMatchObject({ schedule: { durationMinutes: 25 } });
+    expect((await call("plan_meeting", { name: "Sync", date: "2026-11-13", start: "10:00" })).isError).toBe(
+      true,
+    );
+  });
+
+  it("meeting_people adds and removes people of a meeting", async () => {
+    const bo = {
+      id: 8,
+      firstName: "Bo",
+      lastName: "Berg",
+      displayName: "Bo Berg",
+      note: "",
+      team: "",
+      email: "",
+    };
+    const { call, calls } = await connect(({ method }) =>
+      method === "PATCH" ? meeting({ people: [bo] }) : meeting(),
+    );
+    expect((await call("meeting_people", { meeting: 2, add: ["Bo Berg"], remove: [4] })).text).toBe(
+      "Weekly Standup: with Bo Berg.",
+    );
+    expect(calls.at(-1)).toMatchObject({
+      method: "PATCH",
+      path: "/meetings/2",
+      body: { addPeople: [{ firstName: "Bo", lastName: "Berg" }], removePeople: [{ personId: 4 }] },
+    });
+    expect((await call("meeting_people", { meeting: 2 })).isError).toBe(true);
+  });
+
   it("add_to_meeting adds in order, sets the due date only when asked, and remove_from_meeting takes them off", async () => {
     const { call, calls } = await connect(({ method, path, body }) => {
       if (path === "/meetings/2") return meeting();
@@ -1114,6 +1209,8 @@ describe("meeting tools", () => {
       ],
       requesters: [{ person: { id: 9, name: "Anna Meier" }, minutes: 120, done: 1 }],
       otherRequesters: null,
+      meetingPeople: [{ person: { id: 9, name: "Anna Meier" }, minutes: 30, dates: 2 }],
+      meetingMinutesWithoutPeople: 15,
       weeks: [
         { start: "2026-11-09", workedMinutes: 270, meetingMinutes: 30, created: 3, done: 2, projects: [] },
       ],
@@ -1136,6 +1233,10 @@ describe("meeting tools", () => {
       "Requesters (a todo counts for each of its requesters):",
       "- Anna Meier: 2 h, 1 done",
       "",
+      "Time in meetings per person (a meeting counts for each of its people):",
+      "- Anna Meier: 0.5 h in 2 meetings",
+      "- without people: 0.3 h",
+      "",
       "Weeks:",
       "- 09.11.2026: worked 4.5 h, meetings 0.5 h, 3 created, 2 done",
     ]);
@@ -1152,8 +1253,8 @@ describe("shared projects", () => {
     openCount: 2,
     role: "owner",
     members: [
-      { accountId: 1, username: "anna", name: "Anna Berg", role: "owner" },
-      { accountId: 2, username: "bobo", name: "bobo", role: "member" },
+      { accountId: 1, username: "anna", name: "Anna Berg", role: "owner", addedAt: at },
+      { accountId: 2, username: "bobo", name: "bobo", role: "member", addedAt: at },
     ],
     createdAt: at,
   };
@@ -1228,6 +1329,40 @@ describe("shared projects", () => {
     await call("update_todo", { id: "S7#3", assignee: null });
     expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ assignee: null });
     expect(calls.some((c) => c.path === "/me")).toBe(false);
+  });
+
+  it("move_todo moves an own todo into a shared project and a shared one back (S5#7)", async () => {
+    const copy = { ...van, id: 9 };
+    const { call, calls } = await connect(({ path, method, space: inSpace }) => {
+      if (path === "/spaces") return [space];
+      if (path === "/spaces/7") return space;
+      if (path === "/projects")
+        return inSpace === 7 ? [{ ...moveProject }] : [{ id: 4, slug: "work", name: "Work" }];
+      if (path === "/todos/142/move" && method === "POST")
+        return { spaceId: 7, todo: copy, ref: "S7#9", original: todo({ status: "done" }) };
+      if (path === "/todos/3/move" && method === "POST")
+        return { spaceId: null, todo: todo({ id: 150, title: "Book van" }), ref: "#150", original: van };
+      return undefined;
+    });
+    const into = await call("move_todo", { todo: 142, to: "S7" });
+    expect(into.text).toBe("Moved #142 to S7#9 Book van. #142 is done and points to it.");
+    expect(calls.find((c) => c.method === "POST")).toEqual({
+      method: "POST",
+      path: "/todos/142/move",
+      body: { spaceId: 7, projectId: 1 },
+      space: undefined,
+    });
+    calls.length = 0;
+    const back = await call("move_todo", { todo: "S7#3", to: "work" });
+    expect(back.text).toBe("Moved S7#3 to #150 Book van. S7#3 is done and points to it.");
+    expect(calls.find((c) => c.method === "POST")).toEqual({
+      method: "POST",
+      path: "/todos/3/move",
+      body: { spaceId: null, projectId: 4 },
+      space: 7,
+    });
+    const same = await call("move_todo", { todo: 142, to: "inbox" });
+    expect(same.isError).toBe(true);
   });
 
   it("says when the shared project is not one of the account's", async () => {

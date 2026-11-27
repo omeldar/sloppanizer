@@ -1,0 +1,1 @@
+ALTER TABLE `accounts` ADD `project_view` text DEFAULT 'list' NOT NULL;

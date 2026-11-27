@@ -5,6 +5,7 @@ import { comments, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Auth, type Ctx, inTx, now, type Scoped } from "./context.ts";
 import { insertOwnedRow, owned } from "./owned.ts";
+import { notifyComment } from "./notifications.ts";
 import { indexComment, removeFromIndex } from "./search-index.ts";
 
 export type CommentRow = typeof comments.$inferSelect;
@@ -73,6 +74,12 @@ export function createComment(ctx: Ctx, auth: Auth, todoId: number, bodyMd: stri
       .where(owned(sc, todos, eq(todos.id, todoId)))
       .run();
     indexComment(sc, id);
+    const assignee = sc.db
+      .select({ assigneeId: todos.assigneeId })
+      .from(todos)
+      .where(owned(sc, todos, eq(todos.id, todoId)))
+      .get();
+    notifyComment(sc, ctx, auth.actor, at, { id: todoId, assigneeId: assignee?.assigneeId ?? null }, bodyMd);
     return toComment(commentRow(sc, id) as CommentRow);
   });
 }

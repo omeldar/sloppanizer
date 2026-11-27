@@ -20,6 +20,7 @@ const profile: AccountProfile = {
   lastName: "",
   dateFormat: "dmy.",
   timeFormat: "24h",
+  projectView: "list",
   omeldarLinked: false,
   color: "#2EC5CE",
   role: "admin",

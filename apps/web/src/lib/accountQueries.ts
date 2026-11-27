@@ -2,6 +2,7 @@ import {
   AccountProfile,
   ChallengeOptions,
   type ChangePassword,
+  type ProjectView,
   Passkey,
   type Reauth,
   RecoveryCodes,
@@ -109,4 +110,13 @@ export async function reauthWithPasskey(): Promise<boolean> {
   if (!response) return false;
   await reauth({ challengeId: challenge.challengeId, response } as Reauth);
   return true;
+}
+
+/**
+ * How project pages open when their address does not say (S5#3): the account's choice, "list" until the
+ * profile is known or when it cannot be read. `pending` is true while it is still loading.
+ */
+export function useProjectView(): { view: ProjectView; pending: boolean } {
+  const profile = useAccountProfile();
+  return { view: profile.data?.projectView ?? "list", pending: profile.isPending };
 }
