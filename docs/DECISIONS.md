@@ -357,3 +357,34 @@ approval", the person closes it and moves again once approved, signing in with t
 binds any omeldar account not already bound to, or imported from, another Sloppanizer account, so this
 needs no change at auth. Re-running the import is the other way (same username and password, no
 approval wait); both are fine and the import stays safe to repeat.
+
+## 2026-11-27 Mermaid diagrams in Markdown (S5#16)
+
+**Where.** Every Markdown text renders through `MarkdownPreview` (todo descriptions, comments, notes, meeting
+notes, person notes), so a `pre` component there turns a fence with the language `mermaid` (any case, ``` or
+~~~) into `MermaidDiagram`. It reads the fence after rehype-sanitize, so it sees what the sanitizer let through.
+Stored text, the folder export, the MCP and the search index keep the fence as it is: GitHub, Obsidian and
+most Markdown viewers draw it themselves.
+
+**An image, not inline SVG.** Mermaid's SVG is shown as `<img src="data:image/svg+xml,...">`. An SVG loaded as
+an image runs no scripts, loads nothing from outside and keeps its CSS to itself, so even a bug in mermaid's
+own sanitising (it runs DOMPurify in `securityLevel: "strict"`) cannot reach the page, and the app keeps its
+rule of no `dangerouslySetInnerHTML` (`react/no-danger`). The CSP needs nothing new (`img-src` has `data:`).
+The price: text in a diagram cannot be selected and links in it do not work (strict turns click handlers off
+anyway). Labels are plain SVG text (`htmlLabels: false`, kept by adding it to mermaid's `secure` keys so an
+`%%{init}%%` line cannot turn it back on), because HTML labels draw unreliably inside an image.
+
+**Loading.** `import("mermaid")` runs with the first diagram on a page, once; without a mermaid block nothing
+loads. Vite puts it in its own chunks (`mermaid.core-*.js` and mermaid's per-diagram chunks); the app chunk is
+unchanged and the editor chunk (where `MarkdownPreview` lives) grew by about 5 kB. Mermaid's ELK layout chunk is about 1.5 MB but only loads for a diagram with
+`layout: elk`, so `chunkSizeWarningLimit` went from 800 to 1600 kB. Version `^12.3.0` (MIT): 12.4.0 was
+younger than the three days `minimumReleaseAge` asks for.
+
+**Drawing.** Diagrams are drawn one at a time (mermaid's settings are global and each sets the theme first)
+and kept in memory by theme and text (64 entries), so switching Write and Preview or back to a theme shows
+them at once. A redraw keeps the old picture until the new one is ready, and an answer for text that has
+changed since is dropped, so typing or a theme switch cannot flicker or loop. The theme follows the app's
+(`dark`, else mermaid's `default`). The fallback is the text as a code block plus "Diagram could not be
+drawn: ..." with mermaid's message in one line (a long "Expecting ..." list becomes the unexpected token).
+
+**Not done.** No "insert diagram" button: the editor has no block menu yet, and typing the fence is short.

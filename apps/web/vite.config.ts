@@ -80,8 +80,9 @@ export default defineConfig({
   // Several pages; unknown paths are a 404, not the app.
   appType: "mpa",
   build: {
-    // The editor chunk is large; it loads only with the first todo or note opened.
-    chunkSizeWarningLimit: 800,
+    // The editor chunk is large; it loads only with the first todo or note opened. Mermaid's ELK layout
+    // (~1.5 MB) loads only for a diagram with `layout: elk`; the limit sits just above it.
+    chunkSizeWarningLimit: 1600,
     rollupOptions: {
       input: { index: "index.html", app: "app.html", notFound: "404.html" },
     },
