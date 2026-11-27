@@ -391,6 +391,30 @@ export const Attachment = z.strictObject({
 });
 export type Attachment = z.infer<typeof Attachment>;
 
+/** Where an uploaded file is linked from: a todo's description, a comment, a note or a person's notes. */
+export const FileUse = z.strictObject({
+  kind: z.enum(["todo", "comment", "note", "person"]),
+  /** The todo, comment, note or person. */
+  id: Id,
+  /** The todo a comment belongs to (null for the other kinds). */
+  todoId: Id.nullable(),
+  /** Todo or note title, or the person's name; for a comment, its todo's title. */
+  title: z.string(),
+});
+export type FileUse = z.infer<typeof FileUse>;
+
+/** An uploaded file on the files page, with where it is linked from (empty: not used anywhere). */
+export const ManagedFile = Attachment.extend({ usedIn: z.array(FileUse) });
+export type ManagedFile = z.infer<typeof ManagedFile>;
+
+/** GET /attachments: every file of the account, newest first, and the space they use. */
+export const FileList = z.strictObject({
+  usedBytes: z.number().int().nonnegative(),
+  limitBytes: z.number().int().nonnegative(),
+  items: z.array(ManagedFile),
+});
+export type FileList = z.infer<typeof FileList>;
+
 export const SearchHit = z.strictObject({
   kind: SearchKind,
   id: Id,

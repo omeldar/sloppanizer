@@ -1,9 +1,15 @@
-import { API_PREFIX, type Attachment, INLINE_IMAGE_TYPES } from "@organizer/shared";
+import {
+  API_PREFIX,
+  type Attachment,
+  type FileList,
+  type FileUse,
+  INLINE_IMAGE_TYPES,
+} from "@organizer/shared";
 import { createHash, randomBytes } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
 import { join } from "node:path";
-import { eq, sql } from "drizzle-orm";
-import { attachments } from "../db/schema.ts";
+import { and, desc, eq, like, sql } from "drizzle-orm";
+import { attachments, comments, notes, people, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, inTx, now, type Scoped } from "./context.ts";
 import { insertOwnedRow, owned } from "./owned.ts";
@@ -212,4 +218,85 @@ export function attachmentFile(
       `The file of attachment ${id} is missing from the data folder. Restore it from an export.`,
     );
   }
+}
+
+/** `/api/v1/attachments/<id>` (optional origin before it, optional `/<name>` after it) in Markdown. */
+const FILE_LINK = new RegExp(
+  `${API_PREFIX.replaceAll("/", "\\/")}\\/attachments\\/(\\d+)(?=[/)\\s"'?#\\]>]|$)`,
+  "g",
+);
+
+/** The attachment ids a Markdown text links to. */
+export const linkedFileIds = (text: string): Set<number> =>
+  new Set([...text.matchAll(FILE_LINK)].map((m) => Number(m[1])));
+
+/**
+ * Where each of the account's files is linked from: todo descriptions, comments, notes and the notes on
+ * people. Only rows that mention the attachments path at all are read.
+ */
+function fileUses(sc: Scoped): Map<number, FileUse[]> {
+  const uses = new Map<number, FileUse[]>();
+  const add = (text: string, use: FileUse) => {
+    for (const id of linkedFileIds(text)) {
+      const list = uses.get(id) ?? [];
+      list.push(use);
+      uses.set(id, list);
+    }
+  };
+  const pattern = `%${API_PREFIX}/attachments/%`;
+  for (const t of sc.db
+    .select({ id: todos.id, title: todos.title, md: todos.descriptionMd })
+    .from(todos)
+    .where(owned(sc, todos, like(todos.descriptionMd, pattern)))
+    .all())
+    add(t.md, { kind: "todo", id: t.id, todoId: null, title: t.title });
+  for (const c of sc.db
+    .select({ id: comments.id, todoId: comments.todoId, md: comments.bodyMd, title: todos.title })
+    .from(comments)
+    .innerJoin(todos, and(eq(todos.accountId, comments.accountId), eq(todos.id, comments.todoId)))
+    .where(owned(sc, comments, like(comments.bodyMd, pattern)))
+    .all())
+    add(c.md, { kind: "comment", id: c.id, todoId: c.todoId, title: c.title });
+  for (const n of sc.db
+    .select({ id: notes.id, title: notes.title, md: notes.bodyMd })
+    .from(notes)
+    .where(owned(sc, notes, like(notes.bodyMd, pattern)))
+    .all())
+    add(n.md, { kind: "note", id: n.id, todoId: null, title: n.title });
+  for (const p of sc.db
+    .select({ id: people.id, first: people.firstName, last: people.lastName, md: people.notesMd })
+    .from(people)
+    .where(owned(sc, people, like(people.notesMd, pattern)))
+    .all())
+    add(p.md, { kind: "person", id: p.id, todoId: null, title: `${p.first} ${p.last}`.trim() });
+  return uses;
+}
+
+/** GET /attachments: every file of the account, newest first, with where it is used and the space used. */
+export function listFiles(sc: Scoped, limitBytes: number): FileList {
+  const rows = sc.db
+    .select()
+    .from(attachments)
+    .where(owned(sc, attachments))
+    .orderBy(desc(attachments.createdAt), desc(attachments.id))
+    .all();
+  const uses = fileUses(sc);
+  return {
+    usedBytes: rows.reduce((sum, r) => sum + r.size, 0),
+    limitBytes,
+    items: rows.map((row) => Object.assign(toAttachment(row), { usedIn: uses.get(row.id) ?? [] })),
+  };
+}
+
+/**
+ * DELETE /attachments/:id: removes the file and its row, which frees its space at once. Links to it in
+ * Markdown stay as they are and show as a missing file.
+ */
+export function deleteAttachment(sc: Scoped, dir: string, id: number): void {
+  const row = attachmentRow(sc, id);
+  sc.db
+    .delete(attachments)
+    .where(owned(sc, attachments, eq(attachments.id, row.id)))
+    .run();
+  rmSync(join(dir, String(row.id)), { force: true });
 }

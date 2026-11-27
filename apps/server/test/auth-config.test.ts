@@ -36,7 +36,7 @@ describe("config", () => {
       timeZone: "UTC",
       backupAt: "03:30",
       backupKeep: 7,
-      filesLimitBytes: 2048 * 1024 * 1024,
+      filesLimitBytes: 1024 * 1024 * 1024,
       webDir: null,
       production: false,
     });

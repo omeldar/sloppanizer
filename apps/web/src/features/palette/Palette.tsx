@@ -75,7 +75,12 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
     { name: "People", to: "/people", keys: "g p" },
     { name: "People statistics", to: "/people/stats" },
     { name: "Settings", to: "/settings", keys: "g s" },
-    ...(session ? [{ name: "API tokens", to: "/settings/tokens" }] : []),
+    ...(session
+      ? [
+          { name: "API tokens", to: "/settings/tokens" },
+          { name: "Files", to: "/settings/files" },
+        ]
+      : []),
   ];
 
   return (

@@ -8,6 +8,12 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- Settings, Files: every uploaded file with its size, age and where it is linked from, a filter for files
+  not used anywhere, and Delete (asks first, frees the space at once). Open it from Settings ("Manage
+  files"), the command palette or `/settings/files`. API: `GET /attachments`, `DELETE /attachments/{id}`
+  (browser session only) (S5#11).
+- Files are limited to 1 GB per account by default (was 2 GB; `SLOPPANIZER_FILES_LIMIT_MB`) (S5#11).
+
 ## 1.2.1 (2026-11-27)
 
 - Notifications: long comment text and the hover background stay inside the panel. The panel was 40px

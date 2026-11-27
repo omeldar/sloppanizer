@@ -114,6 +114,8 @@ const MATRIX: [method: string, path: string, access: Access][] = [
   ["GET", "/attachments/1", "read"],
   ["GET", "/attachments/1/meta", "read"],
   ["GET", "/attachments/1/a.png", "read"],
+  ["GET", "/attachments", "session"],
+  ["DELETE", "/attachments/1", "session"],
   ["GET", "/export.zip", "write"],
   ["GET", "/tokens", "session"],
   ["POST", "/tokens", "session"],

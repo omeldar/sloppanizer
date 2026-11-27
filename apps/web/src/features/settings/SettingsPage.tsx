@@ -158,7 +158,8 @@ function FilesSection() {
       <p className={styles.text}>
         {data
           ? `Pasted images and attached files use ${formatBytes(data.filesBytes)} of this account's ${formatBytes(data.filesLimitBytes)}.`
-          : "Pasted images and attached files count against this account's limit."}
+          : "Pasted images and attached files count against this account's limit."}{" "}
+        <Link to="/settings/files">Manage files</Link>
       </p>
     </section>
   );

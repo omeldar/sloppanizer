@@ -333,3 +333,22 @@ The dialog (sidebar, the project's menu, "Share and settings"; in the project's 
 name) lists each person with "(you)", Owner or Member and since when (`members[].addedAt`), suggests users
 as you type, says who was added and who already had access, and shows the server's error for an unknown
 username. Owners remove members, everyone can leave. Adding and removing members stays browser-session only.
+
+## 2026-11-27 Files page and a 1 GB default limit (S5#11)
+
+akotami asked for less than 2 GB per user and a page to delete uploads that are no longer needed.
+
+**1 GB by default.** `SLOPPANIZER_FILES_LIMIT_MB` defaults to 1024 (was 2048). It is still the one setting
+for every account (and every shared project, which counts its own files); an instance that sets the
+variable keeps its value. Accounts already over 1 GB keep their files: only new uploads, restores and
+moves into the account are refused until it is under the limit again.
+
+**Settings, Files (`/settings/files`).** Every file of the account, newest or biggest first, with its size,
+age and where it is linked from (todo descriptions, comments, notes, notes on people), and a filter for
+files not used anywhere. Delete asks first and says how many places still link to the file; those links
+then show a missing file (Markdown is not rewritten: the text is the user's). Deleting frees the space at
+once. Where a file is used is found by its `/api/v1/attachments/<id>` links, as export and move do; there
+is no link table.
+
+**Browser session only.** `GET /attachments` and `DELETE /attachments/:id` are session-only like the
+other settings pages: a token can still upload and read files, but not list or delete them.

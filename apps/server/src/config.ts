@@ -285,7 +285,7 @@ export function loadConfig(env: Env = process.env): Config {
     timeZone,
     backupAt,
     backupKeep: integer(env, "SLOPPANIZER_BACKUP_KEEP", 7, 1, 365),
-    filesLimitBytes: integer(env, "SLOPPANIZER_FILES_LIMIT_MB", 2048, 1, 1_048_576) * 1024 * 1024,
+    filesLimitBytes: integer(env, "SLOPPANIZER_FILES_LIMIT_MB", 1024, 1, 1_048_576) * 1024 * 1024,
     webDir: env.SLOPPANIZER_WEB_DIR ? resolve(env.SLOPPANIZER_WEB_DIR) : null,
     production,
     omeldar: {
