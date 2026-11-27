@@ -1,6 +1,6 @@
 {
   "name": "@organizer/shared",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "API contract (zod schemas) and pure logic shared by server, web app and MCP server.",
   "files": [
