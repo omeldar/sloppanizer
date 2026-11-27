@@ -8,6 +8,19 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+## 1.2.2 (2026-11-27)
+
+- Sign-up goes through omeldar as soon as "Sign in with omeldar" is on (`SLOPPANIZER_AUTH=both`, not only
+  `oidc`): /signup opens "Create an account with omeldar", and the own sign-up API answers 410. A sign-up
+  here made an account auth.omeldar.com never knew, which then could not move its sign-in (S5#18).
+- "Move my sign-in" also offers "Create an omeldar account", for accounts made here after the admin's
+  import to auth: omeldar then has no account with their Sloppanizer username and password, and says the
+  password is wrong. The new omeldar account is bound to theirs once the admin approves it at omeldar
+  (S5#18).
+- Notifications open the todo where it lives, from any tab: an own todo opened from a shared project's tab
+  went to "this todo does not exist" (it was looked up in the shared project); it now opens your own tab,
+  and a shared project's todo opens that project's tab, also from another shared project (S5#19).
+
 ## 1.2.1 (2026-11-27)
 
 - Notifications: long comment text and the hover background stay inside the panel. The panel was 40px

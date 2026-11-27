@@ -53,6 +53,15 @@ afterEach(() => {
   setSpace(null);
 });
 
+/** Opens the bell and lists where its links go. */
+const hrefs = async () => {
+  await userEvent.click(await screen.findByRole("button", { name: /^Notifications/ }));
+  const panel = (await screen.findAllByRole("region", { name: "Notifications" })).at(-1) as HTMLElement;
+  return within(panel)
+    .getAllByRole("link")
+    .map((l) => l.getAttribute("href"));
+};
+
 describe("notification bell (S5#6)", () => {
   it("shows the unread count and the newest, and opening one marks it read", async () => {
     // Inside a shared project's tab the bell still asks for your own notifications.
@@ -74,7 +83,8 @@ describe("notification bell (S5#6)", () => {
     // The popover takes the panel's width, so long text stays inside its border (S5#12).
     expect(panel.parentElement?.className).toMatch(/popover/);
     const links = within(panel).getAllByRole("link");
-    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/u/anna/shared/7/todos/3", "/todos/12"]);
+    // In shared project 7's tab: its todo stays in this tab, your own todo opens your own tab (S5#19).
+    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/todos/3", "/u/anna/todos/12"]);
     expect(links[0]?.textContent).toContain("bobo mentioned you");
     expect(links[1]?.textContent).toContain("assistant needs you to act");
     expect(links[1]?.textContent).toContain("Approve the DNS change");
@@ -122,5 +132,32 @@ describe("action needed on a todo (S5#6)", () => {
         body: { actionNeeded: null },
       }),
     );
+  });
+  it("opens each todo in the tab of the place it lives in (S5#19)", async () => {
+    const items: Notification[] = [
+      ...list.items,
+      note(3, {
+        todo: { id: 5, title: "Pick colors", status: "open", ref: "S9#5" },
+        space: { id: 9, name: "Flat" },
+      }),
+    ];
+    // Your own tab: own todos stay here, shared ones open their project's tab.
+    mockApi(() => ({ body: { ...list, items } }));
+    const own = renderWithApp(
+      <AccountProvider account={anna}>
+        <NotificationBell />
+      </AccountProvider>,
+    );
+    expect(await hrefs()).toEqual(["/u/anna/shared/7/todos/3", "/todos/12", "/u/anna/shared/9/todos/5"]);
+    own.unmount();
+
+    // Another shared project's tab: nothing stays here.
+    setSpace(9);
+    renderWithApp(
+      <AccountProvider account={anna}>
+        <NotificationBell />
+      </AccountProvider>,
+    );
+    expect(await hrefs()).toEqual(["/u/anna/shared/7/todos/3", "/u/anna/todos/12", "/todos/5"]);
   });
 });

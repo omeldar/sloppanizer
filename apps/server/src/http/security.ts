@@ -59,6 +59,13 @@ declare module "fastify" {
      * keep working for sessions that are still open, so they can still move to omeldar.
      */
     localLogin?: boolean;
+    /**
+     * Makes a new account with Sloppanizer's own credentials (sign-up): 410 as soon as omeldar is on
+     * (SLOPPANIZER_AUTH=both or oidc). New people sign up at auth.omeldar.com; the first sign-in there
+     * makes their Sloppanizer account. Otherwise a sign-up here makes an account auth knows nothing about,
+     * which can then never move its sign-in (S5#18).
+     */
+    localSignup?: boolean;
     access?: Access;
     /** Needs a full sign-in within the last 10 minutes (403 reauth_required otherwise). */
     reauth?: boolean;
@@ -263,6 +270,16 @@ export function registerSecurity(app: FastifyInstance, options: SecurityOptions)
           errorBody(
             "gone",
             'Sign-in and account security moved to auth.omeldar.com. Use "Sign in with omeldar".',
+          ),
+        );
+    }
+    if (request.routeOptions.config.localSignup && config.omeldar.mode !== "local") {
+      return reply
+        .status(410)
+        .send(
+          errorBody(
+            "gone",
+            'New accounts are made at auth.omeldar.com. Use "Create an account with omeldar".',
           ),
         );
     }

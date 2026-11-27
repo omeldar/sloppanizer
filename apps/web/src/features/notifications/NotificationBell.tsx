@@ -3,6 +3,8 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useCurrentAccount } from "../../app/account.tsx";
 import { Popover } from "../../components/Popover.tsx";
+import { currentSpace } from "../../lib/api.ts";
+import { accountBase } from "../../lib/entry.ts";
 import { relativeTime } from "../../lib/format.ts";
 import { useMarkNotifications, useNotifications } from "../../lib/notifications.ts";
 import { sharedTodoHref } from "../../lib/spaces.ts";
@@ -115,13 +117,21 @@ function NotificationLink({
       {n.excerpt && <span className={styles.excerpt}>{n.excerpt}</span>}
     </>
   );
-  // A shared todo opens in its project's tab; an own one in this tab.
-  if (n.space)
+  // The todo lives in one place: your own todos, or a shared project. In the tab of that place the link
+  // stays in the tab; from any other tab it opens that place's tab (S5#19: an own todo opened from a
+  // shared project's tab used to look for it in the shared project).
+  const where = n.space?.id ?? null;
+  if (where !== currentSpace()) {
+    const href =
+      where === null
+        ? `${accountBase(username)}/todos/${n.todo.id}`
+        : sharedTodoHref(username, where, n.todo.id);
     return (
-      <a className={styles.item} href={sharedTodoHref(username, n.space.id, n.todo.id)} onClick={onOpen}>
+      <a className={styles.item} href={href} onClick={onOpen}>
         {body}
       </a>
     );
+  }
   return (
     <Link className={styles.item} to="/todos/$id" params={{ id: String(n.todo.id) }} onClick={onOpen}>
       {body}

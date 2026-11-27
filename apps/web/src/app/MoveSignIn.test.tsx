@@ -154,4 +154,23 @@ describe("move your sign-in to omeldar", () => {
     expect(url.searchParams.get("login_hint")).toBe("anna");
     expect((await within(dialog).findByRole("alert")).textContent).toMatch(/blocked the sign-in window/);
   });
+  it("offers a new omeldar account for people auth never imported (S5#18)", async () => {
+    const open = vi.fn<typeof window.open>(() => null);
+    vi.stubGlobal("open", open);
+    server(config(), profile, (call) =>
+      call.path === "/api/v1/auth/omeldar/link/start" ? { status: 204 } : null,
+    );
+    renderWithApp(<MoveSignInBanner />);
+    await userEvent.click(await screen.findByRole("button", { name: "Move my sign-in" }));
+    const dialog = await screen.findByRole("dialog", { name: "Move your sign-in to omeldar" });
+    expect(within(dialog).getByText(/you have no omeldar account yet/)).toBeTruthy();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create an omeldar account" }));
+    await waitFor(() => expect(open).toHaveBeenCalledOnce());
+    const url = new URL(String(open.mock.calls[0]?.[0]));
+    expect(url.origin).toBe("https://auth.example.test");
+    expect(url.searchParams.get("prompt")).toBe("create");
+    // The new account gets its own name at omeldar: no hint of the Sloppanizer one.
+    expect(url.searchParams.get("login_hint")).toBeNull();
+  });
 });

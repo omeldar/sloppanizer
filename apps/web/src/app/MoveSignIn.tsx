@@ -144,14 +144,14 @@ export function MoveSignInDialog({
 }) {
   const client = useQueryClient();
   const toast = useToast();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"signin" | "create" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const run = async () => {
-    setBusy(true);
+  const run = async (create: boolean) => {
+    setBusy(create ? "create" : "signin");
     setError(null);
     try {
-      if (await moveSignInToOmeldar(state.omeldar, state.username)) {
+      if (await moveSignInToOmeldar(state.omeldar, state.username, { create })) {
         onOpenChange(false);
         toast.show({ message: 'Your sign-in moved to omeldar. Next time, use "Sign in with omeldar".' });
         await client.invalidateQueries({ queryKey: accountKeys.profile });
@@ -159,7 +159,7 @@ export function MoveSignInDialog({
     } catch (problem) {
       setError(errorMessage(problem));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -181,6 +181,10 @@ export function MoveSignInDialog({
             At omeldar, sign in with your omeldar account. If the admin moved your account there, it has your
             Sloppanizer username and password.
           </li>
+          <li>
+            If omeldar says the username or password is wrong, you have no omeldar account yet. Choose
+            &ldquo;Create an omeldar account&rdquo; below.
+          </li>
           <li>Sloppanizer may first ask you to confirm it is you.</li>
         </ul>
         {state.endsOn && (
@@ -191,6 +195,13 @@ export function MoveSignInDialog({
             {formatDate(state.endsOn)}.
           </p>
         )}
+        {busy === "create" && (
+          <p className={styles.moveNote} role="status">
+            Create your account in the omeldar window. If it then says &ldquo;Waiting for approval&rdquo;,
+            close that window: once the admin has approved your new account, choose &ldquo;Move my
+            sign-in&rdquo; again and sign in with it.
+          </p>
+        )}
         {error && (
           <p className={authStyles.alert} role="alert">
             {error}
@@ -198,7 +209,10 @@ export function MoveSignInDialog({
         )}
         <DialogActions>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={busy} onClick={() => void run()}>
+          <Button disabled={busy !== null} onClick={() => void run(true)}>
+            Create an omeldar account
+          </Button>
+          <Button variant="primary" disabled={busy !== null} onClick={() => void run(false)}>
             Continue at omeldar
           </Button>
         </DialogActions>
