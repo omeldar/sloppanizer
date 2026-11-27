@@ -114,7 +114,7 @@ function ReauthForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
             variant="primary"
             className={styles.wide}
             disabled={busy}
-            onClick={() => void run(() => confirmWithOmeldar(omeldar))}
+            onClick={() => void run(() => confirmWithOmeldar(omeldar, profile.data?.username))}
           >
             Confirm at omeldar
           </Button>
@@ -139,7 +139,7 @@ function ReauthForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
             variant="primary"
             className={styles.wide}
             disabled={busy}
-            onClick={() => void run(() => confirmWithOmeldar(omeldar))}
+            onClick={() => void run(() => confirmWithOmeldar(omeldar, profile.data?.username))}
           >
             Confirm at omeldar
           </Button>
