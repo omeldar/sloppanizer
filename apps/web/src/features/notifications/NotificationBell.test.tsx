@@ -70,7 +70,10 @@ describe("notification bell (S5#6)", () => {
     expect(asked && headersOf(asked)["x-sloppanizer-space"]).toBeUndefined();
     await userEvent.click(bell);
     const panels = await screen.findAllByRole("region", { name: "Notifications" });
-    const links = within(panels.at(-1) as HTMLElement).getAllByRole("link");
+    const panel = panels.at(-1) as HTMLElement;
+    // The popover takes the panel's width, so long text stays inside its border (S5#12).
+    expect(panel.parentElement?.className).toMatch(/popover/);
+    const links = within(panel).getAllByRole("link");
     expect(links.map((l) => l.getAttribute("href"))).toEqual(["/u/anna/shared/7/todos/3", "/todos/12"]);
     expect(links[0]?.textContent).toContain("bobo mentioned you");
     expect(links[1]?.textContent).toContain("assistant needs you to act");

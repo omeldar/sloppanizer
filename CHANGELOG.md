@@ -8,6 +8,9 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- Notifications: long comment text and the hover background stay inside the panel. The panel was 40px
+  wider than its popover, so text ran past the border; long words and links now wrap, and a long todo
+  title ends in "…" (S5#12).
 - "Confirm it is you" with omeldar asks auth.omeldar.com for the account you are signed in with. When the
   browser is signed in at auth as another account (e.g. omerovie while you use akotami), the popup now asks
   for your account, prefilled and editable, instead of showing the other one read-only (S5#10).

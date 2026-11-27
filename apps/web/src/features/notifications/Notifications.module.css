@@ -32,10 +32,17 @@
   text-align: center;
 }
 
-.panel {
+/* The popover itself is this wide: the panel used to be 380px inside the 340px popover, so text and the
+   hover background ran past its border (S5#12). */
+.popover {
   width: min(380px, calc(100vw - 24px));
+}
+
+.panel {
   max-height: min(480px, 70vh);
+  overflow-x: hidden;
   overflow-y: auto;
+  border-radius: inherit;
 }
 
 .head {
@@ -73,7 +80,7 @@
 
 .list {
   margin: 0;
-  padding: 4px 0;
+  padding: 4px;
   list-style: none;
 }
 
@@ -81,6 +88,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
   padding: 8px;
   border-radius: 6px;
   color: var(--text-2);
@@ -108,6 +116,7 @@ li[data-unread] .line::before {
 
 .line {
   font-size: var(--fs-small);
+  overflow-wrap: anywhere;
 }
 
 .actor {
@@ -129,6 +138,12 @@ li[data-unread] .line::before {
   white-space: nowrap;
 }
 
+.todoTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .space {
   flex-shrink: 0;
   color: var(--text-3);
@@ -138,6 +153,7 @@ li[data-unread] .line::before {
 .excerpt {
   display: -webkit-box;
   overflow: hidden;
+  overflow-wrap: anywhere;
   color: var(--text-3);
   font-size: var(--fs-small);
   -webkit-box-orient: vertical;
