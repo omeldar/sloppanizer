@@ -314,6 +314,102 @@ describe("bulk update", () => {
   });
 });
 
+describe("bulk update of labels and people (S5#14)", () => {
+  it("replaces requested by on every todo, finding a new person once", async () => {
+    const t = await makeApp();
+    const a = await createTodo(t, { title: "a", requestedBy: [{ firstName: "Anna", lastName: "Meier" }] });
+    const b = await createTodo(t, { title: "b" });
+    const res = await t.call("POST", "/api/v1/todos/bulk", {
+      ids: [a.id, b.id],
+      patch: { requestedBy: [{ firstName: "Bo", lastName: "Berg" }] },
+    });
+    expect(res.statusCode).toBe(200);
+    const updated = res.json().updated as Todo[];
+    expect(updated.map((u) => u.requestedBy.map((p) => p.displayName))).toEqual([["Bo Berg"], ["Bo Berg"]]);
+    // One Bo Berg, not one per todo.
+    expect(new Set(updated.map((u) => u.requestedBy[0]?.id)).size).toBe(1);
+  });
+
+  it("adds and removes contacts and requesters, and sets the full label set", async () => {
+    const t = await makeApp();
+    await t.create("/api/v1/labels", { name: "homelab" });
+    await t.create("/api/v1/labels", { name: "work" });
+    const a = await createTodo(t, { title: "a", labels: ["homelab", "priority::high"] });
+    const b = await createTodo(t, { title: "b", contacts: [{ firstName: "Cy", lastName: "Ra" }] });
+    const added = await t.call("POST", "/api/v1/todos/bulk", {
+      ids: [a.id, b.id],
+      patch: {
+        addContacts: [{ firstName: "Cy", lastName: "Ra" }],
+        addRequestedBy: [{ firstName: "Di", lastName: "Do" }],
+      },
+    });
+    expect(added.statusCode).toBe(200);
+    const after = added.json().updated as Todo[];
+    expect(after.map((u) => u.contacts.map((p) => p.displayName))).toEqual([["Cy Ra"], ["Cy Ra"]]);
+    expect(after.map((u) => u.requestedBy.map((p) => p.displayName))).toEqual([["Di Do"], ["Di Do"]]);
+
+    const removed = await t.call("POST", "/api/v1/todos/bulk", {
+      ids: [a.id, b.id],
+      patch: { removeContacts: [{ firstName: "Cy", lastName: "Ra" }], labels: ["work"] },
+    });
+    expect(removed.statusCode).toBe(200);
+    const last = removed.json().updated as Todo[];
+    expect(last.map((u) => u.contacts)).toEqual([[], []]);
+    expect(last.map(labelNames)).toEqual([["work"], ["work"]]);
+  });
+
+  it("refuses a full set together with add or remove, and an assignee on own todos", async () => {
+    const t = await makeApp();
+    const a = await createTodo(t, { title: "a" });
+    const both = await t.call("POST", "/api/v1/todos/bulk", {
+      ids: [a.id],
+      patch: { labels: [], addLabels: ["priority::low"] },
+    });
+    expect(both.statusCode).toBe(422);
+    const people = await t.call("POST", "/api/v1/todos/bulk", {
+      ids: [a.id],
+      patch: { requestedBy: [], removeRequestedBy: [{ personId: 1 }] },
+    });
+    expect(people.statusCode).toBe(422);
+    const assignee = await t.call("POST", "/api/v1/todos/bulk", { ids: [a.id], patch: { assignee: "anna" } });
+    expect(assignee.statusCode).toBe(422);
+  });
+
+  it("assigns many todos of a shared project to a member, all or nothing", async () => {
+    const t = await makeApp();
+    await t.asAccount({ username: "bobo" });
+    await t.asAccount({ username: "cyra" });
+    const space = await t.create<{ id: number }>("/api/v1/spaces", { name: "Home move", members: ["bobo"] });
+    const headers = { "x-sloppanizer-space": String(space.id) };
+    const add = async (title: string) =>
+      json<Todo>(await t.call("POST", "/api/v1/todos", { title }, headers));
+    const a = await add("Book van");
+    const b = await add("Pack books");
+    const refused = await t.call(
+      "POST",
+      "/api/v1/todos/bulk",
+      { ids: [a.id, b.id], patch: { assignee: "cyra" } },
+      headers,
+    );
+    expect(refused.statusCode).toBe(422);
+    const res = await t.call(
+      "POST",
+      "/api/v1/todos/bulk",
+      { ids: [a.id, b.id], patch: { assignee: "bobo" } },
+      headers,
+    );
+    expect(res.statusCode).toBe(200);
+    expect((res.json().updated as Todo[]).map((u) => u.assignee?.username)).toEqual(["bobo", "bobo"]);
+    const cleared = await t.call(
+      "POST",
+      "/api/v1/todos/bulk",
+      { ids: [a.id], patch: { assignee: null } },
+      headers,
+    );
+    expect((cleared.json().updated as Todo[])[0]?.assignee).toBeNull();
+  });
+});
+
 async function seedList(t: TestApp) {
   const p = await t.create<{ id: number }>("/api/v1/projects", { name: "P" });
   await t.create("/api/v1/labels", { name: "homelab" });

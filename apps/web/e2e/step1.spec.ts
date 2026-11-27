@@ -138,8 +138,8 @@ test("mark done from the list, undo, mark done again, the done row shows took", 
       .getByRole("listitem")
       .filter({ hasText: `#${todoId}` });
   await strip()
-    .getByRole("checkbox", { name: `Mark #${todoId} done` })
-    .check();
+    .getByRole("button", { name: `Mark #${todoId} done` })
+    .click();
   await expect(toast(`Marked #${todoId} done`)).toBeVisible();
   await expect(strip()).toHaveCount(0);
   await page.getByRole("button", { name: "Undo" }).click();
@@ -149,8 +149,8 @@ test("mark done from the list, undo, mark done again, the done row shows took", 
   );
 
   await strip()
-    .getByRole("checkbox", { name: `Mark #${todoId} done` })
-    .check();
+    .getByRole("button", { name: `Mark #${todoId} done` })
+    .click();
   await expect(strip()).toHaveCount(0);
   await expect
     .poll(async () => ((await (await api.get(`${API}/todos/${todoId}`)).json()) as { status: string }).status)

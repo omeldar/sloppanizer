@@ -830,7 +830,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       title: "Bulk update",
       description:
         "Apply the same change to many todos at once (all or nothing). Use it to plan a week: one call per day " +
-        "with plannedOn set, or to move, relabel or reprioritize a batch.",
+        "with plannedOn set, or to move, relabel, reprioritize or re-attribute a batch. requestedBy and " +
+        "contacts replace each todo's full set; the add*/remove* fields change only those people.",
       inputSchema: {
         ids: TodoIds,
         status: TodoStatus.optional(),
@@ -841,6 +842,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         plannedOn: DateInput("Day the user plans to work on them.").optional(),
         addLabels: Labels("Labels to add.").optional(),
         removeLabels: Labels("Labels to remove.").optional(),
+        requestedBy: People("Full requested-by set of each todo (replaces all).").optional(),
+        addRequestedBy: People("People to add.").optional(),
+        removeRequestedBy: People("People to remove (never creates anyone).").optional(),
+        addContacts: People("Contacts to add.").optional(),
+        removeContacts: People("Contacts to remove (never creates anyone).").optional(),
         format,
       },
       annotations: { ...WRITE, idempotentHint: true },
@@ -855,6 +861,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           plannedOn: args.plannedOn,
           addLabels: args.addLabels,
           removeLabels: args.removeLabels,
+          requestedBy: toPeople(args.requestedBy),
+          addRequestedBy: toPeople(args.addRequestedBy),
+          removeRequestedBy: toPeople(args.removeRequestedBy),
+          addContacts: toPeople(args.addContacts),
+          removeContacts: toPeople(args.removeContacts),
         }),
       });
       return out(

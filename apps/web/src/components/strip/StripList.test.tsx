@@ -42,10 +42,10 @@ const todos = [
 ];
 
 describe("StripList", () => {
-  it("marks a todo done from the checkbox and undoes it from the toast", async () => {
+  it("marks a todo done from its done button and undoes it from the toast", async () => {
     const calls = fakeServer(todos);
     renderWithApp(<StripList items={todos.map((todo) => ({ todo }))} label="Inbox" collapseOnDone={false} />);
-    await userEvent.click(await screen.findByRole("checkbox", { name: "Mark #2 done" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Mark #2 done" }));
 
     expect(await screen.findByText("Marked #2 done")).toBeTruthy();
     const patches = calls.filter((c) => c.method === "PATCH");
@@ -80,7 +80,7 @@ describe("StripList", () => {
         : { body: weekly },
     );
     renderWithApp(<StripList items={[{ todo: weekly }]} label="List" collapseOnDone={false} />);
-    await userEvent.click(await screen.findByRole("checkbox", { name: "Mark #4 done" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Mark #4 done" }));
     expect(await screen.findByText("Marked #4 done. Next one: #143")).toBeTruthy();
   });
 
@@ -90,7 +90,7 @@ describe("StripList", () => {
     renderWithApp(
       <StripList items={started.map((todo) => ({ todo }))} label="List" collapseOnDone={false} />,
     );
-    await userEvent.click(await screen.findByRole("checkbox", { name: "Mark #7 done" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Mark #7 done" }));
     await userEvent.click(await screen.findByRole("button", { name: "Undo" }));
     await waitFor(() => expect(calls.at(-1)?.body).toEqual({ status: "in_progress" }));
   });
@@ -128,7 +128,7 @@ describe("StripList", () => {
   it("shows what went wrong when marking done fails, and offers no undo", async () => {
     fakeServer(todos, true);
     renderWithApp(<StripList items={todos.map((todo) => ({ todo }))} label="Inbox" collapseOnDone={false} />);
-    await userEvent.click(await screen.findByRole("checkbox", { name: "Mark #1 done" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Mark #1 done" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Could not mark #1 done. Status is not allowed.");
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();

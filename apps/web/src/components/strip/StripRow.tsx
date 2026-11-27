@@ -31,6 +31,10 @@ export interface StripRowProps {
   /** Collapse the row before marking it done (lists that hide done todos). */
   collapseOnDone?: boolean;
   editingTitle?: boolean;
+  /** Picked for a bulk change (the checkbox). Lists without bulk changes leave the box out. */
+  checked?: boolean;
+  /** The checkbox was clicked; range is true with shift held (everything since the last click). */
+  onCheck?: (range: boolean) => void;
   onSelect?: () => void;
   onToggleDone: (todo: Todo) => void;
   onTitleSave?: (title: string) => void;
@@ -46,6 +50,8 @@ export function StripRow({
   score,
   collapseOnDone = false,
   editingTitle = false,
+  checked = false,
+  onCheck,
   onSelect,
   onToggleDone,
   onTitleSave,
@@ -95,6 +101,7 @@ export function StripRow({
       data-next={rank === 1 || undefined}
       data-ranked={rank !== undefined || undefined}
       data-collapsing={collapsing || undefined}
+      data-checked={checked || undefined}
       aria-current={selected || undefined}
       onMouseDown={onSelect}
     >
@@ -105,19 +112,16 @@ export function StripRow({
         </span>
       )}
       <span className={styles.check}>
-        <input
-          type="checkbox"
-          checked={done || collapsing}
-          onChange={toggle}
-          aria-label={
-            // A shared project numbers its todos on its own: #3 there is not your #3.
-            source
-              ? `${done ? "Reopen" : "Mark"} "${todo.title}"${done ? "" : " done"}`
-              : done
-                ? `Reopen #${todo.id}`
-                : `Mark #${todo.id} done`
-          }
-        />
+        {onCheck && (
+          <input
+            type="checkbox"
+            checked={checked}
+            // The click carries shift (range selection); change events do not.
+            readOnly
+            onClick={(event) => onCheck(event.shiftKey)}
+            aria-label={source ? `Select "${todo.title}"` : `Select #${todo.id}`}
+          />
+        )}
       </span>
       <span className={styles.id}>{source ? "" : `#${todo.id}`}</span>
       <span className={styles.main}>
@@ -168,6 +172,7 @@ export function StripRow({
               )}
             </span>
           )}
+          <DoneButton done={done || collapsing} label={doneLabel(todo, done, source)} onClick={toggle} />
         </span>
         {(visibleReasons.length > 0 || hasFacts(todo)) && (
           <span className={styles.reasons}>
@@ -225,6 +230,33 @@ export function StripRow({
         )}
       </span>
     </li>
+  );
+}
+
+function doneLabel(todo: Todo, done: boolean, source: StripSource | undefined): string {
+  // A shared project numbers its todos on its own: #3 there is not your #3.
+  if (source) return `${done ? "Reopen" : "Mark"} "${todo.title}"${done ? "" : " done"}`;
+  return done ? `Reopen #${todo.id}` : `Mark #${todo.id} done`;
+}
+
+/**
+ * Done or reopen in one click (the checkbox selects since S5#14). Shown on hover, focus and the row
+ * under the cursor, always on touch screens and on done rows; x does the same by keyboard.
+ */
+function DoneButton({ done, label, onClick }: { done: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className={styles.done}
+      data-on={done || undefined}
+      aria-label={label}
+      title={`${done ? "Reopen" : "Mark done"} (x)`}
+      onClick={onClick}
+    >
+      <svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true">
+        <path d="M3 7.2l2.6 2.6L11 4.4" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    </button>
   );
 }
 

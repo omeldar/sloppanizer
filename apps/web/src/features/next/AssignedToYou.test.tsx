@@ -71,7 +71,7 @@ describe("Assigned to you", () => {
     expect(asked?.path).toContain("assignee=me");
     expect(asked && headersOf(asked)["x-sloppanizer-space"]).toBe("7");
 
-    await userEvent.click(within(section).getByRole("checkbox", { name: 'Mark "Book van" done' }));
+    await userEvent.click(within(section).getByRole("button", { name: 'Mark "Book van" done' }));
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
     const patch = calls.find((c) => c.method === "PATCH");
     expect(patch).toEqual({ method: "PATCH", path: "/api/v1/todos/3", body: { status: "done" } });

@@ -8,6 +8,17 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- Lists (Next up, Inbox, projects, also in shared projects' tabs): the checkbox selects a todo instead of
+  marking it done. A bar over the list then changes all selected todos at once: done, status, priority,
+  move to a project or the Inbox, add or remove labels, requested by (replaces it, after a warning naming
+  what gets overwritten), add contacts, planned day, due date, and in a shared project the assignee. Each
+  change shows what it did, with Undo. Shift-click selects a range, `v` selects the cursor row, `Esc`
+  clears. Marking one todo done is the round button at the end of its title line, or `x` as before
+  (S5#14).
+- API: `POST /todos/bulk` also takes `labels`, `requestedBy`, `addRequestedBy`, `removeRequestedBy`,
+  `contacts`, `addContacts`, `removeContacts` and `assignee`; the MCP `bulk_update` takes the people
+  fields (S5#14).
+
 ## 1.2.2 (2026-11-27)
 
 - Sign-up goes through omeldar as soon as "Sign in with omeldar" is on (`SLOPPANIZER_AUTH=both`, not only

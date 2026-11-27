@@ -214,7 +214,7 @@ test("a link: B blocks A, Next up shows A waiting on B, B done puts A back in th
   const blocker = ranked.getByRole("listitem").filter({ hasText: `Buy rack ${word}` });
   await expect(blocker).toContainText("blocks 1");
 
-  await blocker.getByRole("checkbox", { name: `Mark #${b} done` }).click();
+  await blocker.getByRole("button", { name: `Mark #${b} done` }).click();
   await expect(ranked.getByRole("listitem").filter({ hasText: `Install server ${word}` })).toHaveCount(1);
   await expect(page.getByRole("region", { name: "Blocked" }).filter({ hasText: word })).toHaveCount(0);
 });

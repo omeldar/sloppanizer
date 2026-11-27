@@ -154,18 +154,35 @@ export const UpdateTodo = z
   });
 export type UpdateTodo = z.infer<typeof UpdateTodo>;
 
+/**
+ * One change for many todos. The full sets (labels, requestedBy, contacts) replace each todo's set, as in
+ * UpdateTodo; the web app's bulk undo puts each todo's own set back with them.
+ */
 export const BulkPatch = z
   .strictObject({
     status: TodoStatus.optional(),
     projectId: Id.nullable().optional(),
     dueOn: CalendarDate.nullable().optional(),
     plannedOn: CalendarDate.nullable().optional(),
+    labels: LabelList.optional(),
     addLabels: LabelList.optional(),
     removeLabels: LabelList.optional(),
+    requestedBy: PersonRefList.optional(),
+    addRequestedBy: PersonRefList.optional(),
+    removeRequestedBy: PersonRefList.optional(),
+    contacts: PersonRefList.optional(),
+    addContacts: PersonRefList.optional(),
+    removeContacts: PersonRefList.optional(),
+    /** In a shared project: the member they are assigned to (username); null unassigns them. */
+    assignee: AssigneeInput.optional(),
   })
   .superRefine((value, ctx) => {
     checkNotEmpty(ctx, value);
+    checkScopes(ctx, value.labels, "labels");
     checkScopes(ctx, value.addLabels, "addLabels");
+    checkNotBoth(ctx, value, "labels", ["addLabels", "removeLabels"]);
+    checkNotBoth(ctx, value, "requestedBy", ["addRequestedBy", "removeRequestedBy"]);
+    checkNotBoth(ctx, value, "contacts", ["addContacts", "removeContacts"]);
   });
 export type BulkPatch = z.infer<typeof BulkPatch>;
 
