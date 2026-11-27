@@ -37,6 +37,7 @@ export function NotificationBell() {
       open={open}
       onOpenChange={setOpen}
       align="end"
+      className={styles.popover}
       trigger={
         <button
           type="button"
@@ -109,7 +110,7 @@ function NotificationLink({
       </span>
       <span className={styles.todo}>
         {n.space && <span className={styles.space}>{n.space.name}</span>}
-        {n.todo.title}
+        <span className={styles.todoTitle}>{n.todo.title}</span>
       </span>
       {n.excerpt && <span className={styles.excerpt}>{n.excerpt}</span>}
     </>
