@@ -82,11 +82,13 @@ export function handBackToOpener(search: URLSearchParams): void {
 async function signInInPopup(
   config: OmeldarConfig,
   loginHint?: string,
+  create = false,
 ): Promise<{ query: string; pending: OidcPending } | null> {
+  // `create`: auth's sign-up page (a new omeldar account), then the same fresh sign-in.
   const { url, pending } = await clientFor(config).signIn({
     maxAge: 0,
-    prompt: "login",
-    ...(loginHint ? { loginHint } : {}),
+    prompt: create ? "create" : "login",
+    ...(loginHint && !create ? { loginHint } : {}),
   });
   localStorage.setItem(REAUTH_KEY, pending.state);
   const popup = window.open(url, "omeldar-confirm", "popup,width=480,height=760");
@@ -130,11 +132,17 @@ export async function confirmWithOmeldar(config: OmeldarConfig, username?: strin
 /**
  * Moves the signed-in account's sign-in to omeldar: Sloppanizer checks it is you (its own "confirm it is
  * you" when the last sign-in is older than 10 minutes), then a fresh sign-in at omeldar in a popup binds
- * that omeldar account. Resolves false when the popup never answers.
+ * that omeldar account. Resolves false when the popup never answers. With `create` the popup opens
+ * auth's sign-up: for accounts auth never imported (made here after the import), which have no omeldar
+ * account to sign in with (S5#18).
  */
-export async function moveSignInToOmeldar(config: OmeldarConfig, username: string): Promise<boolean> {
+export async function moveSignInToOmeldar(
+  config: OmeldarConfig,
+  username: string,
+  options: { create?: boolean } = {},
+): Promise<boolean> {
   await apiVoid("/auth/omeldar/link/start", { method: "POST" });
-  const answer = await signInInPopup(config, username);
+  const answer = await signInInPopup(config, username, options.create ?? false);
   if (answer === null) return false;
   await apiVoid("/auth/omeldar/link", { method: "POST", body: answer });
   return true;
