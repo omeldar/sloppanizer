@@ -9,15 +9,18 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { addDays, type Todo } from "@organizer/shared";
+import { addDays, type Space, type Todo, type UpdateTodo } from "@organizer/shared";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useRef, useState } from "react";
+import { useCurrentAccount } from "../../app/account.tsx";
 import { MiniStrip } from "../../components/strip/MiniStrip.tsx";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { Announce, Button, ErrorState, Kbd, Loading, PageHeader } from "../../components/ui.tsx";
 import { type KeyBinding, useKeys } from "../../keyboard/KeyboardProvider.tsx";
 import { formatDate, formatDayMonth, today, tookText, weekdayName } from "../../lib/format.ts";
+import { errorMessage } from "../../lib/api.ts";
 import { useTodos } from "../../lib/queries.ts";
+import { sharedKey, sharedTodoHref, useSharedTodos, useUpdateSharedTodo } from "../../lib/spaces.ts";
 import { useScrollIntoView } from "../../lib/listCursor.ts";
 import { useTodoActions } from "../todos/useTodoActions.ts";
 import { daysOfWeek, shiftWeek, weekPlace, weekStart } from "./week.ts";
@@ -32,24 +35,38 @@ function dayText(date: string): string {
   return `${weekdayName(date)} ${formatDate(date)}`;
 }
 
+/**
+ * A todo on the week board: your own, or one assigned to you in a shared project (`space`), whose id is
+ * counted there, so the board tells them apart by `weekKey`.
+ */
+export type WeekTodo = Todo & { space?: Space };
+
+export const weekKey = (todo: Pick<WeekTodo, "id" | "space">): string =>
+  todo.space ? sharedKey(todo.space.id, todo.id) : String(todo.id);
+
+/** A shared project's todos as week board todos. */
+const withSpace = (list: { space: Space; todo: Todo }[]): WeekTodo[] =>
+  list.map(({ space, todo }) => ({ ...todo, space }));
+
 interface Lists {
-  days: Map<string, Todo[]>;
-  carried: Todo[];
-  unplanned: Todo[];
+  days: Map<string, WeekTodo[]>;
+  carried: WeekTodo[];
+  unplanned: WeekTodo[];
 }
 
 /** Sorts the loaded todos into the seven days and the two side lists, with unsaved moves applied. */
 export function weekLists(
-  todos: readonly Todo[],
+  todos: readonly WeekTodo[],
   days: readonly string[],
-  overrides: ReadonlyMap<number, string | null> = new Map(),
+  overrides: ReadonlyMap<string, string | null> = new Map(),
 ): Lists {
   const lists: Lists = { days: new Map(days.map((d) => [d, []])), carried: [], unplanned: [] };
-  const seen = new Set<number>();
+  const seen = new Set<string>();
   for (const todo of todos) {
-    if (seen.has(todo.id)) continue;
-    seen.add(todo.id);
-    const shown = overrides.has(todo.id) ? { ...todo, plannedOn: overrides.get(todo.id) ?? null } : todo;
+    const key = weekKey(todo);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const shown = overrides.has(key) ? { ...todo, plannedOn: overrides.get(key) ?? null } : todo;
     const place = weekPlace(shown, days);
     if (place?.kind === "day") lists.days.get(place.date)?.push(shown);
     else if (place?.kind === "carried") lists.carried.push(shown);
@@ -107,7 +124,9 @@ export function WeekPage() {
 function WeekBoard({ days, today: now }: { days: string[]; today: string }) {
   const navigate = useNavigate();
   const toast = useToast();
-  const { patch, toggleDone } = useTodoActions();
+  const { patch: patchOwn, toggleDone: toggleOwn } = useTodoActions();
+  const updateShared = useUpdateSharedTodo();
+  const account = useCurrentAccount();
   const start = days[0] as string;
   const end = days[6] as string;
 
@@ -121,57 +140,118 @@ function WeekBoard({ days, today: now }: { days: string[]; today: string }) {
   });
   const carried = useTodos({ plannedTo: addDays(start, -1), sort: "priority", order: "desc", limit: 200 });
   const unplanned = useTodos({ unplanned: "true", sort: "priority", order: "desc", limit: 200 });
+  // The same three lists from your shared projects: the todos assigned to you there (your own tab).
+  const sharedPlanned = useSharedTodos({
+    status: "all",
+    plannedFrom: start,
+    plannedTo: end,
+    sort: "priority",
+    order: "desc",
+    limit: 200,
+  });
+  const sharedCarried = useSharedTodos({
+    plannedTo: addDays(start, -1),
+    sort: "priority",
+    order: "desc",
+    limit: 100,
+  });
+  const sharedUnplanned = useSharedTodos({ unplanned: "true", sort: "priority", order: "desc", limit: 100 });
 
-  const [overrides, setOverrides] = useState<Map<number, string | null>>(new Map());
+  const [overrides, setOverrides] = useState<Map<string, string | null>>(new Map());
   const lists = weekLists(
-    [...(planned.data?.items ?? []), ...(carried.data?.items ?? []), ...(unplanned.data?.items ?? [])],
+    [
+      ...(planned.data?.items ?? []),
+      ...withSpace(sharedPlanned.items),
+      ...(carried.data?.items ?? []),
+      ...withSpace(sharedCarried.items),
+      ...(unplanned.data?.items ?? []),
+      ...withSpace(sharedUnplanned.items),
+    ],
     days,
     overrides,
   );
   // Cursor columns: the seven days, then the side panel (carried over, then unplanned).
-  const columns: Todo[][] = [
+  const columns: WeekTodo[][] = [
     ...days.map((d) => lists.days.get(d) ?? []),
     [...lists.carried, ...lists.unplanned],
   ];
-  const [cursor, setCursor] = useState<{ col: number; id: number | null }>({
+  const [cursor, setCursor] = useState<{ col: number; id: string | null }>({
     col: Math.max(0, days.indexOf(now)),
     id: null,
   });
-  const [dragging, setDragging] = useState<Todo | null>(null);
+  const [dragging, setDragging] = useState<WeekTodo | null>(null);
   const lastDrag = useRef(0);
 
-  const locate = (id: number | null) => {
+  const locate = (id: string | null) => {
     if (id === null) return null;
     for (const [col, list] of columns.entries()) {
-      const row = list.findIndex((t) => t.id === id);
-      if (row !== -1) return { col, row, todo: list[row] as Todo };
+      const row = list.findIndex((t) => weekKey(t) === id);
+      if (row !== -1) return { col, row, todo: list[row] as WeekTodo };
     }
     return null;
   };
   const selected = locate(cursor.id);
 
-  const plan = async (todo: Todo, plannedOn: string | null) => {
+  /** "#12" for your own todos; a shared project's todo by its title (its number is counted there). */
+  const named = (todo: WeekTodo) => (todo.space ? `"${todo.title}"` : `#${todo.id}`);
+
+  /** Saves a change: your own todos as always, a shared one in its project (planning it assigns it to you). */
+  const patch = async (todo: WeekTodo, change: UpdateTodo): Promise<Todo | null> => {
+    if (!todo.space) return patchOwn(todo.id, change);
+    try {
+      return await updateShared.mutateAsync({ spaceId: todo.space.id, todoId: todo.id, patch: change });
+    } catch (failure) {
+      toast.show({ tone: "error", message: `Could not change "${todo.title}". ${errorMessage(failure)}` });
+      return null;
+    }
+  };
+
+  const toggleDone = async (todo: WeekTodo) => {
+    if (!todo.space) return toggleOwn(todo);
+    const previous = todo.status;
+    const status = previous === "done" ? "open" : "done";
+    if (!(await patch(todo, { status }))) return;
+    toast.show({
+      message: status === "done" ? `Marked "${todo.title}" done` : `Reopened "${todo.title}"`,
+      action: { label: "Undo", run: () => void patch(todo, { status: previous }) },
+    });
+  };
+
+  const plan = async (todo: WeekTodo, plannedOn: string | null) => {
     const before = todo.plannedOn;
     if (before === plannedOn) return;
-    setOverrides((current) => new Map(current).set(todo.id, plannedOn));
-    const saved = await patch(todo.id, { plannedOn });
+    const key = weekKey(todo);
+    setOverrides((current) => new Map(current).set(key, plannedOn));
+    const saved = await patch(todo, { plannedOn });
     setOverrides((current) => {
       const next = new Map(current);
-      next.delete(todo.id);
+      next.delete(key);
       return next;
     });
     if (!saved) return;
+    // Planning a shared project's todo nobody was on gave it to you; someone else's stays theirs.
+    const assignee =
+      todo.space && plannedOn && saved.assignee?.username !== account?.username ? saved.assignee : null;
     toast.show({
-      message: plannedOn ? `Planned #${todo.id} for ${dayText(plannedOn)}` : `Unplanned #${todo.id}`,
-      action: { label: "Undo", run: () => void patch(todo.id, { plannedOn: before }) },
+      message: plannedOn
+        ? `Planned ${named(todo)} for ${dayText(plannedOn)}${assignee ? `; it stays assigned to ${assignee.name}` : ""}`
+        : `Unplanned ${named(todo)}`,
+      action: { label: "Undo", run: () => void patch(todo, { plannedOn: before }) },
     });
+  };
+
+  const open = (todo: WeekTodo) => {
+    if (todo.space && account)
+      window.location.assign(sharedTodoHref(account.username, todo.space.id, todo.id));
+    else void navigate({ to: "/todos/$id", params: { id: String(todo.id) } });
   };
 
   const step = (dc: number, dr: number) => {
     const col = Math.max(0, Math.min(columns.length - 1, (selected?.col ?? cursor.col) + dc));
     const list = columns[col] ?? [];
     const row = selected ? (dc === 0 ? selected.row + dr : selected.row) : dr < 0 ? list.length - 1 : 0;
-    setCursor({ col, id: list[Math.max(0, Math.min(list.length - 1, row))]?.id ?? null });
+    const target = list[Math.max(0, Math.min(list.length - 1, row))];
+    setCursor({ col, id: target ? weekKey(target) : null });
   };
 
   /** A day earlier or later; from the side panel, shift+h plans it for Sunday (the column to its left). */
@@ -204,7 +284,7 @@ function WeekBoard({ days, today: now }: { days: string[]; today: string }) {
     },
     {
       keys: "Enter",
-      run: () => selected && void navigate({ to: "/todos/$id", params: { id: String(selected.todo.id) } }),
+      run: () => selected && open(selected.todo),
       label: "Open todo",
       group: "Week",
     },
@@ -222,7 +302,7 @@ function WeekBoard({ days, today: now }: { days: string[]; today: string }) {
     setDragging(null);
     // oxlint-disable-next-line react/purity -- runs in the drag end handler, not during render
     lastDrag.current = Date.now();
-    const found = locate(Number(active.id));
+    const found = locate(String(active.id));
     if (!found || !over) return;
     const target = String(over.id);
     void plan(found.todo, target === UNPLANNED ? null : target);
@@ -231,22 +311,27 @@ function WeekBoard({ days, today: now }: { days: string[]; today: string }) {
   if (planned.isPending) return <Loading />;
   if (planned.isError) return <ErrorState error={planned.error} onRetry={() => void planned.refetch()} />;
 
-  const card = (todo: Todo, narrow = true) => (
-    <DraggableStrip
-      key={todo.id}
-      todo={todo}
-      selected={todo.id === cursor.id}
-      narrow={narrow}
-      onSelect={() => setCursor({ col: locate(todo.id)?.col ?? cursor.col, id: todo.id })}
-    />
-  );
-  const sideCard = (todo: Todo) => card(todo, false);
+  const card = (todo: WeekTodo, narrow = true) => {
+    const key = weekKey(todo);
+    return (
+      <DraggableStrip
+        key={key}
+        id={key}
+        todo={todo}
+        href={todo.space && account ? sharedTodoHref(account.username, todo.space.id, todo.id) : null}
+        selected={key === cursor.id}
+        narrow={narrow}
+        onSelect={() => setCursor({ col: locate(key)?.col ?? cursor.col, id: key })}
+      />
+    );
+  };
+  const sideCard = (todo: WeekTodo) => card(todo, false);
 
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={pointerWithin}
-      onDragStart={(event) => setDragging(locate(Number(event.active.id))?.todo ?? null)}
+      onDragStart={(event) => setDragging(locate(String(event.active.id))?.todo ?? null)}
       onDragEnd={onDragEnd}
       onDragCancel={() => setDragging(null)}
     >
@@ -262,7 +347,7 @@ function WeekBoard({ days, today: now }: { days: string[]; today: string }) {
         <Announce
           text={
             selected
-              ? `#${selected.todo.id} ${selected.todo.title}, ${
+              ? `${selected.todo.space ? `${selected.todo.space.name}: ` : `#${selected.todo.id} `}${selected.todo.title}, ${
                   days[selected.col] ? dayText(days[selected.col] as string) : "not planned this week"
                 }`
               : ""
@@ -359,17 +444,22 @@ function DropZone({
 }
 
 function DraggableStrip({
+  id,
   todo,
+  href,
   selected,
   narrow,
   onSelect,
 }: {
-  todo: Todo;
+  id: string;
+  todo: WeekTodo;
+  /** A shared project's todo: where it opens (that project's tab). */
+  href: string | null;
   selected: boolean;
   narrow: boolean;
   onSelect: () => void;
 }) {
-  const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id: todo.id });
+  const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id });
   const { role: _role, tabIndex: _tabIndex, ...dragAttributes } = attributes;
   const ref = useScrollIntoView<HTMLDivElement>(selected);
   const took = tookText(todo);
@@ -381,6 +471,9 @@ function DraggableStrip({
           ref.current = node;
         }}
         todo={todo}
+        {...(todo.space
+          ? { source: { name: todo.space.name, color: todo.space.color, href: href ?? "" } }
+          : {})}
         selected={selected}
         ghost={isDragging}
         aside={took}

@@ -1,5 +1,6 @@
 import {
   addDays,
+  type BlockSpace,
   DONE_BUCKETS,
   type DoneBucket,
   daysBetween,
@@ -47,14 +48,32 @@ interface Piece {
   end: number;
   todoId: number | null;
   project: ProjectRef | null;
+  /** Your time in a shared project (its todo and project ids are counted there). */
+  space: BlockSpace | null;
 }
 
-/** "inbox", "untitled" or the project id: the group of worked time or a done todo. */
-const groupKey = (todoId: number | null, project: ProjectRef | null): string =>
-  todoId === null ? UNTITLED : project === null ? INBOX : String(project.id);
+/** "inbox", "untitled", the project id or "s<id>" for a shared project: the group of worked time or a done todo. */
+const groupKey = (
+  todoId: number | null,
+  project: ProjectRef | null,
+  space: BlockSpace | null = null,
+): string =>
+  space !== null
+    ? `s${space.id}`
+    : todoId === null
+      ? UNTITLED
+      : project === null
+        ? INBOX
+        : String(project.id);
 
-const groupName = (key: string, project: ProjectRef | null): string =>
-  key === INBOX ? "Inbox" : key === UNTITLED ? "Own title" : (project?.name ?? "Project");
+const groupName = (key: string, project: ProjectRef | null, space: BlockSpace | null = null): string =>
+  space !== null
+    ? space.name
+    : key === INBOX
+      ? "Inbox"
+      : key === UNTITLED
+        ? "Own title"
+        : (project?.name ?? "Project");
 
 export function workStats(ctx: Ctx, query: WorkStatsQuery): WorkStats {
   const { from, to } = query;
@@ -70,13 +89,22 @@ export function workStats(ctx: Ctx, query: WorkStatsQuery): WorkStats {
 
   // ---------- worked time ----------
   const pieces: Piece[] = [];
-  for (const block of listBlocks(ctx, { from, to })) {
+  // Your own blocks and your time in the shared projects you are a member of.
+  for (const block of listBlocks(ctx, { from, to, shared: true })) {
     const span = clip(block.startAt, block.endAt);
-    if (span) pieces.push({ start: span[0], end: span[1], todoId: block.todoId, project: block.project });
+    if (span)
+      pieces.push({
+        start: span[0],
+        end: span[1],
+        todoId: block.todoId,
+        project: block.project,
+        space: block.space,
+      });
   }
   for (const o of listRepeatOccurrences(ctx, { from, to })) {
     const span = clip(o.startAt, o.endAt);
-    if (span) pieces.push({ start: span[0], end: span[1], todoId: o.todo.id, project: o.project });
+    if (span)
+      pieces.push({ start: span[0], end: span[1], todoId: o.todo.id, project: o.project, space: null });
   }
 
   const days = new Map<string, { worked: number; done: number }>();
@@ -88,11 +116,14 @@ export function workStats(ctx: Ctx, query: WorkStatsQuery): WorkStats {
   for (let monday = mondayOf(from); monday <= to; monday = addDays(monday, 7))
     weeks.set(monday, { worked: 0, meeting: 0, created: 0, done: 0, projects: new Map() });
   const hours = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
-  const groups = new Map<string, { project: ProjectRef | null; minutes: number; done: number }>();
-  const group = (key: string, project: ProjectRef | null) => {
+  const groups = new Map<
+    string,
+    { project: ProjectRef | null; space: BlockSpace | null; minutes: number; done: number }
+  >();
+  const group = (key: string, project: ProjectRef | null, space: BlockSpace | null = null) => {
     let entry = groups.get(key);
     if (!entry) {
-      entry = { project, minutes: 0, done: 0 };
+      entry = { project, space, minutes: 0, done: 0 };
       groups.set(key, entry);
     }
     return entry;
@@ -109,12 +140,13 @@ export function workStats(ctx: Ctx, query: WorkStatsQuery): WorkStats {
 
   let workedMinutes = 0;
   for (const piece of pieces) {
-    const key = groupKey(piece.todoId, piece.project);
-    const name = groupName(key, piece.project);
+    const key = groupKey(piece.todoId, piece.project, piece.space);
+    const name = groupName(key, piece.project, piece.space);
     const minutes = (piece.end - piece.start) / 60_000;
     workedMinutes += minutes;
-    group(key, piece.project).minutes += minutes;
-    if (piece.todoId !== null)
+    group(key, piece.project, piece.space).minutes += minutes;
+    // Requesters are people of your own account: time in shared projects counts for nobody there.
+    if (piece.todoId !== null && piece.space === null)
       minutesByTodo.set(piece.todoId, (minutesByTodo.get(piece.todoId) ?? 0) + minutes);
     steps(piece.start, piece.end, (date, hour, m) => {
       const day = days.get(date);
@@ -252,6 +284,7 @@ export function workStats(ctx: Ctx, query: WorkStatsQuery): WorkStats {
       kind:
         key === INBOX ? ("inbox" as const) : key === UNTITLED ? ("untitled" as const) : ("project" as const),
       project: key === INBOX || key === UNTITLED ? null : g.project,
+      space: g.space,
       minutes: round(g.minutes),
       done: g.done,
     }))

@@ -30,7 +30,7 @@ import { and, asc, count, desc, eq, inArray, isNotNull, isNull, type SQL, sql } 
 import { insertUrls, urlsByTodo } from "./urls.ts";
 import { accounts } from "../db/auth-schema.ts";
 import { assigneesById, assigneeSummary, isAssignable, resolveAssignee } from "./assignees.ts";
-import { notifyTodoChange } from "./notifications.ts";
+import { type Acting, notifyTodoChange } from "./notifications.ts";
 import { comments, events, labels, people, todoLabels, todoLinks, todoPeople, todos } from "../db/schema.ts";
 import { ApiError, notFound } from "../http/errors.ts";
 import { type Ctx, inTx, now, type Scoped } from "./context.ts";
@@ -377,7 +377,18 @@ export function createTodo(ctx: Ctx, actor: string, input: CreateTodo): Todo {
       extra.parentId = input.parentId;
       extra.position = nextChildPosition(sc, input.parentId);
     }
-    const todo = insertTodo(sc, at, actor, { ...input, projectId }, extra);
+    // A new todo of a shared project with a planned day and nobody named is the planner's.
+    const planner =
+      input.plannedOn && input.assignee === undefined && input.status !== "done"
+        ? plannerAssignee(sc, ctx.callerId, null)
+        : undefined;
+    const todo = insertTodo(
+      sc,
+      at,
+      actor,
+      { ...input, projectId, ...(planner !== undefined && { assignee: planner }) },
+      extra,
+    );
     if (input.parentId !== undefined) {
       touchTodos(sc, at, [input.parentId]);
       recordEvents(sc, actor, at, [
@@ -745,6 +756,50 @@ function applyChange(
 }
 
 /**
+ * Planning assigns (S5#13): a todo of a shared project that gets a planned day or planned time while
+ * nobody is on it goes to the member who planned it. The username to assign, or undefined: own todos,
+ * done todos, a todo someone is on already (it stays theirs), and callers that are no member.
+ */
+function plannerAssignee(sc: Scoped, callerId: number | undefined, current: Todo | null): string | undefined {
+  if (callerId === undefined || current?.assignee != null || current?.status === "done") return undefined;
+  if (!isAssignable(sc.db, sc.accountId, callerId)) return undefined;
+  return assigneesById(sc.db, [callerId]).get(callerId)?.username;
+}
+
+/** The change with the planner as assignee when it plans an unassigned todo of a shared project. */
+function withPlanner(
+  sc: Scoped,
+  callerId: number | undefined,
+  current: Todo,
+  change: UpdateTodo,
+): UpdateTodo {
+  const plans =
+    change.plannedOn !== undefined && change.plannedOn !== null && change.plannedOn !== current.plannedOn;
+  if (!plans || change.assignee !== undefined || change.status === "done") return change;
+  const assignee = plannerAssignee(sc, callerId, current);
+  return assignee === undefined ? change : { ...change, assignee };
+}
+
+/**
+ * Time planned for a shared project's todo gives the todo to whoever planned it, if nobody is on it
+ * (with an assignee_changed line and the usual notification). Own todos are left alone.
+ */
+export function assignPlanner(
+  sc: Scoped,
+  acting: Acting,
+  at: string,
+  actor: string,
+  id: number,
+  timeZone: string,
+): void {
+  const current = getTodo(sc, id);
+  const assignee = plannerAssignee(sc, acting.callerId, current);
+  if (assignee === undefined) return;
+  applyChange(sc, at, actor, current, { assignee }, timeZone);
+  notifyTodoChange(sc, acting, actor, at, current, getTodo(sc, id));
+}
+
+/**
  * Time planned for a todo in the planner also plans the todo for that day (the Week view and the
  * planner's Day row read the planned day), recorded as a normal date change. Done todos stay as they are.
  */
@@ -766,7 +821,7 @@ export function updateTodo(ctx: Ctx, actor: string, id: number, change: UpdateTo
     const sc = inTx(ctx, tx);
     const at = now(ctx);
     const before = getTodo(sc, id);
-    applyChange(sc, at, actor, before, change, ctx.timeZone);
+    applyChange(sc, at, actor, before, withPlanner(sc, ctx.callerId, before, change), ctx.timeZone);
     const after = getTodo(sc, id);
     notifyTodoChange(sc, ctx, actor, at, before, after);
     return after;
@@ -795,7 +850,10 @@ export function bulkUpdate(ctx: Ctx, actor: string, ids: readonly number[], chan
     }
     const at = now(ctx);
     const byId = new Map(hydrate(sc, rows).map((t) => [t.id, t]));
-    for (const id of ids) applyChange(sc, at, actor, byId.get(id) as Todo, change, ctx.timeZone);
+    for (const id of ids) {
+      const before = byId.get(id) as Todo;
+      applyChange(sc, at, actor, before, withPlanner(sc, ctx.callerId, before, change), ctx.timeZone);
+    }
     const after = new Map(
       hydrate(
         sc,

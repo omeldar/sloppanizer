@@ -2,6 +2,9 @@ import type { TimeBlock } from "@organizer/shared";
 import { describe, expect, it } from "vitest";
 import { makeOccurrence, makeSeries } from "../../test/meetings.ts";
 import {
+  blockColor,
+  blockKey,
+  blockSource,
   blockSpan,
   edgeScrollStep,
   lengthMinutes,
@@ -16,6 +19,7 @@ import {
   scrollStartMinutes,
   snap,
 } from "./planner.ts";
+import { plannedSharedText } from "./BlockDialog.tsx";
 
 const TZ = "Europe/Zurich";
 
@@ -31,6 +35,9 @@ function block(id: number, startAt: string, endAt: string): TimeBlock {
     createdBy: "you",
     createdAt: startAt,
     updatedAt: startAt,
+    space: null,
+    member: null,
+    assignee: null,
   };
 }
 
@@ -260,5 +267,34 @@ describe("meetings in the planner", () => {
       TZ,
     );
     expect(choices[2]?.hint).toBe("Every date from 27.11. on, this part of the repeat");
+  });
+});
+
+describe("blocks of shared projects (S5#13)", () => {
+  const anna = { accountId: 1, username: "anna", name: "Anna" };
+  const ana = { accountId: 2, username: "ana", name: "Ana Bell" };
+  const space = { id: 7, name: "Home move", color: "#4C9AFF" };
+
+  it("keys them apart from your own blocks with the same id", () => {
+    const own = block(5, "2026-11-12T08:00:00.000Z", "2026-11-12T09:00:00.000Z");
+    expect(blockKey(own)).toBe("block-5");
+    expect(blockKey({ ...own, space })).toBe("block-s7-5");
+  });
+
+  it("says where a block comes from: the project in your tab, the member in the project's", () => {
+    const own = block(5, "2026-11-12T08:00:00.000Z", "2026-11-12T09:00:00.000Z");
+    expect(blockSource({ ...own, space, member: anna }, "anna")).toBe("Home move");
+    expect(blockSource({ ...own, member: ana }, "anna")).toBe("Ana Bell");
+    expect(blockSource({ ...own, member: anna }, "anna")).toBeUndefined();
+    expect(blockSource(own, "anna")).toBeUndefined();
+    expect(blockColor({ ...own, space })).toBe("#4C9AFF");
+  });
+
+  it("tells whether planning gave the todo to you or it stays someone else's", () => {
+    expect(plannedSharedText("Book van", anna, "anna")).toBe("Planned Book van, assigned to you");
+    expect(plannedSharedText("Book van", ana, "anna")).toBe(
+      "Planned Book van; it stays assigned to Ana Bell",
+    );
+    expect(plannedSharedText("Book van", null, "anna")).toBe("Planned Book van");
   });
 });

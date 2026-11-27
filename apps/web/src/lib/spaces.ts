@@ -7,15 +7,20 @@ import {
   FeedbackResult,
   type NextItem,
   NextUp,
+  type SearchHit,
+  SearchResult,
   Space,
   Todo,
+  TodoPage,
   type TodoStatus,
   type UpdateSpace,
+  type UpdateTodo,
 } from "@organizer/shared";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { api, apiVoid, currentSpace } from "./api.ts";
 import { accountBase, spaceBase } from "./entry.ts";
+import { invalidateTodoViews, type TodoListParams } from "./queries.ts";
 
 /** Shared projects and feedback. Managing them always talks to the account itself, never to a space. */
 
@@ -132,11 +137,78 @@ export function useSetSharedStatus() {
     mutationFn: ({ spaceId, todoId, status }: { spaceId: number; todoId: number; status: TodoStatus }) =>
       api(Todo, `/todos/${todoId}`, { method: "PATCH", body: { status }, space: spaceId }),
     onSettled: () =>
-      Promise.all([
-        client.invalidateQueries({ queryKey: assignedKey }),
-        client.invalidateQueries({ queryKey: spacesKey }),
-      ]),
+      Promise.all([invalidateTodoViews(client), client.invalidateQueries({ queryKey: spacesKey })]),
   });
+}
+
+/**
+ * Changes a todo of a shared project from your own tab (its status, its planned day), through that
+ * project like its own tab would. Planning it there gives it to you when nobody is on it.
+ */
+export function useUpdateSharedTodo() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ spaceId, todoId, patch }: { spaceId: number; todoId: number; patch: UpdateTodo }) =>
+      api(Todo, `/todos/${todoId}`, { method: "PATCH", body: patch, space: spaceId }),
+    onSettled: () =>
+      Promise.all([invalidateTodoViews(client), client.invalidateQueries({ queryKey: spacesKey })]),
+  });
+}
+
+/** A todo of one of your shared projects, as your own tab shows it next to your own todos. */
+export interface SharedTodo {
+  space: Space;
+  todo: Todo;
+}
+
+/** The key that tells a shared todo from your own (ids are counted per project). */
+export const sharedKey = (spaceId: number, todoId: number): string => `s${spaceId}-${todoId}`;
+
+/**
+ * Todos of your shared projects that are assigned to you, filtered like your own list (one request
+ * per project). Only in your own tab; a shared project's tab has them as its own todos.
+ */
+export function useSharedTodos(params: TodoListParams, enabled = true) {
+  const inOwnTab = currentSpace() === null;
+  const spaces = useSpaces();
+  const list = inOwnTab && enabled ? (spaces.data ?? []) : [];
+  const results = useQueries({
+    queries: list.map((space) => ({
+      queryKey: ["sharedTodos", space.id, params],
+      queryFn: () => api(TodoPage, "/todos", { query: { ...params, assignee: "me" }, space: space.id }),
+      placeholderData: (previous: TodoPage | undefined) => previous,
+    })),
+  });
+  const items: SharedTodo[] = results.flatMap((result, i) => {
+    const space = list[i];
+    return space && result.data ? result.data.items.map((todo) => ({ space, todo })) : [];
+  });
+  return { items, isPending: inOwnTab && enabled && (spaces.isPending || results.some((r) => r.isPending)) };
+}
+
+/** A search hit in one of your shared projects. */
+export interface SharedHit {
+  space: Space;
+  hit: SearchHit;
+}
+
+/** Searches the todos of your shared projects (your own tab only; one request per project). */
+export function useSharedSearch(q: string, enabled = true, limit = 8) {
+  const inOwnTab = currentSpace() === null;
+  const spaces = useSpaces();
+  const list = inOwnTab && enabled && q.length > 0 ? (spaces.data ?? []) : [];
+  const results = useQueries({
+    queries: list.map((space) => ({
+      queryKey: ["sharedSearch", space.id, q, limit],
+      queryFn: () => api(SearchResult, "/search", { query: { q, kinds: ["todo"], limit }, space: space.id }),
+      placeholderData: (previous: SearchResult | undefined) => previous,
+    })),
+  });
+  const items: SharedHit[] = results.flatMap((result, i) => {
+    const space = list[i];
+    return space && result.data ? result.data.items.map((hit) => ({ space, hit })) : [];
+  });
+  return { items, isPending: results.some((r) => r.isPending) };
 }
 
 /** Your own projects, also inside a shared project's tab (to move a todo back to them). */

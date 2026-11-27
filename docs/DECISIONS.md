@@ -357,3 +357,45 @@ approval", the person closes it and moves again once approved, signing in with t
 binds any omeldar account not already bound to, or imported from, another Sloppanizer account, so this
 needs no change at auth. Re-running the import is the other way (same username and password, no
 approval wait); both are fine and the import stays safe to repeat.
+
+## 2026-11-27 Planning todos of shared projects from your own tab (S5#13)
+
+omerovie asked to find and plan the todos of shared projects in the planner, assigned to whoever plans them,
+and for the rest of the own tab to stop being "half" integrated.
+
+**A block for a shared todo lives in the shared project, as the planner's time.** Todos never move between
+accounts and ids are per account (2026-11-25, 2026-11-26), and a block references its todo inside its own
+account (a foreign key that removes it with the todo). So the block is made inside the project (the same
+`X-Sloppanizer-Space` request and membership check as everything else there) and records whose time it is:
+`time_blocks.member_id`, the member who planned it (ON DELETE CASCADE from the account). The alternative, a
+block in your own account pointing across accounts at the todo, would need a cross-account foreign key,
+cascade rules for the todo's delete, export and restore rules for a reference the export cannot carry, and
+its own permission check; it buys nothing. Inside the project every member sees every member's time on its
+todos, with whose it is (planner card, the todo's Planned time); it is a shared project. Your own tab asks
+`GET /blocks?shared=true`, which adds your blocks (`member_id` = you) of the projects you are a member of,
+each with its `space`; they are moved, changed and deleted inside their project. Blocks made in a project
+before this have no member and show only there. Leaving a project (or being removed) deletes your time
+there in the same transaction as the unassigning: your planner no longer reaches it, and it was your plan.
+`member_id` is left out of exports like `assignee_id` (shared projects are not exported anyway).
+
+**Planning assigns, but never takes a todo from someone.** A shared todo that gets a planned day (todo
+update, bulk update, a new todo with a day) or planned time (a new block, a block moved to another day or
+given to another todo) while nobody is on it is assigned to the member who planned it, with the usual
+`assignee_changed` line by them (and the usual notification rules: your own browser clicks notify nobody).
+A todo someone else is on stays theirs: planning time for yourself on it is fine (you may help), and
+silently taking it away would be worse than one more click on "Assigned to". The web app says so in the
+toast ("it stays assigned to Ana"); nothing asks first, so planning stays one drag. An assignee given in
+the same change wins, done todos are not assigned, unplanning keeps the assignee. Own todos are untouched.
+
+**What your own tab shows.** The planner: your time in shared projects (marked with the project, opening the
+todo in its tab), the todo search finds shared todos (marked "in <project>"), the Day row and To plan list
+the shared todos assigned to you (To plan merges them by score like Next up), planning one plans it in its
+project. Planned time that repeats stays for own todos (a series is per account; a shared repeating todo
+gets single blocks). The Week view lists the shared todos assigned to you on their day, carried over and
+unplanned, and moves them in their project (a shared todo's planned day is the todo's, so only the ones
+assigned to you; an unassigned one is planned from the planner's search or its own tab). Today's plan,
+Search ("In shared projects"), Statistics (your time there per shared project, "<name> (shared)"; requesters
+are people of your own account, so it counts for nobody there) and the calendar feed (URL into the
+project's tab) include them. MCP: `plan_time` takes `S7#12`, `list_plan` and `overview` list your time
+there as `block S7:5`, which `move_block` and `delete_block` take. Left for later: Plan my day (AI) plans
+own todos only; the Board, Inbox and project lists stay own; done counts in Statistics are own todos.

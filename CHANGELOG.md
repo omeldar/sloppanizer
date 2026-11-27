@@ -8,6 +8,16 @@ app shows "Sloppanizer is updating".
 
 ## Unreleased
 
+- Shared projects in your own planner and Week view (S5#13): the planner's todo search finds the todos of
+  your shared projects, and you plan them (time or a day) next to your own, each marked with its project
+  and opening in its project's tab. Planning a todo nobody is on (a block, or a planned day in the Week view,
+  the todo's Planned field or MCP) assigns it to you; someone else's stays theirs and the toast says so.
+  Your time in shared projects shows in the planner, today's plan, Statistics ("<project> (shared)") and the
+  calendar feed; the Day row, To plan and the Week view list the shared todos assigned to you, and Search
+  lists matching todos of your shared projects. In a project's own tab every member's time shows with whose
+  it is; leaving a project deletes your time there. MCP: `plan_time` takes `S7#12`, `list_plan` lists
+  `block S7:5`, `move_block` and `delete_block` take it.
+
 ## 1.2.2 (2026-11-27)
 
 - Sign-up goes through omeldar as soon as "Sign in with omeldar" is on (`SLOPPANIZER_AUTH=both`, not only

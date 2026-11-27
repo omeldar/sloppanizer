@@ -481,7 +481,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         api.get<Project[]>("/projects"),
         api.get<TodoPage>("/todos", { sort: "created", order: "asc", limit: 500 }),
         // Today's planner; an older server without it just leaves the section out.
-        api.get<TimeBlock[]>("/blocks", { from: day, to: day }).catch(() => null),
+        // With your time in shared projects; an older server ignores shared.
+        api.get<TimeBlock[]>("/blocks", { from: day, to: day, shared: "true" }).catch(() => null),
         sharedProjects(api),
       ]);
       const shared = await Promise.all(
@@ -1696,19 +1697,41 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     .string()
     .regex(/^([01]?\d|2[0-3]):[0-5]\d$/, "Use HH:MM, 24 hours.")
     .describe("Local time HH:MM (24 hours) in the user's time zone.");
-  const BlockId = z.number().int().positive().describe("Time block id from list_plan.");
-  const blockLine = (b: TimeBlock): string => {
+  const BlockId = z
+    .union([
+      z.number().int().positive(),
+      z
+        .string()
+        .trim()
+        .regex(
+          /^(\d{1,10}|[sS]\d{1,10}:\d{1,10})$/,
+          'A block is its number (5), or "S7:5" in shared project 7.',
+        ),
+    ])
+    .describe('Time block id from list_plan: 5, or "S7:5" for a block in shared project 7.');
+  /** The block's id and the API it lives behind (its shared project, if it is in one). */
+  const blockTarget = async (input: number | string): Promise<{ api: Api; id: number; ref: string }> => {
+    const shared = typeof input === "string" ? /^s(\d+):(\d+)$/i.exec(input) : null;
+    if (!shared) return { api, id: Number(input), ref: String(input) };
+    const place = await placeOf(api, Number(shared[1]));
+    return { api: place.api, id: Number(shared[2]), ref: `S${shared[1]}:${shared[2]}` };
+  };
+  /** The block in list_plan's notation, with a shared project's todo as S7#12. */
+  const blockLine = (b: TimeBlock, spaceId: number | null = b.space?.id ?? null): string => {
     const day = planLocalDate(b.startAt, deps.timeZone);
     const endDay = planLocalDate(b.endAt, deps.timeZone);
     const endText = `${endDay === day ? "" : `${formatDate(endDay)} `}${toLocalTime(b.endAt, deps.timeZone)}`;
+    const prefix = spaceId === null ? "" : `S${spaceId}`;
     const what = b.todo
-      ? `#${b.todo.id} ${b.todo.title}${b.todo.status === "done" ? " (done)" : ""}`
+      ? `${prefix}#${b.todo.id} ${b.todo.title}${b.todo.status === "done" ? " (done)" : ""}`
       : b.title;
-    const project = b.project ? ` [${b.project.name}]` : "";
-    return `block ${b.id} | ${formatDate(day)} ${toLocalTime(b.startAt, deps.timeZone)}-${endText} | ${what}${project}`;
+    const project = b.project ? ` [${b.project.name}]` : b.space ? ` [${b.space.name}]` : "";
+    const who = b.assignee && spaceId !== null ? ` (assigned to ${b.assignee.username})` : "";
+    const id = spaceId === null ? String(b.id) : `${prefix}:${b.id}`;
+    return `block ${id} | ${formatDate(day)} ${toLocalTime(b.startAt, deps.timeZone)}-${endText} | ${what}${project}${who}`;
   };
   const blockLines = (blocks: readonly TimeBlock[]): string =>
-    blocks.length === 0 ? "Nothing planned." : blocks.map(blockLine).join("\n");
+    blocks.length === 0 ? "Nothing planned." : blocks.map((b) => blockLine(b)).join("\n");
   /** Blocks, planned dates of repeating todos and meeting dates in one list, by start. */
   const planLines = (
     blocks: readonly TimeBlock[],
@@ -1731,11 +1754,14 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       description:
         "The user's planner: time blocks reserved for todos (or with their own title), the planned dates " +
         "of repeating todos (lines starting with repeat) and meeting dates between two days, in local time. " +
+        "Your time in shared projects is listed too (block S7:5 for S7#12). " +
         "Default: today and the next 6 days. Use it before plan_time to find free time.",
       inputSchema: {
         from: PlanDate.optional().describe("First day YYYY-MM-DD (default today)."),
         to: PlanDate.optional().describe("Last day YYYY-MM-DD (default from + 6)."),
-        todo: TodoId.optional().describe("Only the blocks of this todo."),
+        todo: TodoRefInput.optional().describe(
+          'Only the blocks of this todo (142, or "S7#12": then every member\'s blocks of it).',
+        ),
         format,
       },
       annotations: READ,
@@ -1743,13 +1769,34 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async (args) => {
       const from = args.from ?? ctx().today;
       const to = args.to ?? addLocalDays(from, 6);
+      const target = args.todo === undefined ? null : await todoTarget(api, args.todo);
+      if (target?.space) {
+        const spaceId = target.space.id;
+        const blocks = await target.api.get<TimeBlock[]>("/blocks", { from, to, todoId: target.id });
+        return out(args.format, { blocks, meetings: [], repeats: [] }, (data) =>
+          [
+            `Plan ${formatDate(from)} to ${formatDate(to)}:`,
+            ...(data.blocks.length === 0
+              ? ["Nothing planned."]
+              : data.blocks.map(
+                  (b) => `${blockLine(b, spaceId)}${b.member ? ` (time of ${b.member.username})` : ""}`,
+                )),
+          ].join("\n"),
+        );
+      }
+      const todoId = target?.id;
       const [blocks, meetings, repeats] = await Promise.all([
-        api.get<TimeBlock[]>("/blocks", { from, to, todoId: args.todo }),
+        api.get<TimeBlock[]>("/blocks", {
+          from,
+          to,
+          todoId,
+          ...(todoId === undefined && { shared: "true" }),
+        }),
         // Meetings are busy too, but not when asking for one todo's blocks; an older server has none.
-        args.todo === undefined
+        todoId === undefined
           ? api.get<MeetingOccurrence[]>("/meetings/occurrences", { from, to }).catch(() => [])
           : Promise.resolve([]),
-        api.get<BlockOccurrence[]>("/blocks/series", { from, to, todoId: args.todo }).catch(() => []),
+        api.get<BlockOccurrence[]>("/blocks/series", { from, to, todoId }).catch(() => []),
       ]);
       return out(
         args.format,
@@ -1768,9 +1815,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         "Reserve time in the user's planner: for a todo (todo) or with its own title (title), on a day from " +
         "start to end (local HH:MM), or from start for minutes. Check list_plan first so blocks do not clash. " +
         "For a todo that repeats on a schedule, repeat true plans the time for every date of its repeat " +
-        "(it stays when one date is done); the user changes single dates in the app.",
+        "(it stays when one date is done); the user changes single dates in the app. A todo of a shared " +
+        "project (S7#12) gets the time in that project; planning it assigns it to the user when nobody is " +
+        "on it (someone else's stays theirs).",
       inputSchema: {
-        todo: TodoId.optional(),
+        todo: TodoRefInput.optional(),
         repeat: z
           .boolean()
           .optional()
@@ -1797,9 +1846,12 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       } else {
         throw new ToolError("Give end (HH:MM) or minutes.");
       }
+      const target = args.todo === undefined ? null : await todoTarget(api, args.todo);
       if (args.repeat) {
-        if (args.todo === undefined) throw new ToolError("repeat needs a todo that repeats.");
-        const plan = await api.post<BlockSeries>(`/todos/${args.todo}/plan`, {
+        if (target === null) throw new ToolError("repeat needs a todo that repeats.");
+        if (target.space)
+          throw new ToolError("Planned time that repeats is for your own todos; plan a single block here.");
+        const plan = await api.post<BlockSeries>(`/todos/${target.id}/plan`, {
           startAt: startAt.toISOString(),
           endAt: endAt.toISOString(),
         });
@@ -1811,16 +1863,17 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
             (data.next ? `\nNext: ${plannedLine(data.next, deps.timeZone)}` : ""),
         );
       }
-      const block = await api.post<TimeBlock>(
+      const block = await (target?.api ?? api).post<TimeBlock>(
         "/blocks",
         compact({
-          todoId: args.todo,
+          todoId: target?.id,
           title: args.title,
           startAt: startAt.toISOString(),
           endAt: endAt.toISOString(),
         }),
       );
-      return out(args.format, block, (data) => `Planned ${blockLine(data)}`);
+      const spaceId = target?.space?.id ?? null;
+      return out(args.format, block, (data) => `Planned ${blockLine(data, spaceId)}`);
     },
   );
 
@@ -1843,13 +1896,14 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     },
     async (args) => {
       const today = ctx().today;
-      const all = await api.get<TimeBlock[]>("/blocks", {
+      const where = await blockTarget(args.block);
+      const all = await where.api.get<TimeBlock[]>("/blocks", {
         from: addLocalDays(today, -31),
         to: addLocalDays(today, 31),
       });
-      const current = all.find((b) => b.id === args.block);
+      const current = all.find((b) => b.id === where.id);
       if (!current) {
-        throw new ToolError(`No block ${args.block} within a month of today. list_plan shows the blocks.`);
+        throw new ToolError(`No block ${where.ref} within a month of today. list_plan shows the blocks.`);
       }
       const day = args.date ?? planLocalDate(current.startAt, deps.timeZone);
       const length = Date.parse(current.endAt) - Date.parse(current.startAt);
@@ -1859,11 +1913,12 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         ? localTimeToInstant(day, args.end, deps.timeZone)
         : new Date(startAt.getTime() + length);
       if (endAt <= startAt) endAt = new Date(endAt.getTime() + 86_400_000);
-      const block = await api.patch<TimeBlock>(
-        `/blocks/${args.block}`,
+      const block = await where.api.patch<TimeBlock>(
+        `/blocks/${where.id}`,
         compact({ startAt: startAt.toISOString(), endAt: endAt.toISOString(), title: args.title }),
       );
-      return out(args.format, block, (data) => `Moved ${blockLine(data)}`);
+      const spaceId = where.api === api ? null : Number(where.ref.slice(1).split(":")[0]);
+      return out(args.format, block, (data) => `Moved ${blockLine(data, spaceId)}`);
     },
   );
 
@@ -1876,8 +1931,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async (args) => {
-      await api.delete(`/blocks/${args.block}`);
-      return `Deleted block ${args.block}.`;
+      const where = await blockTarget(args.block);
+      await where.api.delete(`/blocks/${where.id}`);
+      return `Deleted block ${where.ref}.`;
     },
   );
 

@@ -9,6 +9,7 @@ import {
   weekDays,
 } from "@organizer/shared";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
+import { useCurrentAccount } from "../../app/account.tsx";
 import {
   type CSSProperties,
   type MouseEvent,
@@ -30,6 +31,7 @@ import {
   weekdayName,
 } from "../../lib/format.ts";
 import { errorMessage } from "../../lib/api.ts";
+import { useAssignedToMe, useSharedTodos } from "../../lib/spaces.ts";
 import { useBlocks, useCreateBlock, useNext, useTodos, useUpdateBlock } from "../../lib/queries.ts";
 import { useChangeOccurrence, useDeleteMeeting, useMeetings, useOccurrences } from "../../lib/meetings.ts";
 import { SeriesScopeDialog } from "../../components/SeriesScopeDialog.tsx";
@@ -43,16 +45,18 @@ import {
   useRepeatPlan,
 } from "../../lib/plans.ts";
 import { useEdgeScroll } from "./useEdgeScroll.ts";
-import { useTodoDrag } from "./useTodoDrag.ts";
+import { type DragTodo, dragKey, useTodoDrag } from "./useTodoDrag.ts";
 import { BlockCard } from "./BlockCard.tsx";
 import { planDay, useAiSettings } from "../../lib/ai.ts";
 import type { CheckedBlock } from "@organizer/shared";
 import { useToast } from "../../components/toast/ToastProvider.tsx";
 import { useKeys } from "../../keyboard/KeyboardProvider.tsx";
-import { BlockDialog, type BlockDraft, draftOf } from "./BlockDialog.tsx";
+import { BlockDialog, type BlockDraft, draftOf, plannedSharedText } from "./BlockDialog.tsx";
 import styles from "./Planner.module.css";
 import {
+  blockColor,
   blockItem,
+  blockSource,
   blockSpan,
   blockTitle,
   HOUR_PX,
@@ -147,7 +151,19 @@ export function PlannerPage() {
     order: "desc",
     limit: 200,
   });
+  // Todos of your shared projects assigned to you, planned for a day of this week (your own tab only).
+  const sharedPlanned = useSharedTodos({
+    status: "all",
+    plannedFrom: first,
+    plannedTo: last,
+    sort: "priority",
+    order: "desc",
+    limit: 200,
+  });
   const next = useNext({ mode: "smart" });
+  const assigned = useAssignedToMe();
+  const account = useCurrentAccount();
+  const me = account?.username ?? null;
   const [draft, setDraft] = useState<BlockDraft | null>(null);
   const swipe = useRef<{ x: number; y: number } | null>(null);
   const update = useUpdateBlock();
@@ -203,7 +219,7 @@ export function PlannerPage() {
     setDraft({ day, start: minutesToTime(start), end: minutesToTime(Math.min(24 * 60, start + 60)) });
   };
 
-  const planTodo = (todo: { id: number; title: string }, day = selected) => {
+  const planTodo = (todo: DragTodo, day = selected) => {
     const start = day === now.day ? nextQuarter(new Date(), timeZone) : "09:00";
     const [h = 9, m = 0] = start.split(":").map(Number);
     setDraft({ day, start, end: minutesToTime(Math.min(24 * 60, h * 60 + m + 60)), todo });
@@ -223,7 +239,16 @@ export function PlannerPage() {
         minutesToTime(Math.min(24 * 60, startMin + 60)),
         timeZone,
       );
-      if (canRepeatPlan(knownTodos.get(todo.id)?.recurrence ?? null) && !plannedRepeats.has(todo.id))
+      // A shared project's todo gets its time in that project (and goes to you if nobody is on it).
+      if (todo.space)
+        create.mutate(
+          { todoId: todo.id, ...span, space: todo.space.id },
+          {
+            onSuccess: (block) => toast.show({ message: plannedSharedText(todo.title, block.assignee, me) }),
+            onError: toastError,
+          },
+        );
+      else if (canRepeatPlan(knownTodos.get(todo.id)?.recurrence ?? null) && !plannedRepeats.has(todo.id))
         createRepeat.mutate(
           { todoId: todo.id, span },
           {
@@ -371,25 +396,57 @@ export function PlannerPage() {
     ]),
   );
   const plannedRepeats = new Set((repeats.data ?? []).flatMap((o) => [o.todo.id, o.ownerTodoId]));
+  /** Todos with time this week, by dragKey (a shared project's todo is told apart by its project). */
   const planned = new Set([
-    ...(blocks.data ?? []).flatMap((b) => (b.todoId === null ? [] : [b.todoId])),
-    ...plannedRepeats,
+    ...(blocks.data ?? []).flatMap((b) =>
+      b.todoId === null ? [] : [dragKey({ id: b.todoId, space: b.space })],
+    ),
+    ...[...plannedRepeats].map(String),
   ]);
-  const toPlan = (next.data?.items ?? [])
-    .map((item) => item.todo)
-    .filter((todo) => !planned.has(todo.id))
+  /** Next up without time this week: your own and the todos assigned to you in shared projects, by score. */
+  const toPlan: (DragTodo & { score: number })[] = [
+    ...(next.data?.items ?? []).map((item) => ({
+      id: item.todo.id,
+      title: item.todo.title,
+      score: item.score,
+    })),
+    ...assigned.items.map(({ space, item }) => ({
+      id: item.todo.id,
+      title: item.todo.title,
+      score: item.score,
+      space: { id: space.id, name: space.name, color: space.color },
+    })),
+  ]
+    .filter((todo) => !planned.has(dragKey(todo)))
+    .toSorted((a, b) => b.score - a.score)
     .slice(0, 8);
-  /** Todos planned for a day of this week that have no time that day yet. */
-  const dayTodos = (day: string) =>
-    (plannedTodos.data?.items ?? []).filter(
-      (todo) =>
-        todo.plannedOn === day &&
-        !(placedByDay.get(day) ?? []).some(
-          (p) =>
-            (p.item.kind === "block" && p.item.block.todoId === todo.id) ||
-            (p.item.kind === "repeat" && p.item.occurrence.todo.id === todo.id),
-        ),
-    );
+  /** Todos planned for a day of this week that have no time that day yet (your shared ones too). */
+  const dayTodos = (day: string): (DragTodo & { key: string })[] =>
+    [
+      ...(plannedTodos.data?.items ?? []).map((todo) => ({ todo, space: null })),
+      ...sharedPlanned.items.map(({ space, todo }) => ({
+        todo,
+        space: { id: space.id, name: space.name, color: space.color },
+      })),
+    ]
+      .filter(
+        ({ todo, space }) =>
+          todo.plannedOn === day &&
+          !(placedByDay.get(day) ?? []).some(
+            (p) =>
+              (p.item.kind === "block" &&
+                p.item.block.todoId === todo.id &&
+                (p.item.block.space?.id ?? null) === (space?.id ?? null)) ||
+              (space === null && p.item.kind === "repeat" && p.item.occurrence.todo.id === todo.id),
+          ),
+      )
+      .map(({ todo, space }) => ({
+        id: todo.id,
+        title: todo.title,
+        space,
+        key: dragKey({ id: todo.id, space }),
+      }));
+  const dragging = drag?.active ? dragKey(drag.todo) : null;
 
   return (
     <div className={styles.page} data-fill>
@@ -498,16 +555,17 @@ export function PlannerPage() {
               <span className={styles.allDayLabel}>Day</span>
               {days.map((day) => (
                 <div key={day} className={styles.allDayCell} data-selected={day === selected || undefined}>
-                  {dayTodos(day).map((todo) => (
+                  {dayTodos(day).map(({ key, ...todo }) => (
                     <button
-                      key={todo.id}
+                      key={key}
                       type="button"
                       className={styles.dayTodo}
-                      title={`Drag into the day, or click to plan time for ${todo.title}`}
-                      data-dragging={drag?.active && drag.todo.id === todo.id ? true : undefined}
+                      title={`Drag into the day, or click to plan time for ${todo.title}${todo.space ? ` (${todo.space.name})` : ""}`}
+                      data-dragging={dragging === key || undefined}
                       {...bind(todo, { touch: true })}
                     >
                       {todo.title}
+                      {todo.space && <SpaceMark space={todo.space} />}
                     </button>
                   ))}
                 </div>
@@ -646,12 +704,17 @@ export function PlannerPage() {
                       key={`${item.key}-${day}`}
                       {...shared}
                       title={blockTitle(block)}
-                      color={block.project?.color}
+                      source={blockSource(block, me)}
+                      color={blockColor(block)}
                       done={block.todo?.status === "done"}
                       onOpen={() => setDraft(draftOf(block))}
                       onDrop={(deltaMin, dayOffset, mode) =>
                         update.mutate(
-                          { id: block.id, patch: movedSpan(block, deltaMin, dayOffset, mode, timeZone) },
+                          {
+                            id: block.id,
+                            patch: movedSpan(block, deltaMin, dayOffset, mode, timeZone),
+                            space: block.space?.id,
+                          },
                           {
                             onError: (failure) =>
                               toast.show({ tone: "error", message: errorMessage(failure) }),
@@ -668,21 +731,26 @@ export function PlannerPage() {
 
         <aside className={styles.side} aria-label="To plan">
           <h2 className={styles.sideTitle}>To plan</h2>
-          <p className={`${styles.sideNote} ${styles.sideHint}`}>Next up without time this week.</p>
+          <p className={`${styles.sideNote} ${styles.sideHint}`}>
+            Next up without time this week, and what is assigned to you in shared projects.
+          </p>
           {toPlan.length === 0 && (
             <p className={styles.sideNote}>Everything near the top has time planned.</p>
           )}
           <ul className={styles.toPlan}>
-            {toPlan.map((todo) => (
-              <li key={todo.id}>
+            {toPlan.map(({ score: _score, ...todo }) => (
+              <li key={dragKey(todo)}>
                 <button
                   type="button"
                   className={styles.toPlanItem}
                   title="Drag onto the calendar, or click to plan time"
-                  data-dragging={drag?.active && drag.todo.id === todo.id ? true : undefined}
+                  data-dragging={dragging === dragKey(todo) || undefined}
                   {...bind(todo)}
                 >
-                  <span className={styles.toPlanTitle}>{todo.title}</span>
+                  <span className={styles.toPlanTitle}>
+                    {todo.title}
+                    {todo.space && <SpaceMark space={todo.space} />}
+                  </span>
                   <span className={styles.toPlanAction}>Plan</span>
                 </button>
               </li>
@@ -782,5 +850,14 @@ export function PlannerPage() {
         onCancel={() => setMeetingChange(null)}
       />
     </div>
+  );
+}
+
+/** The shared project a todo in the Day row or To plan comes from. */
+function SpaceMark({ space }: { space: { name: string; color: string } }) {
+  return (
+    <span className={styles.fromSpace} style={{ "--swatch": space.color } as CSSProperties}>
+      {space.name}
+    </span>
   );
 }

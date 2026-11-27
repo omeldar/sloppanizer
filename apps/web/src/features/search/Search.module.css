@@ -180,3 +180,21 @@
 .result .kind {
   padding-left: 0;
 }
+
+/* Todos of your shared projects, after your own results. */
+.sharedHead {
+  margin: 20px 0 8px;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.space {
+  flex-shrink: 0;
+  max-width: 160px;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

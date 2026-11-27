@@ -47,7 +47,7 @@ import {
 } from "@organizer/shared";
 import { type QueryClient, queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { api, apiVoid } from "./api.ts";
+import { api, apiVoid, currentSpace } from "./api.ts";
 import type { PositionPatch } from "./positions.ts";
 
 /** Query keys. Every todo change invalidates the derived lists through `invalidateTodoViews`. */
@@ -293,6 +293,10 @@ export function invalidateTodoViews(client: QueryClient): Promise<void> {
         "blocks",
         "plan",
         "recurring",
+        // Todos of shared projects in your own tab (Assigned to you, the Week view, the planner).
+        "assigned",
+        "sharedTodos",
+        "sharedSearch",
       ].includes(String(query.queryKey[0])),
   });
 }
@@ -628,21 +632,37 @@ export const useRemoveUrl = (todoId: number) =>
 
 // ---------- planner ----------
 
-/** Time blocks that overlap the days from..to (account time zone); todoId narrows to one todo. */
+/**
+ * Time blocks that overlap the days from..to (account time zone); todoId narrows to one todo. In your
+ * own tab the list has your time in shared projects too (each with its `space`).
+ */
 export const useBlocks = (from: string, to: string, todoId?: number) =>
   useQuery({
     queryKey: keys.blocks(from, to, todoId),
-    queryFn: () => api(z.array(TimeBlock), "/blocks", { query: { from, to, ...(todoId ? { todoId } : {}) } }),
+    queryFn: () =>
+      api(z.array(TimeBlock), "/blocks", {
+        query: {
+          from,
+          to,
+          ...(todoId ? { todoId } : currentSpace() === null ? { shared: "true" } : {}),
+        },
+      }),
     placeholderData: (previous) => previous,
   });
+
+/** Where a block lives: your own account (null), or the shared project it was planned in. */
+type BlockPlace = { space?: number | null };
+const inPlace = (space: number | null | undefined) => (space == null ? {} : { space });
 
 /** Planning time for a todo plans it for that day too (the Week view), so todo views refresh with blocks. */
 const invalidateBlocks = (client: QueryClient) => invalidateTodoViews(client);
 
+/** Plans time; with `space`, for a todo of that shared project (the block lives there). */
 export function useCreateBlock() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateTimeBlock) => api(TimeBlock, "/blocks", { method: "POST", body: input }),
+    mutationFn: ({ space, ...input }: CreateTimeBlock & BlockPlace) =>
+      api(TimeBlock, "/blocks", { method: "POST", body: input, ...inPlace(space) }),
     onSuccess: () => invalidateBlocks(client),
   });
 }
@@ -650,8 +670,8 @@ export function useCreateBlock() {
 export function useUpdateBlock() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, patch }: { id: number; patch: UpdateTimeBlock }) =>
-      api(TimeBlock, `/blocks/${id}`, { method: "PATCH", body: patch }),
+    mutationFn: ({ id, patch, space }: { id: number; patch: UpdateTimeBlock } & BlockPlace) =>
+      api(TimeBlock, `/blocks/${id}`, { method: "PATCH", body: patch, ...inPlace(space) }),
     onSuccess: () => invalidateBlocks(client),
   });
 }
@@ -659,7 +679,8 @@ export function useUpdateBlock() {
 export function useDeleteBlock() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => apiVoid(`/blocks/${id}`, { method: "DELETE" }),
+    mutationFn: ({ id, space }: { id: number } & BlockPlace) =>
+      apiVoid(`/blocks/${id}`, { method: "DELETE", ...inPlace(space) }),
     onSuccess: () => invalidateBlocks(client),
   });
 }

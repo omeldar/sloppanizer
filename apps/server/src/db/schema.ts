@@ -507,6 +507,12 @@ export const timeBlocks = sqliteTable(
     createdBy: text("created_by").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
+    /**
+     * In a shared project (the account is a space): the member whose time it is (who planned it). Their
+     * own tab's planner shows it; leaving the project deletes it, so does deleting their account. Null in
+     * personal accounts (every block is the owner's) and for blocks of shared projects made before 1.3.
+     */
+    memberId: integer("member_id").references(() => accounts.id, { onDelete: "cascade" }),
   },
   (t) => [
     primaryKey({ columns: [t.accountId, t.id] }),
@@ -520,6 +526,8 @@ export const timeBlocks = sqliteTable(
     check("time_blocks_what_check", sql`${t.todoId} IS NOT NULL OR length(${t.title}) > 0`),
     index("time_blocks_start_idx").on(t.accountId, t.startAt),
     index("time_blocks_todo_idx").on(t.accountId, t.todoId),
+    // A member's blocks in their shared projects (their own planner), and removing them when they leave.
+    index("time_blocks_member_idx").on(t.memberId, t.accountId, t.startAt),
   ],
 );
 
